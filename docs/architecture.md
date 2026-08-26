@@ -48,6 +48,7 @@ packages/
   protocol/            shared serialized commands, results, views, and history
 docs/
   product-spec.md      user requirements only
+  gameplay-spec.md     authoritative gameplay rules and variants
   architecture.md      engineering decisions and trade-offs
   decisions/           accepted architecture decision records
 CONTEXT.md              domain vocabulary
@@ -104,7 +105,7 @@ A Card Face has one canonical string code, such as `AS`, `SMALL`, or `BIG`; a Ca
 
 This is the deepest module. Its decision interface is `decide(currentState, command) -> rejection | domainEvents`; its evolution interface is `evolve(state, event) -> state`. `decide` may consult `game-rules` and reject a command. `evolve` is total and decision-free for every supported event and valid prior state: it applies the accepted fact without checking legality, reading clocks or randomness, consulting external state, or rejecting. Folding `evolve` over a room's supported ordered events reconstructs its current state. A selected rules configuration becomes state through an event before a hand starts, so callers never supply a second ruleset value that could disagree with an active hand. The module uses `game-rules` and contains deck construction, authoritative decisions and evolution, turn order, finishing, tribute, scoring, and player-view derivation.
 
-It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. A normal hand receives a fresh cryptographically random seed; a social replay receives the seed and metadata decoded from a share code. `game-core` uses a versioned deterministic shuffle, so the same seed, ruleset, resolved variants, shuffle version, and seat ordering produce the same original deal. No match-level seed derives future hand seeds. Hand-start events record these inputs, and later events record every card-zone change needed for live evolution and completed-hand history.
+It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. A normal hand receives a fresh cryptographically random seed; a social replay receives the seed and metadata decoded from a share code. For the first Hand of a Match, `game-core` derives the initial dealer uniformly from that Hand's seed through a versioned, domain-separated selection function. Random selections required by resolved Rule Variants use the same approach and remain domain-separated from both dealer selection and shuffling. `game-core` uses a versioned deterministic shuffle, so the same seed, ruleset, resolved variants, shuffle version, and seat ordering produce the same original deal. No match-level seed derives future hand seeds. Hand-start events record these inputs, and later events record every card-zone change needed for live evolution and completed-hand history.
 
 ### `protocol`
 
@@ -154,9 +155,11 @@ type JokerPairComparison =
   | "two-small-and-mixed-are-equal";
 ```
 
-The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) seed the initial ruleset. Any disagreement or house rule becomes a named variant with example hands that are also executable tests.
+The authoritative [gameplay specification](gameplay-spec.md) defines the Initial Ruleset. The linked [弈棋耍大牌 description](https://www.17dp.com/down/gamelist/id/202) is non-authoritative reference material. Each configured difference is a named variant with example hands that are also executable tests.
 
 ## Turn timing and disconnection
+
+Turn timing is application policy rather than gameplay behavior and is intentionally excluded from the gameplay specification.
 
 Every turn will have a time limit, but its duration and expiry consequence remain undefined. Do not hard-code either or design wall-clock restart behavior before the product policy is decided.
 
@@ -208,7 +211,7 @@ These costs are proportionate to an application with one owner, a small friend g
 
 ## Primary references
 
-- [Game rules reference](https://www.17dp.com/down/gamelist/id/202)
+- [Non-authoritative original game description](https://www.17dp.com/down/gamelist/id/202)
 - [Cloudflare Tunnel WebSocket support](https://developers.cloudflare.com/cloudflare-one/faq/cloudflare-tunnels-faq/)
 - [Socket.IO delivery guarantees](https://socket.io/docs/v4/delivery-guarantees)
 - [Socket.IO connection-state recovery](https://socket.io/docs/v4/connection-state-recovery)

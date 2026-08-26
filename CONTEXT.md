@@ -9,7 +9,7 @@ A persistent player identity to which participation and future match history bel
 _Avoid_: Guest, temporary player
 
 **Ruleset**:
-A complete, versioned set of game rules, including player count, deck count, and any house-rule choices.
+A complete, versioned set of game rules that binds exactly one setting for every Rule Variant.
 _Avoid_: Mode, option
 
 **Rule Variant**:
@@ -17,7 +17,7 @@ A named rule difference selected for a room, such as Joker Pair Comparison or Wi
 _Avoid_: Special case, toggle
 
 **Initial Ruleset**:
-The six-player, three-deck ruleset based on the linked 弈棋耍大牌 description, with deviations recorded as explicit variants.
+The six-player, three-deck Ruleset defined by `docs/gameplay-spec.md`; external game descriptions are references only.
 _Avoid_: Default mode
 
 **Four-player Ruleset**:
@@ -40,12 +40,16 @@ _Avoid_: Card ID, Card Instance
 One specific physical copy of a Card Face in a multi-deck Hand, named by appending its copy number, such as `AS#2`.
 _Avoid_: Card Face
 
+**Team Level**:
+A team's retained progression rank within a Match. It begins at `2`, may advance, and never decreases.
+_Avoid_: Trump Rank, score
+
 **Dealer Team**:
-The team whose current level determines the Hand's Trump Rank and may advance after the Hand.
+The team whose Team Level determines the Hand's Trump Rank and may advance after the Hand.
 _Avoid_: Dealer Side, banker team
 
 **Trump Rank**:
-The card rank selected by the Dealer Team's current level for a Hand.
+The Dealer Team's Team Level as applied to one Hand.
 _Avoid_: Level Card, dealer rank
 
 **Finish Position**:
@@ -79,7 +83,7 @@ A Rule Variant deciding whether the first finisher or the giver of the highest-r
 _Avoid_: Starting player
 
 **Tribute Card Selection**:
-A Rule Variant deciding whether the system or the player giving Tribute chooses among Card Instances tied at the required Tribute rank.
+A Rule Variant deciding whether the system chooses fairly at random or the giver chooses among Card Instances tied at the required Tribute rank.
 _Avoid_: Tribute rank
 
 **Return Card Selection**:
@@ -91,5 +95,5 @@ A Rule Variant deciding how Tribute givers are matched to recipients.
 _Avoid_: Tribute order
 
 **Match Ending**:
-A Rule Variant deciding whether only advancement past Trump Rank `5` ends the Match or three failures at that rank also cause defeat.
+A Rule Variant deciding whether a team has unlimited non-winning attempts at Trump Rank `5` or loses after three.
 _Avoid_: Game over rule

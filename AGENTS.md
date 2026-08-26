@@ -1,3 +1,3 @@
 - Reply to the user in English; all product UI copy, labels, messages, and user-facing text must be in Chinese.
-- Use [CONTEXT.md](CONTEXT.md) for domain vocabulary and [docs/product-spec.md](docs/product-spec.md) as the authoritative source of product requirements.
+- Use [CONTEXT.md](CONTEXT.md) for domain vocabulary, [docs/product-spec.md](docs/product-spec.md) for product requirements, and [docs/gameplay-spec.md](docs/gameplay-spec.md) as the authoritative gameplay source.
 - Follow [docs/architecture.md](docs/architecture.md) and [ADR 0001](docs/decisions/0001-initial-application-stack.md); do not reopen accepted stack decisions without a new requirement or measured limitation.
