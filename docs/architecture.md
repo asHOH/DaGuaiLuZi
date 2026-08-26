@@ -96,6 +96,10 @@ TanStack Router, Zustand, CSS organization, ORM details, and exact package place
 
 This shared pure module classifies card combinations, compares them, and evaluates a proposed play using only the immutable rules configuration and information present in that player's view. The browser uses it for immediate feedback, and `game-core` uses the same implementation during authoritative command handling. A client verdict is advisory: the server still checks authentication, command revision, turn ownership, card ownership, and legality against the full current state.
 
+### Card identity and serialization
+
+A Card Face has one canonical string code, such as `AS`, `SMALL`, or `BIG`; a Card Instance appends its one-based copy number, such as `AS#2`. Protocol messages, persisted events, commands, fixtures, and logs use these strings and do not accept an alternative object-shaped serialization. At a boundary, the application validates and decodes each string once into an internal card value object; rules operate on that object rather than parsing identifiers.
+
 ### `game-core`
 
 This is the deepest module. Its decision interface is `decide(currentState, command) -> rejection | domainEvents`; its evolution interface is `evolve(state, event) -> state`. `decide` may consult `game-rules` and reject a command. `evolve` is total and decision-free for every supported event and valid prior state: it applies the accepted fact without checking legality, reading clocks or randomness, consulting external state, or rejecting. Folding `evolve` over a room's supported ordered events reconstructs its current state. A selected rules configuration becomes state through an event before a hand starts, so callers never supply a second ruleset value that could disagree with an active hand. The module uses `game-rules` and contains deck construction, authoritative decisions and evolution, turn order, finishing, tribute, scoring, and player-view derivation.
