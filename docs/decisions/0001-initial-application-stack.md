@@ -5,9 +5,9 @@ Date: 2026-08-26
 
 ## Context
 
-The application is a friends-only, turn-based card game for mobile and desktop browsers. It runs as one application instance on an existing VPS through `cloudflared`. The server must own game state, preserve acknowledged plays across restarts, protect hidden information, and support persistent username/password accounts with optional email.
+The application is a friends-only, turn-based card game for mobile and desktop browsers. It runs as one application instance on an existing VPS through `cloudflared`. The server must own game state, protect hidden information in normal hands, persist completed-hand history, support social replay through shareable seeds, and support persistent username/password accounts with optional email. Exact recovery of an in-progress room after a restart is optional.
 
-The selected stack is TypeScript, React/Vite, Node.js/Fastify, Socket.IO, SQLite, append-only room event streams, a deterministic `game-core`, one serial executor per active room, and explicit player-specific views. The main [architecture document](../architecture.md) defines how these pieces fit together; this record preserves the alternatives considered and why they were rejected.
+The selected stack is TypeScript, React/Vite, Node.js/Fastify, Socket.IO, SQLite, append-only room event streams, a deterministic seeded `game-core`, one serial executor per active room, completed-hand history, and explicit player-specific views. The main [architecture document](../architecture.md) defines how these pieces fit together; this record preserves the alternatives considered and why they were rejected.
 
 ## Decision
 
@@ -25,7 +25,7 @@ Use the selected stack for the initial implementation. Revisit a rejected altern
 
 **Weaknesses relative to the selected stack**
 
-- Durable command deduplication, event streams, and restart recovery remain application responsibilities.
+- Command deduplication, persistent hand history, and any best-effort restart recovery remain application responsibilities.
 - Its mutable schema state and automatic patch model do not naturally match the pure decision/event-evolution model; an adapter may duplicate state or let framework types leak into `game-core`.
 - Hidden information is safe only if every field and client view is configured correctly; explicit player-view messages are easier to audit.
 - It adds a framework-specific protocol and client SDK where six-player turn-based traffic is very small.
