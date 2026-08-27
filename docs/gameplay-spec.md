@@ -116,6 +116,8 @@ Each player owing Tribute must give a card of their highest held rank. **Tribute
 - **Recipient choice:** the Tribute recipient chooses one card to return.
 - **Giver choice from candidates:** for a `SMALL` Tribute, the recipient offers two cards; for a `BIG` Tribute, three. The candidates must have different ranks, with no suit restriction, and the Tribute giver chooses the Return Card. A non-joker Tribute uses Recipient Choice.
 
+The received Tribute Card itself is eligible to be returned. Offering three different ranks is always possible for a legal hand.
+
 The recipients are the winning team's first `x` finishers, where `x` is the number of Tribute givers. **Tribute Recipient Pairing** has two settings:
 
 - **Finish Position by Tribute rank:** sort Tributes from highest to lowest and assign them to recipients in Finish Position order. When Tributes tie in rank, the tied givers choose among the corresponding recipients under the app-local [Tie-Choice Protocol](tie-choice-protocol.md#recipient-pairing).

@@ -133,9 +133,9 @@ Every player view includes its room revision. On every initial connection or rec
 
 ### Credentials module
 
-The account interface is intentionally small: owner-provision account, authenticate, resolve/revoke session, change password, and owner-reset password. The implementation hides username normalization, Argon2id, session-token hashing, throttling, and persistence. The initial application has no public registration endpoint.
+The account interface is intentionally small: administrator-provision account, authenticate, resolve/revoke session, change password, and administrator-reset password. The implementation hides username normalization, Argon2id, session-token hashing, throttling, and persistence. The initial application has no public registration endpoint.
 
-Accounts require a unique username and password. Email is nullable. The owner provisions accounts and resets passwords through administrative commands; a reset records an audit action and revokes all sessions. These commands may initially be CLI-only. If email later becomes meaningful, an email-reset adapter may be added.
+Accounts require a unique username and password. Email is nullable. The VPS/application administrator provisions accounts and resets passwords through administrative commands; a reset records an audit action and revokes all sessions. These commands may initially be CLI-only. If email later becomes meaningful, an email-reset adapter may be added.
 
 This local module is preferred over Better Auth because Better Auth requires an email for every user, including users signing up through its username plugin, which conflicts with the product requirement.
 
