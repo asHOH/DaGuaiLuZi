@@ -1,7 +1,7 @@
 # Preferred Architecture
 
 Status: Initial stack selected; engineering guidance, not product requirements
-Updated: 2026-08-27
+Updated: 2026-08-28
 
 ## Decision summary
 
@@ -33,7 +33,7 @@ Mobile / desktop React web app
    |-- accounts and sessions
    |-- append-only room event streams
    |-- accepted command IDs and results
-   `-- hand seeds and shuffle versions inside events
+   `-- Hand Seeds, Challenge Templates, and Challenge Codes
 ```
 
 ## Initial repository shape
@@ -50,12 +50,13 @@ docs/
   product-spec.md      user requirements only
   gameplay-spec.md     authoritative gameplay rules and variants
   tie-choice-protocol.md app-local tied-giver coordination
+  challenge-hand-sharing.md app-local playable Hand sharing
   architecture.md      engineering decisions and trade-offs
   decisions/           accepted architecture decision records
 CONTEXT.md              domain vocabulary
 ```
 
-`game-rules` is deliberately shared by the web and server applications so both evaluate a proposed play with the same pure rules. `game-core` remains server-only and authoritative. `protocol` is the real serialization seam shared by both applications; it contains only commands, acknowledged results, player views, completed-hand history, and seed-share schemas, not full private live game state. Database code initially belongs to the server. Package placement is an implementation choice, not a permanent architectural seam.
+`game-rules` is deliberately shared by the web and server applications so both evaluate a proposed play with the same pure rules. `game-core` remains server-only and authoritative. `protocol` is the real serialization seam shared by both applications; it contains only commands, acknowledged results, player views, completed-hand history, and Challenge Code/Hand schemas, not full private live game state. Database code initially belongs to the server. Package placement is an implementation choice, not a permanent architectural seam.
 
 ## Preferred stack
 
@@ -79,16 +80,16 @@ CONTEXT.md              domain vocabulary
 | SQLite driver | `better-sqlite3` | Stable synchronous transactions suit the single-writer design. Pin a release embedding a fixed SQLite version; do not use SQLite 3.7.0–3.51.2 because of the WAL-reset bug. |
 | Database schema | Drizzle for schema, migrations, and routine queries | Use raw SQL only for SQLite pragmas or operations that Drizzle cannot express clearly; keep durability, uniqueness, and transaction behavior visible. |
 | Rule tests | Vitest + fast-check | Examples lock down reference/variant behavior, Joker-only interpretation, and exact Automatic Response Closure patterns; generated cases test card conservation, legal combinations, ordering, wildcard invariants, and identical deals from identical seed metadata. |
-| Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, lifecycle authority, deterministic seating, Automatic Response Closure without synthetic Passes, tie-choice rounds and fallbacks, abort handling, history authorization, seed reproduction, and hidden information. |
-| Browser tests | Playwright | Exercise UI behavior, private views, connected auto-start, reconnect/resynchronization, Match abortion, completed-hand history sharing, and single-viewer Hand Replay with one or two browser contexts. Test six-seat coordination primarily with protocol-level integration clients; retain at most one six-browser happy-path smoke test. Add timed-turn tests only after the timing policy is defined. |
+| Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, lifecycle authority, deterministic seating, Automatic Response Closure without synthetic Passes, tie-choice rounds and fallbacks, abort handling, history authorization, Challenge Template reproduction, and hidden information. |
+| Browser tests | Playwright | Exercise UI behavior, private views, connected auto-start, reconnect/resynchronization, Match abortion, completed-hand history sharing, single-viewer Hand Replay, and Challenge Code reuse with one or two browser contexts. Test six-seat coordination primarily with protocol-level integration clients; retain at most one six-browser happy-path smoke test. Add timed-turn tests only after the timing policy is defined. |
 | Deployment | Multi-stage Docker image with a mounted local SQLite volume | One application artifact on the VPS, routed through the existing host-managed `cloudflared`. |
-| Logs | Pino JSON logs | Correlate account, room, hand, command, and room-event sequence without logging passwords, session tokens, seeds, or private hands. |
+| Logs | Pino JSON logs | Correlate account, room, hand, command, and room-event sequence without logging passwords, session tokens, Hand Seeds, or private hands. |
 
 Use exact dependency and container versions. Database migrations are explicit deployment steps.
 
 ## Stack closure
 
-The user-approved architectural stack is decided: TypeScript, React/Vite, Node.js/Fastify, Socket.IO, SQLite, one VPS application instance, an authoritative server, serialized room commands, append-only room event streams, deterministic seeded rules, first-release hand history, and player-specific views. [ADR 0001](decisions/0001-initial-application-stack.md) retains the rejected trade-offs; coding agents should not reopen these choices without a new requirement or a measured limitation.
+The user-approved architectural stack is decided: TypeScript, React/Vite, Node.js/Fastify, Socket.IO, SQLite, one VPS application instance, an authoritative server, serialized room commands, append-only room event streams, deterministic seeded rules, first-release hand history and Challenge Hands, and player-specific views. [ADR 0001](decisions/0001-initial-application-stack.md) retains the rejected trade-offs; coding agents should not reopen these choices without a new requirement or a measured limitation.
 
 TanStack Router, Zustand, CSS organization, ORM details, and exact package placement are implementation defaults rather than immutable architecture. Introduce them when their concrete benefit appears, and change them without reopening the approved stack. Other implementation details include exact locked dependency versions, the maintained Argon2id package, and the card artwork source.
 
@@ -106,11 +107,11 @@ A Card Face has one canonical string code, such as `AS`, `SMALL`, or `BIG`; a Ca
 
 This is the deepest module. Its decision interface is `decide(currentState, command) -> rejection | domainEvents`; its evolution interface is `evolve(state, event) -> state`. `decide` may consult `game-rules` and reject a command. After accepting a play matched by the visible-pattern predicate, it applies Automatic Response Closure when the Hand continues, without soliciting or recording synthetic Passes. It does not determine whether hidden hands can respond. `evolve` is total and decision-free for every supported event and valid prior state: it applies the accepted fact without checking legality, reading clocks or randomness, consulting external state, or rejecting. Folding `evolve` over a room's supported ordered events reconstructs its current state. A selected Rules Configuration becomes state through an event before a hand starts, so callers never supply a second configuration that could disagree with an active hand. The module uses `game-rules` and contains deck construction, authoritative decisions and evolution, turn order, finishing, tribute, the app-local [Tie-Choice Protocol](tie-choice-protocol.md), scoring, and player-view derivation.
 
-It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. Each Hand receives a fresh cryptographically random seed. For the first Hand of a Match, `game-core` uses the fixed lobby seats or derives a uniform seat permutation from that Hand's seed under Randomized Seating, then derives the initial dealer through a separate versioned, domain-separated selection function. Random selections required by resolved Rule Variants use the same approach and remain domain-separated from seating, dealer selection, and shuffling. `game-core` uses a versioned deterministic shuffle, so the same seed, ruleset, resolved variants, shuffle version, and resolved seat ordering produce the same original deal. No match-level seed derives future hand seeds. Hand-start events record these inputs, and later events record every card-zone change needed for live evolution, completed-hand history, and Hand Replay.
+It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. Each Hand receives a fresh cryptographically random Hand Seed. For the first Hand of a Match, `game-core` uses the fixed lobby seats or derives a uniform seat permutation from that Hand Seed under Randomized Seating, then derives the initial dealer through a separate versioned, domain-separated selection function. Random selections required by resolved Rule Variants use the same approach and remain domain-separated from seating, dealer selection, and shuffling. `game-core` uses a versioned deterministic shuffle, so the same Hand Seed, Ruleset, resolved variants, shuffle version, and resolved seat ordering produce the same original deal. No Match-level seed derives future Hand Seeds. Hand-start events record these inputs, and later events record every card-zone change needed for live evolution, completed-hand history, Hand Replay, and Challenge Template creation. The Hand Seed is server-held implementation data; Challenge Code is the user-facing sharing interface.
 
 ### `protocol`
 
-This shared module defines and validates serialized browser/server messages. It contains commands, acknowledged results, compatibility information, player-specific views, completed-hand history, and seed-share codes. It does not expose the authoritative live state or make gameplay decisions.
+This shared module defines and validates serialized browser/server messages. It contains commands, acknowledged results, compatibility information, player-specific views, completed-hand history, Challenge Codes, and Challenge Hand setup messages. It does not expose Hand Seeds, the authoritative live state, or gameplay decisions.
 
 ### Room executor
 
@@ -182,15 +183,17 @@ The client uses Socket.IO automatic reconnection. Every connection follows the f
 
 Turn timing and any connection-dependent timing behavior are deferred to [Post-MVP Turn Timing](post-mvp-turn-timing.md).
 
-## Event streams, history, Hand Replay, seed sharing, and optional recovery
+## Event streams, history, Hand Replay, Challenge Hands, and optional recovery
 
 An append-only ordered event stream records every accepted room action and drives the active executor's in-memory state. The same stream supplies completed-hand history and may reconstruct a compatible in-progress room after a restart. Accounts, sessions, and other non-room administrative data remain ordinary relational records. The initial implementation uses a SQLite table and does not introduce a message queue, a separate CQRS read store, or a specialized event-store product.
 
 Each event envelope records the room ID, monotonic room sequence, optional hand ID, event type and schema version, causation command ID, server-recorded time, and domain payload. Sequence, not timestamp, defines order. Domain events record accepted facts such as Room creation, membership, seating, ownership transfer, readiness, rules and Seating Policy selection, resolved Match seating, dealing, tie-choice ballots and resolutions, playing, passing, Hand completion, Match abortion, interruption, and Room archival; commands and rejected attempts are not domain events.
 
-Starting a hand records the ruleset ID, resolved variants, seed, shuffle-algorithm version, and seat ordering. `game-core` deterministically derives the immutable original deal from those fields, so the event stream and share code use one canonical representation of the deal. Later play events contain enough information to evolve the live state and render the hand's action history.
+Starting a Hand records the Ruleset ID, resolved variants, Hand Seed, randomness and shuffle-algorithm versions, logical seat ordering, and pre-Hand Match context. `game-core` deterministically derives the immutable original deal from those fields. Later events contain enough information to evolve the live state and render the Hand's action history.
 
-The seed and original deals remain server-private until the Hand ends. Its completed-Hand history then exposes the original deals and a share code identifying the recorded action sequence and containing the seed and metadata needed to reproduce the deal by seat. A Hand Replay is read-only, single-viewer playback of that completed history. It creates no Room or Match, accepts no gameplay commands, and offers no alternate plays. Anyone with access to a share code can derive every card in that completed Hand.
+The Hand Seed and original deals remain server-private until the Hand ends. Completed-Hand history then exposes the original deals and a reusable Challenge Code, but not the Hand Seed. A Hand Replay is read-only, single-viewer playback of the source history. The Challenge Code may also initialize a separate playable Challenge Hand whose six players receive the same logical-seat setup and produce independent actions and results.
+
+The authoritative responsibilities and required Challenge Template context are defined in [Challenge Hand Sharing](challenge-hand-sharing.md). Challenge Codes are opaque references intended for sharing, not serialized rule logic. A Challenge Hand has its own event sequence and completed-Hand history and never mutates or continues its source Room or Match.
 
 An accepted command transaction atomically stores:
 
@@ -201,11 +204,11 @@ The server sends success only after SQLite commits with WAL and `synchronous=NOR
 
 Persisted snapshots are omitted initially. Add them only if measured recovery time becomes material.
 
-Raw events, reconstructed state, seeds, and original deals remain server-private during a normal Hand; each client receives only its player-specific view. When the Hand ends—and before the next deal—the history view exposes every player's originally dealt cards and the share code to that Hand's participants.
+Raw events, reconstructed state, Hand Seeds, and original deals remain server-private during a normal Hand; each client receives only its player-specific view. When the Hand ends—and before the next deal—the history view exposes every player's originally dealt cards and the Challenge Code to that Hand's participants. The Hand Seed remains server-held.
 
-History and Hand Replay ship in the first release. An authenticated read-only endpoint formats a completed Hand's events into its ordered action sequence, selected rules, original deals, result, and share code. Participants may open it from their history; an authenticated holder of its share code may open the same read-only Replay. Formatting is synchronous and requires no asynchronous projection infrastructure or second action-history model.
+History, Hand Replay, and Challenge Hand sharing ship in the first release. An authenticated read-only endpoint formats a completed Hand's events into its ordered action sequence, selected rules, original deals, result, and Challenge Code. Participants may open it from their history; an authenticated holder of its Challenge Code may open the same read-only Replay or create a Challenge Hand. Formatting is synchronous and requires no asynchronous projection infrastructure or second action-history model.
 
-Completed-hand events must remain decodable for history, but they do not have to remain replayable into the current live game engine. Best-effort room recovery only replays event versions supported by the deployed server; an incompatible in-progress room may be marked interrupted. Database migrations manage SQLite structure and do not reinterpret gameplay. Add a history decoder only when a concrete event-schema change requires one. Ruleset identifiers, share-code shuffle versions, event schemas, and client/server protocol compatibility remain separate concerns. If a client and server protocol are incompatible, the server rejects commands with a reload-required response.
+Completed-hand events must remain decodable for history, but they do not have to remain replayable into the current live game engine. Best-effort room recovery only replays event versions supported by the deployed server; an incompatible in-progress room may be marked interrupted. Database migrations manage SQLite structure and do not reinterpret gameplay. Add a history decoder only when a concrete event-schema change requires one. Ruleset identifiers, Challenge Template randomness versions, event schemas, and client/server protocol compatibility remain separate concerns. If a client and server protocol are incompatible, the server rejects commands with a reload-required response.
 
 Off-VPS backups are not required for the initial release. Reconsider them only if recovery after total VPS loss becomes a product requirement.
 
@@ -219,10 +222,10 @@ The comparison of rejected stacks and frameworks is retained separately in [ADR 
 - Socket.IO is a non-standard higher-level protocol and still needs application-level command idempotency and view resynchronization.
 - SQLite constrains deployment to one write host and its database file must remain on a local filesystem, not a network volume.
 - Persisted events must remain readable for completed-hand history. Live replay compatibility is required only for event versions the deployed server promises to recover; no generic migration framework is built before a concrete change requires one.
-- A shared seed makes every Hand reproducible, but anyone who knows it can derive every card. Share codes appear only after the Hand ends and open read-only playback of completed information.
+- Hand Seeds remain server-held; reusable Challenge Codes are the sharing interface for source Replay and playable duplicate-Hand setup. Challenge Templates add a durable versioned format alongside event and protocol schemas.
 - Without a timer, an absent required player can block play until they reconnect or the owner aborts the Match. Automatic cleanup and timeout behavior remain deferred to the post-MVP timing policy.
 
-These costs are proportionate to an application with one owner, a small friend group, persistent accounts, hidden information during active Hands, first-release detailed history, and shareable Hand Replay.
+These costs are proportionate to an application with one owner, a small friend group, persistent accounts, hidden information during active Hands, first-release detailed history, shareable Hand Replay, and playable Challenge Hands.
 
 ## Primary references
 

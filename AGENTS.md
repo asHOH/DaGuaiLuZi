@@ -3,5 +3,6 @@
 - Use [CONTEXT.md](CONTEXT.md) for domain vocabulary, [docs/product-spec.md](docs/product-spec.md) for product requirements, and [docs/gameplay-spec.md](docs/gameplay-spec.md) as the authoritative gameplay source.
 - Use [docs/rules-configuration-presets.md](docs/rules-configuration-presets.md) for app-local Rules Configuration presets.
 - Use [docs/tie-choice-protocol.md](docs/tie-choice-protocol.md) for app-local resolution of tied Tribute-giver choices.
+- Use [docs/challenge-hand-sharing.md](docs/challenge-hand-sharing.md) for Hand Seed, Challenge Code, Challenge Template, and Challenge Hand responsibilities.
 - Use [docs/post-mvp-turn-timing.md](docs/post-mvp-turn-timing.md) for deferred turn-timing policy.
 - Follow [docs/architecture.md](docs/architecture.md) and [ADR 0001](docs/decisions/0001-initial-application-stack.md); do not reopen accepted stack decisions without a new requirement or measured limitation.

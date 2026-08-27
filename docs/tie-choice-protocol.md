@@ -35,6 +35,6 @@ This applies when Highest Tribute has multiple tied givers. The original tied gi
 2. A unique plurality selects the leader; `放弃` is excluded from counts.
 3. A highest-count tie removes lower-count candidates and starts another round. All original voters retain voting rights.
 4. All-give-up leaves the candidate set unchanged.
-5. After three inconclusive rounds, select uniformly among the remaining candidates using current-Hand seed randomness under a dedicated domain. Record the result.
+5. After three inconclusive rounds, select uniformly among the remaining candidates using the current Hand Seed under a dedicated domain. Record the result.
 
 Completion produces all recipient pairs and, when required, one leader before `首次出牌`.

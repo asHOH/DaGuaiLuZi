@@ -5,7 +5,7 @@ Date: 2026-08-26
 
 ## Context
 
-The application is a friends-only, turn-based card game for mobile and desktop browsers. It runs as one application instance on an existing VPS through `cloudflared`. The server must own game state, protect hidden information during active Hands, persist completed-hand history, support single-viewer read-only Hand Replay through shareable seeds, and support persistent username/password accounts with optional email. Exact recovery of an in-progress room after a restart is optional.
+The application is a friends-only, turn-based card game for mobile and desktop browsers. It runs as one application instance on an existing VPS through `cloudflared`. The server must own game state, protect hidden information during active Hands, persist completed-hand history, support single-viewer read-only Hand Replay and playable Challenge Hands through shareable Challenge Codes, and support persistent username/password accounts with optional email. Exact recovery of an in-progress room after a restart is optional.
 
 The selected stack is TypeScript, React/Vite, Node.js/Fastify, Socket.IO, SQLite, append-only room event streams, a deterministic seeded `game-core`, one serial executor per active room, completed-hand history, and explicit player-specific views. The main [architecture document](../architecture.md) defines how these pieces fit together; this record preserves the alternatives considered and why they were rejected.
 

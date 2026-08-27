@@ -60,9 +60,25 @@ _Avoid_: Small mode
 One deal of the cards, ending after its result is settled and immediately before the next deal. Hidden dealt cards may be revealed when the hand ends.
 _Avoid_: Match, round
 
+**Hand Seed**:
+A server-held random value used with versioned Hand setup information to reproduce a deal and other seeded choices. It is not shared with players.
+_Avoid_: Challenge Code, share code
+
 **Hand Replay**:
 A read-only, single-viewer playback of one completed Hand's recorded deal and actions for review. It is not a Room, Match, or opportunity to make different plays.
 _Avoid_: Replay Room, replay Match, social replay
+
+**Challenge Template**:
+The reusable starting conditions captured from one completed Hand for playable duplication, independent of its recorded actions and Player Accounts.
+_Avoid_: Hand Replay, Challenge Hand
+
+**Challenge Code** (`同牌挑战码`):
+The shareable identifier for one Challenge Template. It can open the source Hand Replay and initialize Challenge Hands.
+_Avoid_: Hand Seed, replay code
+
+**Challenge Hand** (`同牌挑战`):
+A playable duplicate initialized from a Challenge Template. Six players receive the source Hand's logical-seat setup but make independent choices and produce a separate result.
+_Avoid_: Hand Replay, continued source Hand
 
 **Match**:
 A sequence of Hands ending when one team satisfies the selected Match Ending condition, or ending without a winner as an Aborted Match.
