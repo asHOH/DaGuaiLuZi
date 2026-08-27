@@ -113,7 +113,7 @@ This shared module defines and validates serialized browser/server messages. It 
 
 ### Room executor
 
-Once a room exists, one executor owns every durable mutation of that room: membership and seats, readiness, rules selection, starting and dealing, gameplay, and room archival. It also owns ephemeral socket presence and the connection-driven pause or resume gate. Account operations, initial room creation, and read-only queries remain outside this seam. Its interface is essentially `execute(authenticatedCommand) -> acknowledgedResult`. Internally it:
+Once a room exists, one executor owns every durable mutation of that room: membership and seats, readiness, rules selection, starting and dealing, gameplay, and room archival. Connection state is not gameplay state. Account operations, initial room creation, socket connection tracking, and read-only queries remain outside this seam. Its interface is essentially `execute(authenticatedCommand) -> acknowledgedResult`. Internally it:
 
 1. queues commands serially;
 2. rejects stale or unauthorized commands;
@@ -128,7 +128,7 @@ A single process-wide executor registry is the only entry point for existing-roo
 
 ### Client resynchronization
 
-Every player view includes its room revision. On initial connection, after unsuccessful Socket.IO connection recovery, or whenever the client detects a revision gap, the server sends a complete view derived for that account. The client atomically replaces its room state with that view and does not submit room commands until synchronization finishes. Command acknowledgements include the committed revision. Transient packets may accelerate reconnection, but correctness never depends on replaying every socket packet.
+Every player view includes its room revision. On every initial connection or reconnection, the server authenticates the session and sends a complete view derived for that account. The client atomically replaces its room state with that view and does not submit room commands until synchronization finishes. Command acknowledgements include the committed revision. Socket.IO reconnects automatically, but correctness never depends on transport-session recovery or replaying missed socket packets.
 
 ### Credentials module
 
@@ -157,15 +157,13 @@ type JokerPairComparison =
 
 The authoritative [gameplay specification](gameplay-spec.md) defines the Initial Ruleset. The linked [弈棋耍大牌 description](https://www.17dp.com/down/gamelist/id/202) is non-authoritative reference material. Each configured difference is a named variant with example hands that are also executable tests.
 
-## Turn timing and disconnection
+## MVP reconnection
 
-Turn timing is application policy rather than gameplay behavior and is intentionally excluded from the gameplay specification.
+A disconnect produces no domain event, durable mutation, automatic action, or forfeiture. The room remains in its current gameplay state; progress naturally waits whenever the absent player must act.
 
-Every turn will have a time limit, but its duration and expiry consequence remain undefined. Do not hard-code either or design wall-clock restart behavior before the product policy is decided.
+The client uses Socket.IO automatic reconnection. Every connection follows the full-view resynchronization procedure above, including after a page reload, browser sleep, network change, or application restart. The server may reconstruct a compatible in-progress room from SQLite before deriving the view; exact recovery remains best-effort, and an unrecoverable room may instead be marked interrupted.
 
-For now, any required player's disconnection pauses the game indefinitely. Socket presence and the resulting pause gate are ephemeral executor state, not domain events. A paused game consumes no turn time. After an application restart all sockets are disconnected. The server may reconstruct a compatible in-progress room from SQLite with a fresh paused gate, but exact recovery is best-effort; an unrecoverable room may instead be marked interrupted and restarted. The eventual timing policy must define warnings, grace, expiry action, and whether all six players or only the current player must be connected.
-
-Do not persist timer state until the timing policy is defined. A recovered room starts paused. Once duration, warnings, grace, expiry behavior, and disconnection semantics are decided, use an injected monotonic clock for elapsed time while the process is alive and for deterministic tests. Add persisted remaining time or wall-clock reconstruction only if that policy requires it.
+Turn timing and any connection-dependent timing behavior are deferred to [Post-MVP Turn Timing](post-mvp-turn-timing.md).
 
 ## Event streams, history, seed sharing, and optional recovery
 
@@ -205,7 +203,7 @@ The comparison of rejected stacks and frameworks is retained separately in [ADR 
 - SQLite constrains deployment to one write host and its database file must remain on a local filesystem, not a network volume.
 - Persisted events must remain readable for completed-hand history. Live replay compatibility is required only for event versions the deployed server promises to recover; no generic migration framework is built before a concrete change requires one.
 - A shared seed makes every hand reproducible, but anyone who knows it can derive hidden cards. Share codes appear only after normal hands and replay rooms are clearly identified as social rather than cheat-resistant.
-- Indefinite pause means abandoned rooms need an eventual owner cleanup/archive policy, even if no gameplay timeout exists yet.
+- Without a timer, an absent required player can block progress indefinitely. Cleanup and timeout behavior are deferred to the post-MVP timing policy.
 
 These costs are proportionate to an application with one owner, a small friend group, persistent accounts, hidden information in normal hands, first-release detailed history, and social seed sharing.
 
@@ -214,7 +212,7 @@ These costs are proportionate to an application with one owner, a small friend g
 - [Non-authoritative original game description](https://www.17dp.com/down/gamelist/id/202)
 - [Cloudflare Tunnel WebSocket support](https://developers.cloudflare.com/cloudflare-one/faq/cloudflare-tunnels-faq/)
 - [Socket.IO delivery guarantees](https://socket.io/docs/v4/delivery-guarantees)
-- [Socket.IO connection-state recovery](https://socket.io/docs/v4/connection-state-recovery)
+- [Socket.IO client options](https://socket.io/docs/v4/client-options/#reconnection)
 - [Event Sourcing pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing)
 - [SQLite WAL](https://sqlite.org/wal.html)
 - [SQLite synchronous settings](https://sqlite.org/pragma.html#pragma_synchronous)
