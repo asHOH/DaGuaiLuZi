@@ -57,7 +57,7 @@ The three-deck Ruleset defined by `docs/ruleset.md`; external game descriptions 
 _Avoid_: Default mode
 
 **Four-player Ruleset**:
-The planned two-deck, four-player ruleset.
+The two-deck, four-player Ruleset defined by `docs/ruleset.md`.
 _Avoid_: Small mode
 
 **Hand**:

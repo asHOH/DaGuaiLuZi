@@ -1,9 +1,9 @@
-# Ruleset
+# Rulesets
 
-Status: Authoritative six-player, three-deck game rules
-Ruleset ID: `dglz-6p-3d-v1`
+Status: Authoritative six-player, three-deck and four-player, two-deck game rules
+Base Ruleset ID: `dglz-6p-3d-v1`
 
-This document is the source of truth for the Ruleset. The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) and [GameTea description](https://www.gametea.com/games/daguailuzi.html) are references only.
+This document is the source of truth for both Rulesets. The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) and [GameTea description](https://www.gametea.com/games/daguailuzi.html) are references only.
 
 ## Setup
 
@@ -134,3 +134,14 @@ A Dealer Team at Trump Rank `5` wins the Match by winning the Hand and advancing
 
 - **No failure limit at 5:** non-winning attempts at Trump Rank `5` do not themselves end the Match.
 - **Three-failure limit at 5:** a team loses the Match upon its third non-winning Hand begun as Dealer Team at Trump Rank `5`. Both draws and losses count as failures.
+
+## Four-player, two-deck Ruleset
+
+Ruleset ID: `dglz-4p-2d-v1`
+
+Four players form two alternating teams of two; two standard decks are dealt, 27 cards per player; six/five-seat counts become four/three.
+Except below, this Ruleset inherits every fixed rule and Rule Variant of `dglz-6p-3d-v1`.
+
+- Tribute uses the giver's highest held rank at or below the Trump Rank; jokers are ineligible.
+- As a result, **Return Card Selection** rule variant is omitted.
+- Joker-only Pairs rank naturally, i.e. `[BIG, BIG] > [SMALL, SMALL]`; **Joker Pair Comparison** rule variant is omitted.
