@@ -104,7 +104,7 @@ Each later Hand proceeds: deal; resolve Tribute from the newly dealt cards using
 **Next-Hand Leader** has two settings:
 
 - **First finisher:** the first finisher leads the next Hand.
-- **Highest Tribute:** when Tribute is owed, the player who gives the highest-ranked Tribute leads; otherwise the first finisher leads. If multiple Tributes tie for highest rank, the tied players choose the leader; the UI for this choice is TBD.
+- **Highest Tribute:** when Tribute is owed, the player who gives the highest-ranked Tribute leads; otherwise the first finisher leads. If multiple Tributes tie for highest rank, the tied players choose the leader under the app-local [Tie-Choice Protocol](tie-choice-protocol.md#leader-selection).
 
 Each player owing Tribute must give a card of their highest held rank. **Tribute Card Selection** has two settings when multiple Card Instances share that rank:
 
@@ -118,7 +118,7 @@ Each player owing Tribute must give a card of their highest held rank. **Tribute
 
 The recipients are the winning team's first `x` finishers, where `x` is the number of Tribute givers. **Tribute Recipient Pairing** has two settings:
 
-- **Finish Position by Tribute rank:** sort Tributes from highest to lowest and assign them to recipients in Finish Position order. When Tributes tie in rank, the tied givers choose among the corresponding recipients; the UI is TBD.
+- **Finish Position by Tribute rank:** sort Tributes from highest to lowest and assign them to recipients in Finish Position order. When Tributes tie in rank, the tied givers choose among the corresponding recipients under the app-local [Tie-Choice Protocol](tie-choice-protocol.md#recipient-pairing).
 - **Adjacent-first automatic:** first pair a giver with a recipient who immediately precedes them in counter-clockwise play order. Pair any remaining givers and recipients automatically in that order; no player choice is involved.
 
 ### Match ending

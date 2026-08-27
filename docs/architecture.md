@@ -153,9 +153,7 @@ Natural Match completion likewise resets readiness and returns the Room to `LOBB
 
 Every Room selects one Seating Policy and a complete Rules Configuration before a Hand starts. The app-local [Rules Configuration Presets](rules-configuration-presets.md) initialize that configuration; `game-core` receives only the resolved settings and has no preset concept. Both configuration and Seating Policy become immutable when the first Match starts. A Hand records `rulesetId`, the resolved variant values, the Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.
 
-## Tie-choice coordination
-
-The authoritative app-local procedure is [Tie-Choice Protocol](tie-choice-protocol.md). `game-core` owns its ballot state, validation, partial resolution, retry limits, seeded fallback, and player-specific views. Accepted ballots and resolutions are domain events; unrevealed ballots remain absent from other players' views.
+### Ruleset identity and variants
 
 Initial identifiers may look like:
 
@@ -171,6 +169,10 @@ type JokerPairComparison =
 ```
 
 The authoritative [gameplay specification](gameplay-spec.md) defines the Initial Ruleset. The linked [弈棋耍大牌 description](https://www.17dp.com/down/gamelist/id/202) is non-authoritative reference material. Each configured difference is a named variant with example hands that are also executable tests.
+
+## Tie-choice coordination
+
+The authoritative app-local procedure is [Tie-Choice Protocol](tie-choice-protocol.md). `game-core` owns its ballot state, validation, partial resolution, retry limits, seeded fallback, and player-specific views. Accepted ballots and resolutions are domain events; unrevealed ballots remain absent from other players' views.
 
 ## MVP reconnection
 
