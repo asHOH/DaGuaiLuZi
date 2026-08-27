@@ -76,6 +76,14 @@ _Avoid_: Card ID, Card Instance
 One specific physical copy of a Card Face in a multi-deck Hand, named by appending its copy number, such as `AS#2`.
 _Avoid_: Card Face
 
+**Joker-only Play**:
+A legal 1-, 2-, 3-, or 5-card play containing only `SMALL` and `BIG`, interpreted by its dedicated gameplay rule.
+_Avoid_: All-joker combination
+
+**Automatic Response Closure**:
+An immediate lead reset after one of the fixed, publicly visible Joker-only Play patterns that cannot receive a stronger response from the remaining physical deck.
+_Avoid_: Globally unbeatable check, hidden-hand check
+
 **Team Level**:
 A team's retained progression rank within a Match. It begins at `2`, may advance, and never decreases.
 _Avoid_: Trump Rank, score

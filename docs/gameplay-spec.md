@@ -38,9 +38,11 @@ For singles, cards rank from high to low:
 
 The current Trump Rank is removed from its ordinary position. Suits do not break ties.
 
-`SMALL` and `BIG` are wildcards in every non-single form; each may represent any non-joker Card Face (plus `BIG` can represent `SMALL`). Compare the represented form normally. Joker-only pairs outrank other pairs: `[BIG, BIG]` is highest. Under **Joker Pair Comparison**, **Tie** makes `[SMALL, SMALL]` tie `[SMALL, BIG]`; **Double SMALL higher** makes it beat `[SMALL, BIG]`.
+`SMALL` and `BIG` are wildcards in every non-single form. Outside a Joker-only Play, each may represent any non-joker Card Face, and `BIG` may also represent `SMALL`. Compare the represented form normally.
 
-Among joker-only triples, `[BIG, BIG, BIG]` beats `[SMALL, SMALL, SMALL]`; every other comparison between different joker-only triples ties.
+A Joker-only Play uses its card count's repeated-rank form: Single, Pair, Triple, or Five of a Kind. An all-`BIG` play has rank `BIG`; otherwise each `BIG` represents `SMALL` and the play has rank `SMALL`. `BIG` may represent `SMALL`; `SMALL` may not represent `BIG`. Wildcard Rank and Finishing Wildcard Interpretation do not alter a Joker-only Play.
+
+Joker Pair Comparison is the only exception: `[BIG, BIG]` remains highest; **Tie** makes `[SMALL, SMALL]` tie `[SMALL, BIG]`, while **Double SMALL higher** makes `[SMALL, SMALL]` beat `[SMALL, BIG]`. Every five-joker play is therefore a `SMALL`-ranked Five of a Kind and outranks every non-joker Five of a Kind; five `BIG` jokers cannot exist in the three-deck Ruleset.
 
 Normally, first choose the strongest legal form. **Wildcard Rank** then has two settings:
 
