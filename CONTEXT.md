@@ -9,7 +9,7 @@ A persistent player identity to which participation and future match history bel
 _Avoid_: Guest, temporary player
 
 **Room**:
-A durable container for members, seats, one fixed Rules Configuration, one Seating Policy, and ordinary Matches or Challenge Hands. It exists independently of socket connections.
+A durable container for members, seats, one fixed Rules Configuration for Matches, one Seating Policy, and Matches or Challenge Hands. It exists independently of socket connections.
 _Avoid_: Match, lobby, socket room
 
 **Room Member**:
@@ -17,16 +17,20 @@ A Player Account that has joined a Room and may occupy one seat; connection stat
 _Avoid_: Connected player, present player
 
 **Room Owner**:
-The Room Member with authority over the Rules Configuration, Seating Policy, ordinary Match or Challenge Hand choice, and Room lifecycle actions.
+The Room Member with authority over the Rules Configuration, Seating Policy, Match or Challenge Hand choice, and Room lifecycle actions.
 _Avoid_: Host, dealer
 
 **Seating Policy**:
-A Room setting deciding whether an ordinary Match or Challenge Hand retains lobby seats or randomly assigns its six members when it starts.
+A Room setting deciding whether a Match or Challenge Hand retains lobby seats or randomly assigns its six members when it starts.
 _Avoid_: Rule Variant, seat mode
 
 **Aborted Match**:
 An active Match ended without a winner by the Room Owner. Its completed Hand history and final Team Levels remain available.
 _Avoid_: Interrupted Room, completed Match
+
+**Aborted Challenge Hand**:
+An active Challenge Hand ended by the Room Owner before settlement. It produces no result or completed-Hand history.
+_Avoid_: Aborted Match, completed Challenge Hand
 
 **Interrupted Room**:
 A Room whose active Match or Challenge Hand cannot be reconstructed and resumed.
@@ -37,11 +41,11 @@ A versioned family of fixed rules and Rule Variants.
 _Avoid_: Mode, option
 
 **Rules Configuration**:
-A Ruleset plus one selected setting for every Rule Variant, fixed for a room.
+A Ruleset plus one selected setting for every Rule Variant.
 _Avoid_: Ruleset, options
 
 **Rules Configuration Preset**:
-A named complete initial selection for every Rule Variant during Room setup.
+A named complete initial selection for a Room's Match Rules Configuration.
 _Avoid_: Ruleset, Rule Variant
 
 **Rule Variant**:

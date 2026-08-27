@@ -2,7 +2,7 @@
 
 Status: Authoritative app-local Room setup policy
 
-Applying a preset replaces all nine variant selections. The owner may then change individual settings before the first Match starts. Only the resolved Rules Configuration affects gameplay or history.
+Applying a preset replaces all nine selections in the Room's Match Rules Configuration. The owner may then change individual settings before the first Match starts. Only a Hand's resolved Rules Configuration affects gameplay or history.
 
 New Rooms begin with `省心` applied.
 
