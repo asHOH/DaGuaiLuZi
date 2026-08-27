@@ -16,12 +16,16 @@ _Avoid_: Match, lobby, socket room
 A Player Account that has joined a Room and may occupy one seat; connection state does not affect membership.
 _Avoid_: Connected player, present player
 
+**Seat**:
+One indexed Room position; the selected Match or Challenge Hand's Ruleset defines the valid indices.
+_Avoid_: Room Member, Player Account
+
 **Room Owner**:
 The Room Member with authority over the Rules Configuration, Seating Policy, Match or Challenge Hand choice, and Room lifecycle actions.
 _Avoid_: Host, dealer
 
 **Seating Policy**:
-A Room setting deciding whether a Match or Challenge Hand retains lobby seats or randomly assigns its six members when it starts.
+A Room setting deciding whether a Match or Challenge Hand retains lobby seats or randomly assigns its members when it starts.
 _Avoid_: Rule Variant, seat mode
 
 **Aborted Match**:
@@ -41,7 +45,7 @@ A versioned family of fixed rules and Rule Variants.
 _Avoid_: Mode, option
 
 **Rules Configuration**:
-A Ruleset plus one selected setting for every Rule Variant.
+A Ruleset plus one selected setting for every Rule Variant that Ruleset supports.
 _Avoid_: Ruleset, options
 
 **Rules Configuration Preset**:
@@ -81,7 +85,7 @@ The shareable identifier for one Challenge Template. It can open the source Hand
 _Avoid_: Hand Seed, replay code
 
 **Challenge Hand** (`同牌挑战`):
-A playable duplicate initialized from a Challenge Template. Six players receive the source Hand's logical-seat setup but make independent choices and produce a separate result.
+A playable duplicate initialized from a Challenge Template. Players receive the source Hand's Ruleset-sized logical-seat setup but make independent choices and produce a separate result.
 _Avoid_: Hand Replay, continued source Hand
 
 **Match**:

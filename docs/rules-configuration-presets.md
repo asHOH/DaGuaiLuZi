@@ -2,7 +2,9 @@
 
 Status: Authoritative app-local Room setup policy
 
-Applying a preset replaces all nine selections in the Room's Match Rules Configuration. The owner may then change individual settings before the first Match starts. Only a Hand's resolved Rules Configuration affects gameplay or history.
+Applying a preset replaces every selection supported by the selected Ruleset. The owner may then change individual settings before the first Match starts. Only a Hand's resolved Rules Configuration affects gameplay or history.
+
+The tables show 6p3d settings; 4p2d uses the same settings but omits Joker Pair Comparison and Return Card Selection.
 
 New Rooms begin with `省心` applied.
 

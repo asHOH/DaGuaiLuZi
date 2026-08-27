@@ -15,7 +15,7 @@ A completed source Hand produces one reusable `同牌挑战码`. Sharing is its 
 
 - A Challenge Hand uses a Room. Before play starts, the Room Owner chooses a Match or a Challenge Hand initialized by a Challenge Code.
 - A Match uses the Room's Rules Configuration. A Challenge Hand uses its Challenge Template's Rules Configuration without changing or permanently locking the Room's Match configuration.
-- The Room's six seats map to the six source logical seats; their Player Accounts receive the same seat-indexed deal and starting context as the source Hand.
+- The Room's Ruleset-sized seats map to the source logical seats; their Player Accounts receive the same seat-indexed deal and starting context as the source Hand.
 - Seeded choices use the source Hand Seed and the same versioned, domain-separated functions when the same decision context occurs.
 - Player choices create a new event sequence, result, and completed-Hand history. They never modify the source Hand or its Replay.
 - If the Room Owner aborts, the Challenge Hand produces no result or completed-Hand history; readiness resets and the Room returns to the lobby. Incomplete-Hand events remain private persisted facts.

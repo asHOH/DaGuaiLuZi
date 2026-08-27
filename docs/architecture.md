@@ -81,7 +81,7 @@ Database code initially belongs to the server. Package placement is an implement
 | Database schema | Drizzle for schema, migrations, and routine queries | Use raw SQL only for SQLite pragmas or operations that Drizzle cannot express clearly; keep durability, uniqueness, and transaction behavior visible. |
 | Rule tests | Vitest + fast-check | Examples lock down reference/variant behavior, Joker-only interpretation, and exact Automatic Response Closure patterns; generated cases test card conservation, legal combinations, ordering, wildcard invariants, and identical deals from identical seed metadata. |
 | Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, lifecycle authority, deterministic seating, Automatic Response Closure without synthetic Passes, tie-choice rounds and fallbacks, Match and Challenge Hand abort handling, history authorization, Challenge Template reproduction, and hidden information. |
-| Browser tests | Playwright | Exercise UI behavior, private views, connected auto-start, reconnect/resynchronization, Match and Challenge Hand abortion, completed-hand history sharing, Hand Replay with independent viewer playback positions, and Challenge Code reuse with one or two browser contexts. Test six-seat coordination primarily with protocol-level integration clients; retain at most one six-browser happy-path smoke test. Add timed-turn tests only after the timing policy is defined. |
+| Browser tests | Playwright | Exercise UI behavior, private views, connected auto-start, reconnect/resynchronization, Match and Challenge Hand abortion, completed-hand history sharing, Hand Replay with independent viewer playback positions, and Challenge Code reuse with one or two browser contexts. Test multi-seat coordination primarily with protocol-level integration clients; retain at most one browser happy path per Ruleset. Add timed-turn tests only after the timing policy is defined. |
 | Deployment | Multi-stage Docker image with a mounted local SQLite volume | One application artifact on the VPS, routed through the existing host-managed `cloudflared`. |
 | Logs | Pino JSON logs | Correlate account, room, hand, command, and room-event sequence without logging passwords, session tokens, Hand Seeds, or private hands. |
 
@@ -142,7 +142,11 @@ This local module is preferred over Better Auth because Better Auth requires an 
 
 Room membership, seat assignment, readiness, ownership, Rules Configuration, Seating Policy, and lifecycle state are durable room state. Each membership records a monotonic join order. When an owner leaves a `LOBBY`, the executor transfers ownership to the remaining membership with the lowest join order; a later rejoin creates a new membership and join order.
 
-Only the owner may change the Rules Configuration or Seating Policy and choose a Match or Challenge Hand. Fixed Seating preserves the lobby seat assignment. Randomized Seating uniformly permutes all six members when play starts; the resulting seat assignment is durable active state. Rule, policy, membership, and seat events do not alter other readiness values. The application auto-starts the selected Match or Challenge Hand only when the executor's durable state has six occupied, ready seats and the socket registry reports at least one authenticated connection for every seated account. Presence is an ephemeral start gate and is neither persisted nor passed into `game-core`.
+Each Ruleset defines fixed seat indices `0..playerCount-1`. SQL stores occupied assignments as `(roomId, seatIndex, memberId)` rows with primary key `(roomId, seatIndex)` and unique `(roomId, memberId)`. The selected Match or Challenge Hand supplies the lobby's effective Ruleset.
+
+Only the owner may change the Rules Configuration or Seating Policy and choose a Match or Challenge Hand. An effective Ruleset change is allowed only in `LOBBY` and resets readiness. Changing 4p2d to 6p3d preserves seats `0..3`; changing 6p3d to 4p2d is rejected with five or more members, preserves assignments only when all use `0..3`, and otherwise clears assignments but retains membership.
+
+Fixed Seating preserves lobby assignments. Randomized Seating uniformly permutes all required members when play starts; the result is durable active state. Other rule, policy, membership, and seat events do not alter readiness. Play auto-starts only when every effective-Ruleset seat has a ready member with an authenticated connection. Presence is an ephemeral start gate and is neither persisted nor passed into `game-core`.
 
 An `ACTIVE` Room locks membership, seats, Rules Configuration, and Seating Policy. An owner-issued abort produces `MatchAborted` for a Match or `ChallengeHandAborted` for a Challenge Hand, resets readiness, and returns the Room to `LOBBY`. `MatchAborted` retains completed Hands and current Team Levels without a winner; `ChallengeHandAborted` exposes no result or completed-Hand history. Events from an incomplete Hand remain private persisted facts.
 
@@ -150,11 +154,13 @@ Natural Match or Challenge Hand completion likewise resets readiness and returns
 
 ## Room-level configuration
 
-Every Room selects one Seating Policy and a complete Rules Configuration for Matches. The app-local [Rules Configuration Presets](rules-configuration-presets.md) initialize the Match configuration; a Challenge Hand instead uses its Challenge Template's configuration without changing or permanently locking the Match configuration. `game-core` receives only the active resolved settings and has no preset concept. The Match configuration becomes immutable when the first Match starts; the Seating Policy becomes immutable when the first Match or Challenge Hand starts. A Hand records `rulesetId`, resolved variants, Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.
+Every Room selects one Seating Policy and a complete Rules Configuration for Matches. The app-local [Rules Configuration Presets](rules-configuration-presets.md) initialize every variant supported by its Ruleset; a Challenge Hand instead uses its Challenge Template's configuration without changing or permanently locking the Match configuration. `game-core` receives only the active resolved settings and has no preset concept. The Match configuration becomes immutable when the first Match starts; the Seating Policy becomes immutable when the first Match or Challenge Hand starts. A Hand records `rulesetId`, resolved variants, Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.
 
 ### Ruleset identity and variants
 
-The authoritative [Ruleset](ruleset.md) defines the game rules and stable Ruleset ID. Each future Ruleset receives a distinct versioned ID when defined.
+The authoritative [Rulesets](ruleset.md) define the game rules and distinct stable Ruleset IDs. Each future Ruleset receives a distinct versioned ID when defined.
+
+Each Ruleset supplies `playerCount`, `teamSize`, `deckCount`, and supported Rule Variants. Room, protocol, UI, `game-core`, Replay, and Challenge logic derive cardinality from that metadata.
 
 The first explicit variant is represented as a named domain choice rather than scattered conditionals, for example:
 
