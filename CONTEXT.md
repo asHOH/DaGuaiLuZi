@@ -8,6 +8,26 @@ This glossary distinguishes the game's identities and versioned rule configurati
 A persistent player identity to which participation and future match history belong.
 _Avoid_: Guest, temporary player
 
+**Room**:
+A durable container for members, seats, one fixed Rules Configuration, and a series of Matches. It exists independently of socket connections.
+_Avoid_: Match, lobby, socket room
+
+**Room Member**:
+A Player Account that has joined a Room and may occupy one seat; connection state does not affect membership.
+_Avoid_: Connected player, present player
+
+**Room Owner**:
+The Room Member with authority over the Rules Configuration and Room lifecycle actions.
+_Avoid_: Host, dealer
+
+**Aborted Match**:
+An active Match ended without a winner by the Room Owner. Its completed Hand history and final Team Levels remain available.
+_Avoid_: Interrupted Room, completed Match
+
+**Interrupted Room**:
+A Room whose active Match cannot be reconstructed and resumed.
+_Avoid_: Aborted Match, disconnected Room
+
 **Ruleset**:
 A versioned family of fixed rules and Rule Variants.
 _Avoid_: Mode, option
@@ -33,7 +53,7 @@ One deal of the cards, ending after its result is settled and immediately before
 _Avoid_: Match, round
 
 **Match**:
-A sequence of Hands ending when one team satisfies the selected Match Ending condition.
+A sequence of Hands ending when one team satisfies the selected Match Ending condition, or ending without a winner as an Aborted Match.
 _Avoid_: Hand, game session
 
 **Card Face**:

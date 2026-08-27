@@ -78,8 +78,8 @@ CONTEXT.md              domain vocabulary
 | SQLite driver | `better-sqlite3` | Stable synchronous transactions suit the single-writer design. Pin a release embedding a fixed SQLite version; do not use SQLite 3.7.0–3.51.2 because of the WAL-reset bug. |
 | Database schema | Drizzle for schema, migrations, and routine queries | Use raw SQL only for SQLite pragmas or operations that Drizzle cannot express clearly; keep durability, uniqueness, and transaction behavior visible. |
 | Rule tests | Vitest + fast-check | Examples lock down reference/variant behavior; generated cases test card conservation, legal combinations, ordering, wildcard invariants, and identical deals from identical seed metadata. |
-| Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, history authorization, seed reproduction, and hidden information. |
-| Browser tests | Playwright | Exercise UI behavior, private views, reconnect/resynchronization, completed-hand history, seed sharing, and replay-room warnings with one or two browser contexts. Test six-seat coordination primarily with protocol-level integration clients; retain at most one six-browser happy-path smoke test. Add timed-turn tests only after the timing policy is defined. |
+| Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, lifecycle authority, abort handling, history authorization, seed reproduction, and hidden information. |
+| Browser tests | Playwright | Exercise UI behavior, private views, connected auto-start, reconnect/resynchronization, Match abortion, completed-hand history sharing, and replay-room warnings with one or two browser contexts. Test six-seat coordination primarily with protocol-level integration clients; retain at most one six-browser happy-path smoke test. Add timed-turn tests only after the timing policy is defined. |
 | Deployment | Multi-stage Docker image with a mounted local SQLite volume | One application artifact on the VPS, routed through the existing host-managed `cloudflared`. |
 | Logs | Pino JSON logs | Correlate account, room, hand, command, and room-event sequence without logging passwords, session tokens, seeds, or private hands. |
 
@@ -113,7 +113,7 @@ This shared module defines and validates serialized browser/server messages. It 
 
 ### Room executor
 
-Once a room exists, one executor owns every durable mutation of that room: membership and seats, readiness, rules selection, starting and dealing, gameplay, and room archival. Connection state is not gameplay state. Account operations, initial room creation, socket connection tracking, and read-only queries remain outside this seam. Its interface is essentially `execute(authenticatedCommand) -> acknowledgedResult`. Internally it:
+Once a room exists, one executor owns every durable mutation of that room: membership and seats, ownership, readiness, rules selection, starting and dealing, gameplay, Match abortion, interruption, and Room archival. Connection state is not gameplay state. Account operations, initial Room creation, socket connection tracking, and read-only queries remain outside this seam. Its interface is essentially `execute(authenticatedCommand) -> acknowledgedResult`. Internally it:
 
 1. queues commands serially;
 2. rejects stale or unauthorized commands;
@@ -138,6 +138,16 @@ Accounts require a unique username and password. Email is nullable. The owner pr
 
 This local module is preferred over Better Auth because Better Auth requires an email for every user, including users signing up through its username plugin, which conflicts with the product requirement.
 
+## Room lifecycle
+
+Room membership, seat assignment, readiness, ownership, Rules Configuration, and lifecycle state are durable room state. Each membership records a monotonic join order. When an owner leaves a `LOBBY`, the executor transfers ownership to the remaining membership with the lowest join order; a later rejoin creates a new membership and join order.
+
+Only the owner may change the Rules Configuration. Rule, membership, and seat events do not alter other readiness values. The application auto-starts a Match only when the executor's durable state has six occupied, ready seats and the socket registry reports at least one authenticated connection for every seated account. Presence is an ephemeral start gate and is neither persisted nor passed into `game-core`.
+
+An `ACTIVE` Room locks membership, seats, and rules. An owner-issued abort command produces a `MatchAborted` event, retains the immutable events of completed Hands, records both current Team Levels without a winner, resets every readiness value, and returns the Room to `LOBBY`. Events from an incomplete Hand remain private persisted facts and do not become completed-Hand history.
+
+Natural Match completion likewise resets readiness and returns the Room to `LOBBY`. An unrecoverable active Room becomes `INTERRUPTED`. Its terminal actions either archive it or create a new Room containing only the copied Rules Configuration; the source Room, members, readiness, and history are not copied or mutated.
+
 ## Room-level rules
 
 Every room selects a complete, immutable Rules Configuration before a hand starts. A hand records both `rulesetId` and the resolved variant values, so a later default change cannot reinterpret history.
@@ -159,7 +169,7 @@ The authoritative [gameplay specification](gameplay-spec.md) defines the Initial
 
 ## MVP reconnection
 
-A disconnect produces no domain event, durable mutation, automatic action, or forfeiture. The room remains in its current gameplay state; progress naturally waits whenever the absent player must act.
+A disconnect produces no domain event, durable mutation, ownership transfer, readiness change, automatic action, or forfeiture. The Room remains in its current gameplay state; progress naturally waits whenever the absent player must act. A Room Member is considered present and a seat occupied from durable membership, not from connected sockets.
 
 The client uses Socket.IO automatic reconnection. Every connection follows the full-view resynchronization procedure above, including after a page reload, browser sleep, network change, or application restart. The server may reconstruct a compatible in-progress room from SQLite before deriving the view; exact recovery remains best-effort, and an unrecoverable room may instead be marked interrupted.
 
@@ -169,11 +179,11 @@ Turn timing and any connection-dependent timing behavior are deferred to [Post-M
 
 An append-only ordered event stream records every accepted room action and drives the active executor's in-memory state. The same stream supplies completed-hand history and may reconstruct a compatible in-progress room after a restart. Accounts, sessions, and other non-room administrative data remain ordinary relational records. The initial implementation uses a SQLite table and does not introduce a message queue, a separate CQRS read store, or a specialized event-store product.
 
-Each event envelope records the room ID, monotonic room sequence, optional hand ID, event type and schema version, causation command ID, server-recorded time, and domain payload. Sequence, not timestamp, defines order. Domain events record accepted facts such as room creation, seating, rules selection, dealing, playing, passing, hand completion, and room archival; commands and rejected attempts are not domain events.
+Each event envelope records the room ID, monotonic room sequence, optional hand ID, event type and schema version, causation command ID, server-recorded time, and domain payload. Sequence, not timestamp, defines order. Domain events record accepted facts such as Room creation, membership, seating, ownership transfer, readiness, rules selection, dealing, playing, passing, Hand completion, Match abortion, interruption, and Room archival; commands and rejected attempts are not domain events.
 
 Starting a hand records the ruleset ID, resolved variants, seed, shuffle-algorithm version, and seat ordering. `game-core` deterministically derives the immutable original deal from those fields, so the event stream and share code use one canonical representation of the deal. Later play events contain enough information to evolve the live state and render the hand's action history.
 
-For a normal hand, the seed and original deals remain server-private until the hand ends. The completed-hand history then exposes the original deals and a share code containing the seed and all metadata needed to reproduce the deal by seat. A room created from a share code is visibly marked as a social replay. Because anyone who knows the code can derive every hidden card, a replay room does not claim hidden-information fairness.
+For a normal Hand, the seed and original deals remain server-private until the Hand ends. Its completed-Hand history then exposes the original deals and a share code containing the seed and all metadata needed to reproduce the deal by seat. Match-end views do not expose a seed-sharing action. A Room created from a share code is visibly marked as a social replay. Because anyone who knows the code can derive every hidden card, a replay Room does not claim hidden-information fairness.
 
 An accepted command transaction atomically stores:
 
@@ -184,9 +194,9 @@ The server sends success only after SQLite commits with WAL and `synchronous=NOR
 
 Persisted snapshots are omitted initially. Add them only if measured recovery time becomes material.
 
-Raw events, reconstructed state, seeds, and original deals remain server-private during a normal hand; each client receives only its player-specific view. When the hand ends—and before the next deal—the history view exposes every player's originally dealt cards and the share code to that hand's participants.
+Raw events, reconstructed state, seeds, and original deals remain server-private during a normal Hand; each client receives only its player-specific view. When the Hand ends—and before the next deal—the history view exposes every player's originally dealt cards and the share code to that Hand's participants.
 
-History ships in the first release. An authenticated read-only endpoint formats a completed hand's events into its ordered action sequence, selected rules, original deals, result, and share code. Only participants in that hand may read it. Formatting is synchronous and requires no asynchronous projection infrastructure or second action-history model.
+History ships in the first release. An authenticated read-only endpoint formats a completed Hand's events into its ordered action sequence, selected rules, original deals, result, and share code. Only participants in that Hand may read or share it. Formatting is synchronous and requires no asynchronous projection infrastructure or second action-history model.
 
 Completed-hand events must remain decodable for history, but they do not have to remain replayable into the current live game engine. Best-effort room recovery only replays event versions supported by the deployed server; an incompatible in-progress room may be marked interrupted. Database migrations manage SQLite structure and do not reinterpret gameplay. Add a history decoder only when a concrete event-schema change requires one. Ruleset identifiers, share-code shuffle versions, event schemas, and client/server protocol compatibility remain separate concerns. If a client and server protocol are incompatible, the server rejects commands with a reload-required response.
 
@@ -203,7 +213,7 @@ The comparison of rejected stacks and frameworks is retained separately in [ADR 
 - SQLite constrains deployment to one write host and its database file must remain on a local filesystem, not a network volume.
 - Persisted events must remain readable for completed-hand history. Live replay compatibility is required only for event versions the deployed server promises to recover; no generic migration framework is built before a concrete change requires one.
 - A shared seed makes every hand reproducible, but anyone who knows it can derive hidden cards. Share codes appear only after normal hands and replay rooms are clearly identified as social rather than cheat-resistant.
-- Without a timer, an absent required player can block progress indefinitely. Cleanup and timeout behavior are deferred to the post-MVP timing policy.
+- Without a timer, an absent required player can block play until they reconnect or the owner aborts the Match. Automatic cleanup and timeout behavior remain deferred to the post-MVP timing policy.
 
 These costs are proportionate to an application with one owner, a small friend group, persistent accounts, hidden information in normal hands, first-release detailed history, and social seed sharing.
 
