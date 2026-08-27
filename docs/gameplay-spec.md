@@ -20,15 +20,12 @@ For singles, cards rank from high to low:
 
 The current Trump Rank is removed from its ordinary position. Suits do not break ties.
 
-`SMALL` and `BIG` are wildcards in every non-single form. Two independent Rule Variants govern their interpretation:
+`SMALL` and `BIG` are wildcards in every non-single form; each may represent any non-joker Card Face (plus `BIG` can represent `SMALL`). Compare the represented form normally. Joker-only pairs outrank other pairs: `[BIG, BIG]` is highest, while **Joker Pair Comparison** decides whether `[SMALL, SMALL]` ties or beats `[SMALL, BIG]`.
 
-- **Joker Pair Comparison** has two settings: `[SMALL, SMALL]` either ties `[SMALL, BIG]` or beats it.
 - **Wildcard Interpretation** has three settings:
-  - **Strongest form, lowest straight:** choose the strongest legal form, but complete the lowest possible straight.
+  - **Strongest form, lowest straight:** choose the strongest legal form and value, except complete a straight at its lowest possible value.
   - **Always strongest:** choose the strongest legal form and value, including for straights.
-  - **Weakest on finish:** behave as Always Strongest unless the play empties the player's hand, in which case choose the weakest legal interpretation. For example, a final `[4C, 5D, SMALL, SMALL, BIG]` becomes the mixed-suit straight `A2345`.
-
-Wildcards do not themselves become the comparison card.
+  - **Weakest on finish:** behave as Always Strongest unless the play empties the player's hand, then choose the weakest legal form and value. For example, a final `[4C, 5D, SMALL, SMALL, BIG]` becomes the mixed-suit straight `A2345`.
 
 ### Legal forms
 
@@ -41,7 +38,7 @@ Only 1-, 2-, 3-, and 5-card plays are legal.
 | 3 | Triple |
 | 5 | Mixed-suit straight, flush, full house, four-plus-one, straight flush, or five of a kind |
 
-A straight contains five consecutive ranks; a mixed-suit straight is not all one suit. A four-plus-one uses four cards of one rank and a fifth of another. If five cards satisfy multiple forms, they take the strongest applicable form.
+A pair, triple, or five of a kind has two, three, or five cards of one rank. A full house has a triple and pair of different ranks; a flush has five cards of one suit; a straight flush is a same-suit straight. A straight has five consecutive ranks; a mixed-suit straight is not all one suit; a four-plus-one has four cards of one rank and a fifth of another. Copies from different decks may coexist in any form. If five cards satisfy multiple forms, use the strongest.
 
 ### Comparison
 
@@ -74,10 +71,12 @@ For the first Hand, a dealer is selected fairly from the six players; that playe
 
 Players receive Finish Positions as they empty their hands. The Hand ends when every player on one team has finished.
 
-- If the first finisher's team finishes first, that team wins. Each opponent still holding cards is caught and owes Tribute before the next Hand.
+- If the first finisher's team finishes first, that team wins. Each opponent still holding cards is caught and owes Tribute in the next Hand.
 - If the opposing team finishes while teammates of the first finisher still hold cards, the result is a draw and nobody owes Tribute.
 - The first finisher's team is the Dealer Team for the next Hand.
 - A winning Dealer Team advances its Team Level by one. A different team becoming the Dealer Team does not advance its Team Level; a draw advances neither team.
+
+Each later Hand proceeds: deal; resolve Tribute from the newly dealt cards using that Hand's Trump Rank; resolve Return Cards; first lead.
 
 **Next-Hand Leader** has two settings:
 

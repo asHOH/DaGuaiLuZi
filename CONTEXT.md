@@ -57,7 +57,7 @@ A player's place in the order in which players empty their hands.
 _Avoid_: Rank, placement
 
 **Tribute**:
-A card transferred by a caught opponent before the next Hand and followed by one returned card.
+A card transferred from a caught opponent's newly dealt Hand before its first lead and followed by one Return Card.
 _Avoid_: Contribution, penalty card
 
 **Return Card**:
