@@ -48,8 +48,8 @@ _Avoid_: Ruleset, Rule Variant
 A named rule difference selected for a room, such as Joker Pair Comparison or Wildcard Rank.
 _Avoid_: Special case, toggle
 
-**Initial Ruleset**:
-The six-player, three-deck Ruleset defined by `docs/gameplay-spec.md`; external game descriptions are references only.
+**Six-player Ruleset**:
+The three-deck Ruleset defined by `docs/ruleset.md`; external game descriptions are references only.
 _Avoid_: Default mode
 
 **Four-player Ruleset**:

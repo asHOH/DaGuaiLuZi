@@ -1,6 +1,6 @@
 - Reply to the user in English; all product UI copy, labels, messages, and user-facing text must be in Chinese.
 - Keep specifications extremely concise; conciseness outweighs eliminating minor ambiguities.
-- Use [CONTEXT.md](CONTEXT.md) for domain vocabulary, [docs/product-spec.md](docs/product-spec.md) for product requirements, and [docs/gameplay-spec.md](docs/gameplay-spec.md) as the authoritative gameplay source.
+- Use [CONTEXT.md](CONTEXT.md) for domain vocabulary, [docs/product-spec.md](docs/product-spec.md) for product requirements, and [docs/ruleset.md](docs/ruleset.md) as the authoritative game-rules source.
 - Use [docs/rules-configuration-presets.md](docs/rules-configuration-presets.md) for app-local Rules Configuration presets.
 - Use [docs/tie-choice-protocol.md](docs/tie-choice-protocol.md) for app-local resolution of tied Tribute-giver choices.
 - Use [docs/challenge-hand-sharing.md](docs/challenge-hand-sharing.md) for Hand Seed, Challenge Code, Challenge Template, and Challenge Hand responsibilities.

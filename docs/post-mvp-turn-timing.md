@@ -2,7 +2,7 @@
 
 Status: Deferred until the MVP is complete
 
-Turn timing is application policy, not Initial Ruleset gameplay. The MVP has no timer or connection-driven pause state; its clients reconnect and receive complete player-specific views as defined in [architecture.md](architecture.md#mvp-reconnection).
+Turn timing is application policy, not part of the Ruleset. The MVP has no timer or connection-driven pause state; its clients reconnect and receive complete player-specific views as defined in [architecture.md](architecture.md#mvp-reconnection).
 
 Before implementation, decide:
 

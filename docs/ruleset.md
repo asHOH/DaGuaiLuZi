@@ -1,8 +1,8 @@
-# Initial Gameplay Spec
+# Ruleset
 
-Status: Authoritative gameplay specification for the Initial Ruleset
+Status: Authoritative six-player, three-deck game rules
 
-This document is the source of truth for gameplay behavior. The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) and [GameTea description](https://www.gametea.com/games/daguailuzi.html) are references only.
+This document is the source of truth for the Ruleset. The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) and [GameTea description](https://www.gametea.com/games/daguailuzi.html) are references only.
 
 ## Setup
 

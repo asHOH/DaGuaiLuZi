@@ -48,7 +48,7 @@ packages/
   protocol/            shared serialized commands, results, views, and history
 docs/
   product-spec.md      user requirements only
-  gameplay-spec.md     authoritative gameplay rules and variants
+  ruleset.md           authoritative game rules and variants
   tie-choice-protocol.md app-local tied-giver coordination
   challenge-hand-sharing.md app-local playable Hand sharing
   architecture.md      engineering decisions and trade-offs
@@ -97,7 +97,7 @@ TanStack Router, Zustand, CSS organization, ORM details, and exact package place
 
 ### `game-rules`
 
-This shared pure module classifies card combinations, compares them, and evaluates a proposed play using only the immutable Rules Configuration and information present in that player's view. It owns Joker-only interpretation from the [gameplay specification](gameplay-spec.md#card-order-and-wildcards) and the pure visible-pattern predicate required by the [product specification](product-spec.md) for Automatic Response Closure. That predicate never reads hidden hands or earlier plays. The browser uses the module for immediate feedback, and `game-core` uses the same implementation during authoritative command handling. A client verdict is advisory: the server still checks authentication, command revision, turn ownership, card ownership, and legality against the full current state.
+This shared pure module classifies card combinations, compares them, and evaluates a proposed play using only the immutable Rules Configuration and information present in that player's view. It owns Joker-only interpretation from the [Ruleset](ruleset.md#card-order-and-wildcards) and the pure visible-pattern predicate required by the [product specification](product-spec.md) for Automatic Response Closure. That predicate never reads hidden hands or earlier plays. The browser uses the module for immediate feedback, and `game-core` uses the same implementation during authoritative command handling. A client verdict is advisory: the server still checks authentication, command revision, turn ownership, card ownership, and legality against the full current state.
 
 ### Card identity and serialization
 
@@ -169,7 +169,7 @@ type JokerPairComparison =
   | "two-small-and-mixed-are-equal";
 ```
 
-The authoritative [gameplay specification](gameplay-spec.md) defines the Initial Ruleset. The linked [弈棋耍大牌 description](https://www.17dp.com/down/gamelist/id/202) is non-authoritative reference material. Each configured difference is a named variant with example hands that are also executable tests.
+The authoritative [Ruleset](ruleset.md) defines the six-player, three-deck game rules. The linked [弈棋耍大牌 description](https://www.17dp.com/down/gamelist/id/202) is non-authoritative reference material. Each configured difference is a named variant with example hands that are also executable tests.
 
 ## Tie-choice coordination
 
