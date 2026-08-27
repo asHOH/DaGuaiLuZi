@@ -142,6 +142,5 @@ Ruleset ID: `dglz-4p-2d-v1`
 Four players form two alternating teams of two; two standard decks are dealt, 27 cards per player; six/five-seat counts become four/three.
 Except below, this Ruleset inherits every fixed rule and Rule Variant of `dglz-6p-3d-v1`.
 
-- Tribute uses the giver's highest held rank at or below the Trump Rank; jokers are ineligible.
-- As a result, **Return Card Selection** rule variant is omitted.
-- Joker-only Pairs rank naturally, i.e. `[BIG, BIG] > [SMALL, SMALL]`; **Joker Pair Comparison** rule variant is omitted.
+- Tribute uses the giver's highest held non-joker rank. The recipient chooses the Return Card, so **Return Card Selection** is omitted.
+- Joker-only Pairs rank `[BIG, BIG] > [SMALL, BIG] = [SMALL, SMALL]`. **Joker Pair Comparison** is omitted. (Note: two-deck card counts actually prevent comparing `[SMALL, BIG]` with other Joker-only pairs during play)
