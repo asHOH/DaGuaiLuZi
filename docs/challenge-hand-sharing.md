@@ -13,7 +13,8 @@ A completed source Hand produces one reusable `同牌挑战码`. Sharing is its 
 
 ## Challenge execution
 
-- Six Player Accounts occupy the six logical seats and receive the same seat-indexed deal and starting context as the source Hand.
+- A Challenge Hand uses a normal Room. Before play starts, the Room Owner chooses an ordinary Match or a Challenge Hand initialized by a Challenge Code.
+- The Room's six seats map to the six source logical seats; their Player Accounts receive the same seat-indexed deal and starting context as the source Hand.
 - Seeded choices use the source Hand Seed and the same versioned, domain-separated functions when the same decision context occurs.
 - Player choices create a new event sequence, result, and completed-Hand history. They never modify the source Hand or its Replay.
 - A Challenge Hand ends when its Hand result is settled; it does not continue the source Room or Match.

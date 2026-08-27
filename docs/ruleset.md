@@ -92,7 +92,7 @@ For ordinary comparison, the Trump Rank is above `A`. Within a straight it has i
 
 ### Turn flow
 
-For the first Hand, a dealer is selected fairly from the six players; that player's team is the initial Dealer Team, and the dealer leads the first play. Play proceeds counter-clockwise. A leader may play any legal form. Each following unfinished player either plays a valid stronger response or passes; finished players are skipped. A pass applies only to the current unbeaten play: a player who previously passed may respond when play reaches them again. When a play survives a complete circuit of the other five seats, each having passed or already finished, the lead resets. The player who made that play leads if still holding cards; otherwise the next unfinished player counter-clockwise leads. Play continues until the Hand result is determined.
+For the first Hand, a dealer is selected uniformly from the six players; that player's team is the initial Dealer Team, and the dealer leads the first play. Play proceeds counter-clockwise. A leader may play any legal form. Each following unfinished player either plays a valid stronger response or passes; finished players are skipped. A pass applies only to the current unbeaten play: a player who previously passed may respond when play reaches them again. When a play survives a complete circuit of the other five seats, each having passed or already finished, the lead resets. The player who made that play leads if still holding cards; otherwise the next unfinished player counter-clockwise leads. Play continues until the Hand result is determined.
 
 ## 2. Hand Result
 
@@ -125,7 +125,7 @@ The received Tribute Card itself is eligible to be returned. Offering three diff
 The recipients are the winning team's first `x` finishers, where `x` is the number of Tribute givers. **Tribute Recipient Pairing** has two settings:
 
 - **Finish Position by Tribute rank:** sort Tributes from highest to lowest and assign them to recipients in Finish Position order. When Tributes tie in rank, the tied givers choose among the corresponding recipients under the app-local [Tie-Choice Protocol](tie-choice-protocol.md#recipient-pairing).
-- **Adjacent-first automatic:** first pair a giver with a recipient who immediately precedes them in counter-clockwise play order. Pair any remaining givers and recipients automatically in that order; no player choice is involved.
+- **Adjacent-first automatic:** first pair givers with a recipient who immediately precedes them in play order. If one giver and one recipient remain, pair them; no player chooses.
 
 ### Match ending
 

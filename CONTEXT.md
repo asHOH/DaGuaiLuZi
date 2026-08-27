@@ -9,7 +9,7 @@ A persistent player identity to which participation and future match history bel
 _Avoid_: Guest, temporary player
 
 **Room**:
-A durable container for members, seats, one fixed Rules Configuration, one Seating Policy, and a series of Matches. It exists independently of socket connections.
+A durable container for members, seats, one fixed Rules Configuration, one Seating Policy, and ordinary Matches or Challenge Hands. It exists independently of socket connections.
 _Avoid_: Match, lobby, socket room
 
 **Room Member**:
@@ -17,11 +17,11 @@ A Player Account that has joined a Room and may occupy one seat; connection stat
 _Avoid_: Connected player, present player
 
 **Room Owner**:
-The Room Member with authority over the Rules Configuration, Seating Policy, and Room lifecycle actions.
+The Room Member with authority over the Rules Configuration, Seating Policy, ordinary Match or Challenge Hand choice, and Room lifecycle actions.
 _Avoid_: Host, dealer
 
 **Seating Policy**:
-A Room setting deciding whether a Match retains lobby seats or randomly assigns its six members to seats when it starts.
+A Room setting deciding whether an ordinary Match or Challenge Hand retains lobby seats or randomly assigns its six members when it starts.
 _Avoid_: Rule Variant, seat mode
 
 **Aborted Match**:
@@ -29,7 +29,7 @@ An active Match ended without a winner by the Room Owner. Its completed Hand his
 _Avoid_: Interrupted Room, completed Match
 
 **Interrupted Room**:
-A Room whose active Match cannot be reconstructed and resumed.
+A Room whose active Match or Challenge Hand cannot be reconstructed and resumed.
 _Avoid_: Aborted Match, disconnected Room
 
 **Ruleset**:

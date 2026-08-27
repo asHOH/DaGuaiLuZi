@@ -11,7 +11,7 @@ This document resolves choices delegated to tied Tribute givers. It does not def
 - Ballots are simultaneous, private, and final for their round.
 - Each eligible giver selects one eligible candidate or `放弃`.
 - A round resolves after every eligible giver submits. Disconnects wait for reconnection; no automatic ballot is submitted.
-- Other ballots remain hidden until resolution. The result reveals the round's ballots and committed outcome.
+- Other ballots remain hidden until resolution. The result reveals the round's ballots and committed outcome to all players.
 - Each decision permits at most three rounds. The owner may instead use `终止比赛`.
 
 ## Recipient pairing
