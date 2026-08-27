@@ -65,7 +65,7 @@ A server-held random value used with versioned Hand setup information to reprodu
 _Avoid_: Challenge Code, share code
 
 **Hand Replay**:
-A read-only, single-viewer playback of one completed Hand's recorded deal and actions for review. It is not a Room, Match, or opportunity to make different plays.
+A read-only playback of one completed Hand's recorded deal and actions. Multiple viewers may open the same Replay at independent playback positions; no other viewer is required. It is not a Room, Match, or opportunity to make different plays.
 _Avoid_: Replay Room, replay Match, social replay
 
 **Challenge Template**:
