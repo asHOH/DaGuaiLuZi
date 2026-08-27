@@ -49,6 +49,7 @@ packages/
 docs/
   product-spec.md      user requirements only
   gameplay-spec.md     authoritative gameplay rules and variants
+  tie-choice-protocol.md app-local tied-giver coordination
   architecture.md      engineering decisions and trade-offs
   decisions/           accepted architecture decision records
 CONTEXT.md              domain vocabulary
@@ -78,7 +79,7 @@ CONTEXT.md              domain vocabulary
 | SQLite driver | `better-sqlite3` | Stable synchronous transactions suit the single-writer design. Pin a release embedding a fixed SQLite version; do not use SQLite 3.7.0–3.51.2 because of the WAL-reset bug. |
 | Database schema | Drizzle for schema, migrations, and routine queries | Use raw SQL only for SQLite pragmas or operations that Drizzle cannot express clearly; keep durability, uniqueness, and transaction behavior visible. |
 | Rule tests | Vitest + fast-check | Examples lock down reference/variant behavior; generated cases test card conservation, legal combinations, ordering, wildcard invariants, and identical deals from identical seed metadata. |
-| Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, lifecycle authority, deterministic seating, abort handling, history authorization, seed reproduction, and hidden information. |
+| Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, lifecycle authority, deterministic seating, tie-choice rounds and fallbacks, abort handling, history authorization, seed reproduction, and hidden information. |
 | Browser tests | Playwright | Exercise UI behavior, private views, connected auto-start, reconnect/resynchronization, Match abortion, completed-hand history sharing, and replay-room warnings with one or two browser contexts. Test six-seat coordination primarily with protocol-level integration clients; retain at most one six-browser happy-path smoke test. Add timed-turn tests only after the timing policy is defined. |
 | Deployment | Multi-stage Docker image with a mounted local SQLite volume | One application artifact on the VPS, routed through the existing host-managed `cloudflared`. |
 | Logs | Pino JSON logs | Correlate account, room, hand, command, and room-event sequence without logging passwords, session tokens, seeds, or private hands. |
@@ -103,7 +104,7 @@ A Card Face has one canonical string code, such as `AS`, `SMALL`, or `BIG`; a Ca
 
 ### `game-core`
 
-This is the deepest module. Its decision interface is `decide(currentState, command) -> rejection | domainEvents`; its evolution interface is `evolve(state, event) -> state`. `decide` may consult `game-rules` and reject a command. `evolve` is total and decision-free for every supported event and valid prior state: it applies the accepted fact without checking legality, reading clocks or randomness, consulting external state, or rejecting. Folding `evolve` over a room's supported ordered events reconstructs its current state. A selected Rules Configuration becomes state through an event before a hand starts, so callers never supply a second configuration that could disagree with an active hand. The module uses `game-rules` and contains deck construction, authoritative decisions and evolution, turn order, finishing, tribute, scoring, and player-view derivation.
+This is the deepest module. Its decision interface is `decide(currentState, command) -> rejection | domainEvents`; its evolution interface is `evolve(state, event) -> state`. `decide` may consult `game-rules` and reject a command. `evolve` is total and decision-free for every supported event and valid prior state: it applies the accepted fact without checking legality, reading clocks or randomness, consulting external state, or rejecting. Folding `evolve` over a room's supported ordered events reconstructs its current state. A selected Rules Configuration becomes state through an event before a hand starts, so callers never supply a second configuration that could disagree with an active hand. The module uses `game-rules` and contains deck construction, authoritative decisions and evolution, turn order, finishing, tribute, the app-local [Tie-Choice Protocol](tie-choice-protocol.md), scoring, and player-view derivation.
 
 It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. A normal hand receives a fresh cryptographically random seed; a social replay receives the seed and metadata decoded from a share code. For the first Hand of a Match, `game-core` uses the fixed lobby seats or derives a uniform seat permutation from that Hand's seed under Randomized Seating, then derives the initial dealer through a separate versioned, domain-separated selection function. Random selections required by resolved Rule Variants use the same approach and remain domain-separated from seating, dealer selection, and shuffling. `game-core` uses a versioned deterministic shuffle, so the same seed, ruleset, resolved variants, shuffle version, and resolved seat ordering produce the same original deal. No match-level seed derives future hand seeds. Hand-start events record these inputs, and later events record every card-zone change needed for live evolution and completed-hand history.
 
@@ -152,6 +153,10 @@ Natural Match completion likewise resets readiness and returns the Room to `LOBB
 
 Every Room selects one Seating Policy and a complete Rules Configuration before a Hand starts. Both become immutable when the first Match starts. A Hand records `rulesetId`, the resolved variant values, the Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.
 
+## Tie-choice coordination
+
+The authoritative app-local procedure is [Tie-Choice Protocol](tie-choice-protocol.md). `game-core` owns its ballot state, validation, partial resolution, retry limits, seeded fallback, and player-specific views. Accepted ballots and resolutions are domain events; unrevealed ballots remain absent from other players' views.
+
 Initial identifiers may look like:
 
 - `dglz-6p-3d-v1` — initial six-player, three-deck ruleset;
@@ -179,7 +184,7 @@ Turn timing and any connection-dependent timing behavior are deferred to [Post-M
 
 An append-only ordered event stream records every accepted room action and drives the active executor's in-memory state. The same stream supplies completed-hand history and may reconstruct a compatible in-progress room after a restart. Accounts, sessions, and other non-room administrative data remain ordinary relational records. The initial implementation uses a SQLite table and does not introduce a message queue, a separate CQRS read store, or a specialized event-store product.
 
-Each event envelope records the room ID, monotonic room sequence, optional hand ID, event type and schema version, causation command ID, server-recorded time, and domain payload. Sequence, not timestamp, defines order. Domain events record accepted facts such as Room creation, membership, seating, ownership transfer, readiness, rules and Seating Policy selection, resolved Match seating, dealing, playing, passing, Hand completion, Match abortion, interruption, and Room archival; commands and rejected attempts are not domain events.
+Each event envelope records the room ID, monotonic room sequence, optional hand ID, event type and schema version, causation command ID, server-recorded time, and domain payload. Sequence, not timestamp, defines order. Domain events record accepted facts such as Room creation, membership, seating, ownership transfer, readiness, rules and Seating Policy selection, resolved Match seating, dealing, tie-choice ballots and resolutions, playing, passing, Hand completion, Match abortion, interruption, and Room archival; commands and rejected attempts are not domain events.
 
 Starting a hand records the ruleset ID, resolved variants, seed, shuffle-algorithm version, and seat ordering. `game-core` deterministically derives the immutable original deal from those fields, so the event stream and share code use one canonical representation of the deal. Later play events contain enough information to evolve the live state and render the hand's action history.
 
