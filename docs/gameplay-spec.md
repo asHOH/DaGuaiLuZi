@@ -4,11 +4,27 @@ Status: Authoritative gameplay specification for the Initial Ruleset
 
 This document is the source of truth for gameplay behavior. The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) and [GameTea description](https://www.gametea.com/games/daguailuzi.html) are references only.
 
-Every room selects exactly one setting for every Rule Variant.
+## Setup
 
 Six players form two teams of three in alternating seats. Three standard 54-card decks are shuffled together; each player receives 27 cards. Suited Card Faces use rank then suit (`AS`, `10H`), with `S`, `H`, `D`, and `C` for spades, hearts, diamonds, and clubs; jokers are `SMALL` and `BIG`. Copy suffixes are omitted.
 
 Each team begins a Match at Team Level `2`, retains its level across Hands, and never loses levels. The Dealer Team's level is the current Hand's Trump Rank.
+
+## Rule Variants
+
+Every room selects exactly one setting from each row; the resulting Rules Configuration is fixed for the room.
+
+| Rule Variant | Settings |
+| --- | --- |
+| Joker Pair Comparison | Tie; Double SMALL higher |
+| Wildcard Interpretation | Strongest form, lowest straight; Always strongest; Weakest on finish |
+| Flush Tie-Breaking | Highest card only; Descending ranks |
+| Next-Hand Leader | First finisher; Highest Tribute |
+| Tribute Card Selection | Fair random; Giver choice |
+| Return Card Selection | Recipient choice; Giver choice from candidates |
+| Tribute Recipient Pairing | Finish Position by Tribute rank; Adjacent-first automatic |
+| Match Ending | No failure limit at 5; Three-failure limit at 5 |
+
 
 ## 1. Legal Moves
 
@@ -20,7 +36,7 @@ For singles, cards rank from high to low:
 
 The current Trump Rank is removed from its ordinary position. Suits do not break ties.
 
-`SMALL` and `BIG` are wildcards in every non-single form; each may represent any non-joker Card Face (plus `BIG` can represent `SMALL`). Compare the represented form normally. Joker-only pairs outrank other pairs: `[BIG, BIG]` is highest, while **Joker Pair Comparison** decides whether `[SMALL, SMALL]` ties or beats `[SMALL, BIG]`.
+`SMALL` and `BIG` are wildcards in every non-single form; each may represent any non-joker Card Face (plus `BIG` can represent `SMALL`). Compare the represented form normally. Joker-only pairs outrank other pairs: `[BIG, BIG]` is highest. Under **Joker Pair Comparison**, **Tie** makes `[SMALL, SMALL]` tie `[SMALL, BIG]`; **Double SMALL higher** makes it beat `[SMALL, BIG]`.
 
 - **Wildcard Interpretation** has three settings:
   - **Strongest form, lowest straight:** choose the strongest legal form and value, except complete a straight at its lowest possible value.
