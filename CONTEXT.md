@@ -60,6 +60,10 @@ _Avoid_: Small mode
 One deal of the cards, ending after its result is settled and immediately before the next deal. Hidden dealt cards may be revealed when the hand ends.
 _Avoid_: Match, round
 
+**Hand Replay**:
+A read-only, single-viewer playback of one completed Hand's recorded deal and actions for review. It is not a Room, Match, or opportunity to make different plays.
+_Avoid_: Replay Room, replay Match, social replay
+
 **Match**:
 A sequence of Hands ending when one team satisfies the selected Match Ending condition, or ending without a winner as an Aborted Match.
 _Avoid_: Hand, game session
