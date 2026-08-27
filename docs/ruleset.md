@@ -1,6 +1,7 @@
 # Ruleset
 
 Status: Authoritative six-player, three-deck game rules
+Ruleset ID: `dglz-6p-3d-v1`
 
 This document is the source of truth for the Ruleset. The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) and [GameTea description](https://www.gametea.com/games/daguailuzi.html) are references only.
 
@@ -12,7 +13,7 @@ Each team begins a Match at Team Level `2`, retains its level across Hands, and 
 
 ## Rule Variants
 
-Every room selects exactly one setting from each row; the resulting Rules Configuration is fixed for the room.
+A Rules Configuration selects exactly one setting from each row.
 
 | Rule Variant | Settings |
 | --- | --- |
@@ -26,7 +27,7 @@ Every room selects exactly one setting from each row; the resulting Rules Config
 | Tribute Recipient Pairing | Finish Position by Tribute rank; Adjacent-first automatic |
 | Match Ending | No failure limit at 5; Three-failure limit at 5 |
 
-Room-setup presets are app-local and defined in [Rules Configuration Presets](rules-configuration-presets.md).
+App-local presets are defined separately in [Rules Configuration Presets](rules-configuration-presets.md).
 
 ## 1. Legal Moves
 
