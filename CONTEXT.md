@@ -9,8 +9,12 @@ A persistent player identity to which participation and future match history bel
 _Avoid_: Guest, temporary player
 
 **Ruleset**:
-A complete, versioned set of game rules that binds exactly one setting for every Rule Variant.
+A versioned family of fixed rules and Rule Variants.
 _Avoid_: Mode, option
+
+**Rules Configuration**:
+A Ruleset plus one selected setting for every Rule Variant, fixed for a room.
+_Avoid_: Ruleset, options
 
 **Rule Variant**:
 A named rule difference selected for a room, such as Joker Pair Comparison or Wildcard Interpretation.

@@ -4,7 +4,7 @@ Status: Authoritative gameplay specification for the Initial Ruleset
 
 This document is the source of truth for gameplay behavior. The linked [弈棋耍大牌 rules](https://www.17dp.com/down/gamelist/id/202) and [GameTea description](https://www.gametea.com/games/daguailuzi.html) are references only.
 
-Every Ruleset binds exactly one setting for every Rule Variant.
+Every room selects exactly one setting for every Rule Variant.
 
 Six players form two teams of three in alternating seats. Three standard 54-card decks are shuffled together; each player receives 27 cards. Suited Card Faces use rank then suit (`AS`, `10H`), with `S`, `H`, `D`, and `C` for spades, hearts, diamonds, and clubs; jokers are `SMALL` and `BIG`. Copy suffixes are omitted.
 
@@ -93,9 +93,9 @@ Each player owing Tribute must give a card of their highest held rank. **Tribute
 - **Recipient choice:** the Tribute recipient chooses one card to return.
 - **Giver choice from candidates:** for a `SMALL` Tribute, the recipient offers two cards; for a `BIG` Tribute, three. The candidates must have different ranks, with no suit restriction, and the Tribute giver chooses the Return Card. A non-joker Tribute uses Recipient Choice.
 
-**Tribute Recipient Pairing** has two settings:
+The recipients are the winning team's first `x` finishers, where `x` is the number of Tribute givers. **Tribute Recipient Pairing** has two settings:
 
-- **Finish Position by Tribute rank:** sort Tributes from highest to lowest and assign them to the winning team's first, second, and third finishers respectively. When Tributes tie in rank, the tied givers choose among the corresponding recipients; the UI is TBD.
+- **Finish Position by Tribute rank:** sort Tributes from highest to lowest and assign them to recipients in Finish Position order. When Tributes tie in rank, the tied givers choose among the corresponding recipients; the UI is TBD.
 - **Adjacent-first automatic:** first pair a giver with a recipient who immediately precedes them in counter-clockwise play order. Pair any remaining givers and recipients automatically in that order; no player choice is involved.
 
 ### Match ending

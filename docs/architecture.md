@@ -95,7 +95,7 @@ TanStack Router, Zustand, CSS organization, ORM details, and exact package place
 
 ### `game-rules`
 
-This shared pure module classifies card combinations, compares them, and evaluates a proposed play using only the immutable rules configuration and information present in that player's view. The browser uses it for immediate feedback, and `game-core` uses the same implementation during authoritative command handling. A client verdict is advisory: the server still checks authentication, command revision, turn ownership, card ownership, and legality against the full current state.
+This shared pure module classifies card combinations, compares them, and evaluates a proposed play using only the immutable Rules Configuration and information present in that player's view. The browser uses it for immediate feedback, and `game-core` uses the same implementation during authoritative command handling. A client verdict is advisory: the server still checks authentication, command revision, turn ownership, card ownership, and legality against the full current state.
 
 ### Card identity and serialization
 
@@ -103,7 +103,7 @@ A Card Face has one canonical string code, such as `AS`, `SMALL`, or `BIG`; a Ca
 
 ### `game-core`
 
-This is the deepest module. Its decision interface is `decide(currentState, command) -> rejection | domainEvents`; its evolution interface is `evolve(state, event) -> state`. `decide` may consult `game-rules` and reject a command. `evolve` is total and decision-free for every supported event and valid prior state: it applies the accepted fact without checking legality, reading clocks or randomness, consulting external state, or rejecting. Folding `evolve` over a room's supported ordered events reconstructs its current state. A selected rules configuration becomes state through an event before a hand starts, so callers never supply a second ruleset value that could disagree with an active hand. The module uses `game-rules` and contains deck construction, authoritative decisions and evolution, turn order, finishing, tribute, scoring, and player-view derivation.
+This is the deepest module. Its decision interface is `decide(currentState, command) -> rejection | domainEvents`; its evolution interface is `evolve(state, event) -> state`. `decide` may consult `game-rules` and reject a command. `evolve` is total and decision-free for every supported event and valid prior state: it applies the accepted fact without checking legality, reading clocks or randomness, consulting external state, or rejecting. Folding `evolve` over a room's supported ordered events reconstructs its current state. A selected Rules Configuration becomes state through an event before a hand starts, so callers never supply a second configuration that could disagree with an active hand. The module uses `game-rules` and contains deck construction, authoritative decisions and evolution, turn order, finishing, tribute, scoring, and player-view derivation.
 
 It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. A normal hand receives a fresh cryptographically random seed; a social replay receives the seed and metadata decoded from a share code. For the first Hand of a Match, `game-core` derives the initial dealer uniformly from that Hand's seed through a versioned, domain-separated selection function. Random selections required by resolved Rule Variants use the same approach and remain domain-separated from both dealer selection and shuffling. `game-core` uses a versioned deterministic shuffle, so the same seed, ruleset, resolved variants, shuffle version, and seat ordering produce the same original deal. No match-level seed derives future hand seeds. Hand-start events record these inputs, and later events record every card-zone change needed for live evolution and completed-hand history.
 
@@ -140,7 +140,7 @@ This local module is preferred over Better Auth because Better Auth requires an 
 
 ## Room-level rules
 
-Every room selects a complete, immutable rules configuration before a hand starts. A hand records both `rulesetId` and the resolved variant values, so a later default change cannot reinterpret history.
+Every room selects a complete, immutable Rules Configuration before a hand starts. A hand records both `rulesetId` and the resolved variant values, so a later default change cannot reinterpret history.
 
 Initial identifiers may look like:
 

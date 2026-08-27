@@ -7,4 +7,4 @@ User requirements only. Be concise. Do not infer.
 - Persistent username/password accounts; optional email; owner-assisted password reset.
 - Detailed hand history.
 - Shareable hand seeds.
-- Disconnects pause indefinitely; turns have a time limit, details TBD.
+- Disconnects pause indefinitely. MVP has no turn timer; add one immediately afterward, details TBD.
