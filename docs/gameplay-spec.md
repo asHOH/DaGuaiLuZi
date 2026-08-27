@@ -17,7 +17,8 @@ Every room selects exactly one setting from each row; the resulting Rules Config
 | Rule Variant | Settings |
 | --- | --- |
 | Joker Pair Comparison | Tie; Double SMALL higher |
-| Wildcard Interpretation | Strongest form, lowest straight; Always strongest; Weakest on finish |
+| Wildcard Rank | Weakest rank; Strongest rank |
+| Finishing Wildcard Interpretation | Normal; Weakest form and rank |
 | Flush Tie-Breaking | Highest card only; Descending ranks |
 | Next-Hand Leader | First finisher; Highest Tribute |
 | Tribute Card Selection | Fair random; Giver choice |
@@ -25,6 +26,7 @@ Every room selects exactly one setting from each row; the resulting Rules Config
 | Tribute Recipient Pairing | Finish Position by Tribute rank; Adjacent-first automatic |
 | Match Ending | No failure limit at 5; Three-failure limit at 5 |
 
+Room-setup presets are app-local and defined in [Rules Configuration Presets](rules-configuration-presets.md).
 
 ## 1. Legal Moves
 
@@ -38,10 +40,15 @@ The current Trump Rank is removed from its ordinary position. Suits do not break
 
 `SMALL` and `BIG` are wildcards in every non-single form; each may represent any non-joker Card Face (plus `BIG` can represent `SMALL`). Compare the represented form normally. Joker-only pairs outrank other pairs: `[BIG, BIG]` is highest. Under **Joker Pair Comparison**, **Tie** makes `[SMALL, SMALL]` tie `[SMALL, BIG]`; **Double SMALL higher** makes it beat `[SMALL, BIG]`.
 
-- **Wildcard Interpretation** has three settings:
-  - **Strongest form, lowest straight:** choose the strongest legal form and value, except complete a straight at its lowest possible value.
-  - **Always strongest:** choose the strongest legal form and value, including for straights.
-  - **Weakest on finish:** behave as Always Strongest unless the play empties the player's hand, then choose the weakest legal form and value. For example, a final `[4C, 5D, SMALL, SMALL, BIG]` becomes the mixed-suit straight `A2345`.
+Normally, first choose the strongest legal form. **Wildcard Rank** then has two settings:
+
+- **Weakest rank:** choose that form's weakest legal rank representation.
+- **Strongest rank:** choose that form's strongest legal rank representation. Each wildcard in a flush represents the flush suit's Trump Rank.
+
+**Finishing Wildcard Interpretation** has two settings when a wildcard play empties its player's hand:
+
+- **Normal:** interpret it normally using the selected Wildcard Rank.
+- **Weakest form and rank:** instead choose the weakest legal form and rank. For example, a final `[4C, 5D, SMALL, SMALL, BIG]` becomes the mixed-suit straight `A2345`.
 
 ### Legal forms
 

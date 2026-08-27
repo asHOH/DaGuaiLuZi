@@ -40,8 +40,12 @@ _Avoid_: Mode, option
 A Ruleset plus one selected setting for every Rule Variant, fixed for a room.
 _Avoid_: Ruleset, options
 
+**Rules Configuration Preset**:
+A named complete initial selection for every Rule Variant during Room setup.
+_Avoid_: Ruleset, Rule Variant
+
 **Rule Variant**:
-A named rule difference selected for a room, such as Joker Pair Comparison or Wildcard Interpretation.
+A named rule difference selected for a room, such as Joker Pair Comparison or Wildcard Rank.
 _Avoid_: Special case, toggle
 
 **Initial Ruleset**:
@@ -98,9 +102,13 @@ _Avoid_: Returned Tribute, repayment
 A Rule Variant deciding whether `[SMALL, SMALL]` ties or beats `[SMALL, BIG]`.
 _Avoid_: Joker rule
 
-**Wildcard Interpretation**:
-A Rule Variant deciding which legal form and value a wildcard play represents, including any different treatment when it empties a player's hand.
+**Wildcard Rank**:
+A Rule Variant deciding whether a wildcard uses the weakest or strongest legal rank after the normal strongest-form choice.
 _Avoid_: Wildcard priority
+
+**Finishing Wildcard Interpretation**:
+A Rule Variant deciding whether a wildcard play that empties its player's hand uses normal interpretation or its weakest legal form and rank.
+_Avoid_: Last Hand rule
 
 **Flush Tie-Breaking**:
 A Rule Variant deciding whether flushes with equal highest cards tie or compare their remaining ranks from highest to lowest.

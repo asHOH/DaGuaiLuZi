@@ -151,7 +151,7 @@ Natural Match completion likewise resets readiness and returns the Room to `LOBB
 
 ## Room-level configuration
 
-Every Room selects one Seating Policy and a complete Rules Configuration before a Hand starts. Both become immutable when the first Match starts. A Hand records `rulesetId`, the resolved variant values, the Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.
+Every Room selects one Seating Policy and a complete Rules Configuration before a Hand starts. The app-local [Rules Configuration Presets](rules-configuration-presets.md) initialize that configuration; `game-core` receives only the resolved settings and has no preset concept. Both configuration and Seating Policy become immutable when the first Match starts. A Hand records `rulesetId`, the resolved variant values, the Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.
 
 ## Tie-choice coordination
 
