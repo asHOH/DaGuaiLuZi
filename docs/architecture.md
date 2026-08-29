@@ -47,6 +47,7 @@ packages/
   game-core/           authoritative decisions, event evolution, and views
   protocol/            shared serialized commands, results, views, and history
 docs/
+  development.md       local and CI engineering workflow
   product-spec.md      user requirements only
   ruleset.md           authoritative game rules and variants
   tie-choice-protocol.md app-local tied-giver coordination

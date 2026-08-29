@@ -89,9 +89,7 @@ describe("evaluatePlay", () => {
   });
 
   it("allows the third physical copy in 6p3d", () => {
-    expect(evaluateLead(["AS#3"], SIX_PLAYER_CONFIGURATION, "5").ok).toBe(
-      true,
-    );
+    expect(evaluateLead(["AS#3"], SIX_PLAYER_CONFIGURATION, "5").ok).toBe(true);
   });
 
   it("rejects the third physical copy in 4p2d", () => {
@@ -109,12 +107,7 @@ describe("evaluatePlay", () => {
     );
 
     expect(
-      evaluateResponse(
-        ["10S#1"],
-        previousPlay,
-        SIX_PLAYER_CONFIGURATION,
-        "5",
-      ),
+      evaluateResponse(["10S#1"], previousPlay, SIX_PLAYER_CONFIGURATION, "5"),
     ).toEqual({ ok: false, reason: "response-card-count-mismatch" });
   });
 
@@ -152,36 +145,19 @@ describe("evaluatePlay", () => {
   });
 
   it("ranks the Trump Rank above Ace", () => {
-    const previousPlay = legalLead(
-      ["AS#1"],
-      SIX_PLAYER_CONFIGURATION,
-      "5",
-    );
+    const previousPlay = legalLead(["AS#1"], SIX_PLAYER_CONFIGURATION, "5");
 
     expect(
-      evaluateResponse(
-        ["5D#1"],
-        previousPlay,
-        SIX_PLAYER_CONFIGURATION,
-        "5",
-      ).ok,
+      evaluateResponse(["5D#1"], previousPlay, SIX_PLAYER_CONFIGURATION, "5")
+        .ok,
     ).toBe(true);
   });
 
   it("does not use suits to break a rank tie", () => {
-    const previousPlay = legalLead(
-      ["KS#1"],
-      SIX_PLAYER_CONFIGURATION,
-      "5",
-    );
+    const previousPlay = legalLead(["KS#1"], SIX_PLAYER_CONFIGURATION, "5");
 
     expect(
-      evaluateResponse(
-        ["KH#1"],
-        previousPlay,
-        SIX_PLAYER_CONFIGURATION,
-        "5",
-      ),
+      evaluateResponse(["KH#1"], previousPlay, SIX_PLAYER_CONFIGURATION, "5"),
     ).toEqual({ ok: false, reason: "response-not-stronger" });
   });
 

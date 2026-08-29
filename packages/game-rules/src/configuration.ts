@@ -7,8 +7,7 @@ type SharedRulesConfiguration = Readonly<{
   nextHandLeader: "first-finisher" | "highest-tribute";
   tributeCardSelection: "fair-random" | "giver-choice";
   tributeRecipientPairing:
-    | "finish-position-by-tribute-rank"
-    | "adjacent-first-automatic";
+    "finish-position-by-tribute-rank" | "adjacent-first-automatic";
   matchEnding: "no-failure-limit-at-5" | "three-failure-limit-at-5";
 }>;
 
@@ -16,8 +15,7 @@ export type SixPlayerRulesConfiguration = SharedRulesConfiguration &
   Readonly<{
     rulesetId: "dglz-6p-3d-v1";
     jokerPairComparison:
-      | "two-small-and-mixed-are-equal"
-      | "two-small-jokers-win";
+      "two-small-and-mixed-are-equal" | "two-small-jokers-win";
     returnCardSelection: "recipient-choice" | "giver-choice-from-candidates";
   }>;
 
@@ -27,6 +25,4 @@ export type FourPlayerRulesConfiguration = SharedRulesConfiguration &
   }>;
 
 export type RulesConfiguration =
-  | SixPlayerRulesConfiguration
-  | FourPlayerRulesConfiguration;
-
+  SixPlayerRulesConfiguration | FourPlayerRulesConfiguration;

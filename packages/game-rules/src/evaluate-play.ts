@@ -97,8 +97,7 @@ function validateCardInstances(
   cards: readonly CardInstance[],
   configuration: RulesConfiguration,
 ): PlayRejectionReason | undefined {
-  const maximumCopyNumber =
-    configuration.rulesetId === "dglz-6p-3d-v1" ? 3 : 2;
+  const maximumCopyNumber = configuration.rulesetId === "dglz-6p-3d-v1" ? 3 : 2;
   const seenCodes = new Set<string>();
 
   for (const card of cards) {
@@ -130,9 +129,7 @@ function classifyImplementedPlay(
   const rank = firstCard.face.rank;
   if (
     cards.length > 1 &&
-    cards.some(
-      (card) => card.face.kind !== "suited" || card.face.rank !== rank,
-    )
+    cards.some((card) => card.face.kind !== "suited" || card.face.rank !== rank)
   ) {
     return { ok: false, reason: "cards-do-not-form-legal-play" };
   }
@@ -168,7 +165,9 @@ function compareRanks(
   incumbent: PlayRank,
   trumpRank: TrumpRank,
 ): number {
-  return rankStrength(challenger, trumpRank) - rankStrength(incumbent, trumpRank);
+  return (
+    rankStrength(challenger, trumpRank) - rankStrength(incumbent, trumpRank)
+  );
 }
 
 function rankStrength(rank: PlayRank, trumpRank: TrumpRank): number {
