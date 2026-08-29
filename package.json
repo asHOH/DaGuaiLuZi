@@ -1,0 +1,19 @@
+{
+  "name": "daguailuzi",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "tsc -p packages/game-rules/tsconfig.json",
+    "test": "vitest run packages/game-rules/test",
+    "typecheck": "tsc -p packages/game-rules/tsconfig.test.json"
+  },
+  "devDependencies": {
+    "fast-check": "4.9.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
+
