@@ -8,7 +8,7 @@ A completed source Hand produces one reusable `同牌挑战码`. Sharing is its 
 
 - The **Hand Seed** is server-held random input. With versioned randomness and setup data, it reproduces the deal and other seeded choices; it is never the user-facing sharing artifact.
 - The **Challenge Template** is the immutable, reusable starting setup: Ruleset, resolved Rules Configuration, randomness and shuffle versions, Hand Seed, logical seat mapping, Dealer Team and Team Levels, Match-ending counters, and the previous-Hand result facts required for Tribute and first lead.
-- The **Challenge Code** is an opaque, stable reference to one Challenge Template. It is designed to be copied, reused, and placed in a shareable link; it does not contain gameplay behavior.
+- The **Challenge Code** is an opaque, stable, cryptographically random reference with at least 128 bits of entropy. It is designed to be copied, reused, and placed in a shareable link; it does not contain gameplay behavior. Full codes are excluded from logs, and repeated invalid lookups are throttled.
 - The **Hand Replay** combines the source deal with its recorded actions. Multiple viewers may open the same read-only Replay at independent playback positions; no per-viewer Replay is created. It remains distinct from every Challenge Hand.
 
 ## Challenge execution

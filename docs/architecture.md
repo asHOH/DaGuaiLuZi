@@ -76,15 +76,15 @@ Database code initially belongs to the server. Package placement is an implement
 | Real time | Socket.IO | Provides rooms, acknowledgements, heartbeat/reconnection behavior, ordered packets, and fallback transport. Application-level deduplication and revisioned full-view resynchronization remain mandatory. |
 | Validation | Zod | Validate untrusted HTTP/socket input, configuration, compatibility messages, and persisted formats when decoded. Trusted in-process domain values remain ordinary TypeScript types unless they cross a serialization boundary. |
 | Password hashing | Argon2id using a maintained implementation | Passwords are salted and adaptively hashed, never encrypted or stored directly. Parameters follow current OWASP guidance and are stored with the hash for later upgrades. |
-| Sessions | Opaque random cookie token; only its hash is stored | `HttpOnly`, `Secure`, `SameSite` cookies; revocable server-side sessions; reset operations revoke every existing session for that account. |
+| Sessions | Opaque random cookie token; only its hash is stored | Server-expiring sessions; `HttpOnly`, `SameSite`, `Path=/` cookies; `Secure` in HTTPS production; logout revokes the current session and reset revokes every session for that account. |
 | Database | SQLite in WAL mode with `synchronous=NORMAL` | Matches a single-process, low-write-volume game and preserves committed data across application crashes without operating a database server. Recovery after OS crashes, power loss, or total VPS loss is not guaranteed. |
 | SQLite driver | `better-sqlite3` | Stable synchronous transactions suit the single-writer design. Pin a release embedding a fixed SQLite version; do not use SQLite 3.7.0–3.51.2 because of the WAL-reset bug. |
 | Database schema | Drizzle for schema, migrations, and routine queries | Use raw SQL only for SQLite pragmas or operations that Drizzle cannot express clearly; keep durability, uniqueness, and transaction behavior visible. |
 | Rule tests | Vitest + fast-check | Examples lock down reference/variant behavior, Joker-only interpretation, and exact Automatic Response Closure patterns; generated cases test card conservation, legal combinations, ordering, wildcard invariants, and identical deals from identical seed metadata. |
 | Integration tests | Vitest against a real temporary SQLite database | Verify atomic event appends, duplicate commands, supported-version replay, sequence conflicts, lifecycle authority, deterministic seating, Automatic Response Closure without synthetic Passes, tie-choice rounds and fallbacks, Match and Challenge Hand abort handling, history authorization, Challenge Template reproduction, and hidden information. |
 | Browser tests | Playwright | Exercise UI behavior, private views, connected auto-start, reconnect/resynchronization, Match and Challenge Hand abortion, completed-hand history sharing, Hand Replay with independent viewer playback positions, and Challenge Code reuse with one or two browser contexts. Test multi-seat coordination primarily with protocol-level integration clients; retain at most one browser happy path per Ruleset. Add timed-turn tests only after the timing policy is defined. |
-| Deployment | Multi-stage Docker image with a mounted local SQLite volume | One application artifact on the VPS, routed through the existing host-managed `cloudflared`. |
-| Logs | Pino JSON logs | Correlate account, room, hand, command, and room-event sequence without logging passwords, session tokens, Hand Seeds, or private hands. |
+| Deployment | Multi-stage Docker image with a mounted local SQLite volume | One application artifact on the VPS, routed through the existing host-managed `cloudflared`; the origin port is not publicly reachable. |
+| Logs | Pino JSON logs | Correlate account, room, hand, command, and room-event sequence without logging passwords, session tokens, Hand Seeds, Challenge Codes, or private hands. |
 
 Use exact dependency and container versions. Database migrations are explicit deployment steps.
 
@@ -138,6 +138,12 @@ The account interface is intentionally small: administrator-provision account, a
 Accounts require a unique username and password. Email is nullable. The VPS/application administrator provisions accounts and resets passwords through administrative commands; a reset records an audit action and revokes all sessions. These commands may initially be CLI-only. If email later becomes meaningful, an email-reset adapter may be added.
 
 This local module is preferred over Better Auth because Better Auth requires an email for every user, including users signing up through its username plugin, which conflicts with the product requirement.
+
+### Web security boundary
+
+Production serves the browser, HTTP API, and Socket.IO from one public origin. State-changing HTTP requests and Socket.IO handshakes reject foreign `Origin` values; this and the session cookie policy are the MVP CSRF defense. A future cross-origin client requires a new review. Fastify trusts forwarding metadata only from the expected tunnel proxy and never uses it for authorization. The app applies a conservative CSP and standard security headers through `@fastify/helmet` or equivalent.
+
+A revoked session cannot authorize a new HTTP or Socket.IO command, including through an existing connection.
 
 ## Room lifecycle
 
