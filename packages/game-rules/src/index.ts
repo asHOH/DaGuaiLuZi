@@ -21,11 +21,15 @@ export type {
   SixPlayerRulesConfiguration,
 } from "./configuration.js";
 
-export {
-  evaluatePlay,
-  type BasicPlayForm,
-  type ClassifiedPlay,
-  type EvaluatePlayRequest,
-  type EvaluatePlayResult,
-  type PlayRejectionReason,
-} from "./evaluate-play.js";
+export { evaluatePlay } from "./evaluate-play.js";
+
+export type {
+  BasicPlayForm,
+  ClassifiedPlay,
+  EvaluatePlayRequest,
+  EvaluatePlayResult,
+  FiveCardPlayForm,
+  LegalCardCount,
+  PlayForm,
+  PlayRejectionReason,
+} from "./play-types.js";
