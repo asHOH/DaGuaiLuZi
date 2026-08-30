@@ -88,6 +88,12 @@ Database code initially belongs to the server. Package placement is an implement
 
 Use exact dependency and container versions. Database migrations are explicit deployment steps.
 
+### MVP UI guidance
+
+Treat the table as a game surface, not a dashboard. On mobile and desktop, keep the current actor and unbeaten play, Trump Rank and Team Levels, the player's hand and selection, and primary actions immediately readable and operable; collapse history, configuration, and other secondary information before crowding the hand or play area. Tribute, Return Card, and tie-choice phases expose one contextual decision at a time; after final submission show `已提交，等待其他玩家` without revealing unresolved private choices. During initial connection or resynchronization, room actions are unavailable and the UI shows `正在同步牌局…`.
+
+Before UI implementation, record a concise visual direction covering palette, Chinese-capable typography, material language, and restrained motion. Use CSS variables, reserve strong motion for meaningful state changes, and respect reduced-motion preferences.
+
 ## Decision boundary
 
 [ADR 0001](decisions/0001-initial-application-stack.md) preserves the rejected alternatives. Change the Decision Summary only for a new requirement or measured limitation; routing, client state, CSS organization, ORM details, package placement, exact dependencies, Argon2id implementation, and card artwork remain implementation choices.
