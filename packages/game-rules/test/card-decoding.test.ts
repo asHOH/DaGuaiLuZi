@@ -1,6 +1,37 @@
 import { describe, expect, it } from "vitest";
 
-import { decodeCardInstance } from "../src/index.js";
+import {
+  decodeCardInstance,
+  type CardFaceCode,
+  type CopyNumber,
+  type StandardRank,
+  type Suit,
+} from "../src/index.js";
+
+const STANDARD_RANKS: readonly StandardRank[] = [
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K",
+  "A",
+];
+const SUITS: readonly Suit[] = ["S", "H", "D", "C"];
+const COPY_NUMBERS: readonly CopyNumber[] = [1, 2, 3];
+const CARD_FACE_CODES: readonly CardFaceCode[] = [
+  ...STANDARD_RANKS.flatMap((rank) =>
+    SUITS.map((suit) => `${rank}${suit}` as const),
+  ),
+  "SMALL",
+  "BIG",
+];
 
 describe("decodeCardInstance", () => {
   it.each([
@@ -46,5 +77,25 @@ describe("decodeCardInstance", () => {
       ok: false,
       reason: "invalid-card-instance-code",
     });
+  });
+
+  it("decodes every canonical Card Instance code without changing it", () => {
+    for (const faceCode of CARD_FACE_CODES) {
+      for (const copyNumber of COPY_NUMBERS) {
+        const code = `${faceCode}#${copyNumber}`;
+        const result = decodeCardInstance(code);
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) {
+          continue;
+        }
+
+        expect(result.card).toMatchObject({
+          code,
+          copyNumber,
+          face: { code: faceCode },
+        });
+      }
+    }
   });
 });
