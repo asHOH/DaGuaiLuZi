@@ -47,6 +47,8 @@ type SuitedCardInstance = CardInstance & {
   };
 };
 
+type RankPreference = "weakest-rank" | "strongest-rank";
+
 export function classifyPlay(
   cards: readonly CardInstance[],
   configuration: RulesConfiguration,
@@ -55,16 +57,13 @@ export function classifyPlay(
 ): EvaluatePlayResult {
   const hasWildcard = cards.some((card) => card.face.kind === "joker");
   if (hasWildcard && cards.every((card) => card.face.kind === "joker")) {
-    return { ok: false, reason: "play-category-not-implemented" };
+    return classifyJokerOnlyPlay(cards);
   }
 
-  if (
+  const useWeakestInterpretation =
     hasWildcard &&
     isFinishingPlay &&
-    configuration.finishingWildcardInterpretation === "weakest-form-and-rank"
-  ) {
-    return { ok: false, reason: "play-category-not-implemented" };
-  }
+    configuration.finishingWildcardInterpretation === "weakest-form-and-rank";
 
   switch (cards.length) {
     case 1:
@@ -74,7 +73,69 @@ export function classifyPlay(
     case 3:
       return classifyRepeatedRank(cards, "triple", 3);
     case 5:
-      return classifyFiveCardPlay(cards, configuration, trumpRank);
+      return classifyFiveCardPlay(
+        cards,
+        configuration,
+        trumpRank,
+        useWeakestInterpretation,
+      );
+    default:
+      return { ok: false, reason: "unsupported-card-count" };
+  }
+}
+
+function classifyJokerOnlyPlay(
+  cards: readonly CardInstance[],
+): EvaluatePlayResult {
+  const allBig = cards.every((card) => card.face.rank === "BIG");
+  const rank = allBig ? "BIG" : "SMALL";
+  const representedFaces = cards.map(() => rank);
+
+  switch (cards.length) {
+    case 1:
+      return {
+        ok: true,
+        play: createClassifiedPlay(cards, {
+          representedFaces,
+          comparisonRanks: [rank],
+          cardCount: 1,
+          form: "single",
+          rank,
+        }),
+      };
+    case 2:
+      return {
+        ok: true,
+        play: createClassifiedPlay(cards, {
+          representedFaces,
+          comparisonRanks: [rank],
+          cardCount: 2,
+          form: "pair",
+          rank,
+        }),
+      };
+    case 3:
+      return {
+        ok: true,
+        play: createClassifiedPlay(cards, {
+          representedFaces,
+          comparisonRanks: [rank],
+          cardCount: 3,
+          form: "triple",
+          rank,
+        }),
+      };
+    case 5:
+      return {
+        ok: true,
+        play: createClassifiedPlay(cards, {
+          representedFaces,
+          comparisonRanks: [rank],
+          cardCount: 5,
+          form: "five-of-a-kind",
+          rank,
+        }),
+      };
     default:
       return { ok: false, reason: "unsupported-card-count" };
   }
@@ -132,13 +193,17 @@ function classifyFiveCardPlay(
   cards: readonly CardInstance[],
   configuration: RulesConfiguration,
   trumpRank: TrumpRank,
+  useWeakestInterpretation: boolean,
 ): EvaluatePlayResult {
+  const rankPreference: RankPreference = useWeakestInterpretation
+    ? "weakest-rank"
+    : configuration.wildcardRank;
   const candidates = [
     ...repeatedPatternCandidates(cards, "five-of-a-kind", [5]),
     ...straightFlushCandidates(cards),
     ...repeatedPatternCandidates(cards, "four-plus-one", [4, 1]),
     ...repeatedPatternCandidates(cards, "full-house", [3, 2]),
-    ...flushCandidates(cards, configuration, trumpRank),
+    ...flushCandidates(cards, rankPreference, trumpRank),
     ...mixedSuitStraightCandidates(cards),
   ];
 
@@ -146,13 +211,22 @@ function classifyFiveCardPlay(
     return { ok: false, reason: "cards-do-not-form-legal-play" };
   }
 
-  const strongestForm = Math.max(
-    ...candidates.map((candidate) => fiveCardFormStrength(candidate.form)),
+  const candidateFormStrengths = candidates.map((candidate) =>
+    fiveCardFormStrength(candidate.form),
   );
+  const selectedFormStrength = useWeakestInterpretation
+    ? Math.min(...candidateFormStrengths)
+    : Math.max(...candidateFormStrengths);
   const contenders = candidates.filter(
-    (candidate) => fiveCardFormStrength(candidate.form) === strongestForm,
+    (candidate) =>
+      fiveCardFormStrength(candidate.form) === selectedFormStrength,
   );
-  const selected = selectRankedCandidate(contenders, configuration, trumpRank);
+  const selected = selectRankedCandidate(
+    contenders,
+    configuration,
+    trumpRank,
+    rankPreference,
+  );
 
   return {
     ok: true,
@@ -308,7 +382,7 @@ function straightCandidates(
 
 function flushCandidates(
   cards: readonly CardInstance[],
-  configuration: RulesConfiguration,
+  rankPreference: RankPreference,
   trumpRank: TrumpRank,
 ): readonly PlayCandidate[] {
   const naturalCards = suitedCards(cards);
@@ -321,7 +395,7 @@ function flushCandidates(
   }
 
   const wildcardRank =
-    configuration.wildcardRank === "strongest-rank"
+    rankPreference === "strongest-rank"
       ? trumpRank
       : weakestOrdinaryRank(trumpRank);
   const wildcardFaces = cards
@@ -350,13 +424,14 @@ function selectRankedCandidate(
   candidates: readonly PlayCandidate[],
   configuration: RulesConfiguration,
   trumpRank: TrumpRank,
+  rankPreference: RankPreference,
 ): PlayCandidate {
   const first = candidates[0];
   if (first === undefined) {
     throw new Error("No candidate to select");
   }
 
-  const direction = configuration.wildcardRank === "strongest-rank" ? 1 : -1;
+  const direction = rankPreference === "strongest-rank" ? 1 : -1;
   return candidates.slice(1).reduce((selected, candidate) => {
     const comparison = comparePlayValues(
       candidate,

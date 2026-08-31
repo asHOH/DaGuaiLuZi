@@ -34,8 +34,7 @@ export type PlayRejectionReason =
   | "unsupported-card-count"
   | "cards-do-not-form-legal-play"
   | "response-card-count-mismatch"
-  | "response-not-stronger"
-  | "play-category-not-implemented";
+  | "response-not-stronger";
 
 export type EvaluatePlayResult =
   | Readonly<{ ok: true; play: ClassifiedPlay }>

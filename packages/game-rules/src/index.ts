@@ -22,6 +22,7 @@ export type {
 } from "./configuration.js";
 
 export { evaluatePlay } from "./evaluate-play.js";
+export { hasAutomaticResponseClosure } from "./automatic-response-closure.js";
 
 export type {
   BasicPlayForm,

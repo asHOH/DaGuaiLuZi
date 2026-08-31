@@ -1,4 +1,9 @@
-import type { PlayRank, StandardRank, TrumpRank } from "./cards.js";
+import type {
+  CardInstance,
+  PlayRank,
+  StandardRank,
+  TrumpRank,
+} from "./cards.js";
 import type { RulesConfiguration } from "./configuration.js";
 import type {
   FiveCardPlayForm,
@@ -34,7 +39,8 @@ const FIVE_CARD_FORM_STRENGTH: Readonly<Record<FiveCardPlayForm, number>> = {
 type ComparablePlay = Pick<
   PlayCandidate,
   "cardCount" | "comparisonRanks" | "form" | "rank"
->;
+> &
+  Readonly<{ cards?: readonly CardInstance[] }>;
 
 export function comparePlayValues(
   challenger: ComparablePlay,
@@ -42,6 +48,15 @@ export function comparePlayValues(
   configuration: RulesConfiguration,
   trumpRank: TrumpRank,
 ): number {
+  const jokerPairComparison = compareJokerOnlyPairs(
+    challenger,
+    incumbent,
+    configuration,
+  );
+  if (jokerPairComparison !== undefined) {
+    return jokerPairComparison;
+  }
+
   if (challenger.cardCount === 5 && incumbent.cardCount === 5) {
     const formDifference =
       fiveCardFormStrength(challenger.form) -
@@ -73,6 +88,47 @@ export function comparePlayValues(
     rankStrength(challenger.rank, trumpRank) -
     rankStrength(incumbent.rank, trumpRank)
   );
+}
+
+function compareJokerOnlyPairs(
+  challenger: ComparablePlay,
+  incumbent: ComparablePlay,
+  configuration: RulesConfiguration,
+): number | undefined {
+  if (!isJokerOnlyPair(challenger) || !isJokerOnlyPair(incumbent)) {
+    return undefined;
+  }
+
+  if (challenger.rank !== incumbent.rank) {
+    return challenger.rank === "BIG" ? 1 : -1;
+  }
+
+  if (
+    challenger.rank === "BIG" ||
+    configuration.rulesetId === "dglz-4p-2d-v1" ||
+    configuration.jokerPairComparison === "two-small-and-mixed-are-equal"
+  ) {
+    return 0;
+  }
+
+  return (
+    countPhysicalSmallJokers(challenger.cards) -
+    countPhysicalSmallJokers(incumbent.cards)
+  );
+}
+
+function isJokerOnlyPair(
+  play: ComparablePlay,
+): play is ComparablePlay & { cards: readonly CardInstance[] } {
+  return (
+    play.cardCount === 2 &&
+    play.cards !== undefined &&
+    play.cards.every((card) => card.face.kind === "joker")
+  );
+}
+
+function countPhysicalSmallJokers(cards: readonly CardInstance[]): number {
+  return cards.filter((card) => card.face.rank === "SMALL").length;
 }
 
 export function fiveCardFormStrength(form: PlayForm): number {
