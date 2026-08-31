@@ -1,15 +1,9 @@
 glob_matcher: doublestar
 
 pre-commit:
-  parallel: true
   jobs:
-    - name: format
-      glob: "**/*.{cjs,css,html,js,json,jsonc,jsx,mjs,scss,ts,tsx,yaml,yml}"
-      run: corepack pnpm exec prettier --check --ignore-unknown "{staged_files}"
-
-    - name: lint
-      glob: "**/*.{cjs,js,jsx,mjs,ts,tsx}"
-      run: corepack pnpm exec oxlint --deny-warnings --report-unused-disable-directives "{staged_files}"
+    - name: staged quality
+      run: corepack pnpm exec lint-staged
 
 pre-push:
   jobs:

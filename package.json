@@ -8,6 +8,7 @@
   "scripts": {
     "build": "pnpm --recursive --if-present run build",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "fix": "pnpm lint:fix && pnpm format",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives",
@@ -18,10 +19,18 @@
   "devDependencies": {
     "fast-check": "4.9.0",
     "lefthook": "2.1.12",
+    "lint-staged": "16.4.0",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "7.0.2001",
     "prettier": "3.9.6",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
+  },
+  "lint-staged": {
+    "**/*.{cjs,js,jsx,mjs,ts,tsx}": [
+      "oxlint --fix --deny-warnings --report-unused-disable-directives",
+      "prettier --write --ignore-unknown"
+    ],
+    "**/*.{css,html,json,jsonc,scss,yaml,yml}": "prettier --write --ignore-unknown"
   }
 }
