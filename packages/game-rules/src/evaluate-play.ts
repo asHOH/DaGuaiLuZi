@@ -7,6 +7,7 @@ import type {
   EvaluatePlayResult,
   PlayRejectionReason,
 } from "./play-types.js";
+import { RULESET_DEFINITIONS } from "./rulesets.js";
 
 export function evaluatePlay(request: EvaluatePlayRequest): EvaluatePlayResult {
   const validationFailure = validateCardInstances(
@@ -56,7 +57,8 @@ function validateCardInstances(
   cards: readonly CardInstance[],
   configuration: RulesConfiguration,
 ): PlayRejectionReason | undefined {
-  const maximumCopyNumber = configuration.rulesetId === "dglz-6p-3d-v1" ? 3 : 2;
+  const maximumCopyNumber =
+    RULESET_DEFINITIONS[configuration.rulesetId].deckCount;
   const seenCodes = new Set<string>();
 
   for (const card of cards) {

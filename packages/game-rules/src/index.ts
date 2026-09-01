@@ -21,6 +21,12 @@ export type {
   SixPlayerRulesConfiguration,
 } from "./configuration.js";
 
+export {
+  RULESET_DEFINITIONS,
+  type RulesetDefinition,
+  type RuleVariantName,
+} from "./rulesets.js";
+
 export { evaluatePlay } from "./evaluate-play.js";
 export { hasAutomaticResponseClosure } from "./automatic-response-closure.js";
 
