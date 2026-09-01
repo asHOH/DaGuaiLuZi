@@ -53,6 +53,7 @@ const STANDARD_RANKS_LOW_TO_HIGH: readonly StandardRank[] = [
   "K",
   "A",
 ];
+const TRUMP_RANKS: readonly TrumpRank[] = ["2", "3", "4", "5"];
 
 describe("evaluatePlay", () => {
   it.each([
@@ -79,6 +80,16 @@ describe("evaluatePlay", () => {
     expect(evaluateLead(codes, SIX_PLAYER_CONFIGURATION, "5")).toEqual({
       ok: false,
       reason: "cards-do-not-form-legal-play",
+    });
+  });
+
+  it.each([
+    { cards: [] },
+    { cards: ["2S#1", "3H#1", "4D#1", "5C#1"] },
+  ] as const)("rejects unsupported card count for $cards", ({ cards }) => {
+    expect(evaluateLead(cards, SIX_PLAYER_CONFIGURATION, "5")).toEqual({
+      ok: false,
+      reason: "unsupported-card-count",
     });
   });
 
@@ -162,12 +173,9 @@ describe("evaluatePlay", () => {
   });
 
   it("implements the documented natural-rank ordering for every Trump Rank", () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom(...STANDARD_RANKS_LOW_TO_HIGH),
-        fc.constantFrom(...STANDARD_RANKS_LOW_TO_HIGH),
-        fc.constantFrom<TrumpRank>("2", "3", "4", "5"),
-        (incumbentRank, challengerRank, trumpRank) => {
+    for (const trumpRank of TRUMP_RANKS) {
+      for (const incumbentRank of STANDARD_RANKS_LOW_TO_HIGH) {
+        for (const challengerRank of STANDARD_RANKS_LOW_TO_HIGH) {
           const previousPlay = legalLead(
             [`${incumbentRank}S#1`],
             SIX_PLAYER_CONFIGURATION,
@@ -184,9 +192,9 @@ describe("evaluatePlay", () => {
             referenceStrength(challengerRank, trumpRank) >
               referenceStrength(incumbentRank, trumpRank),
           );
-        },
-      ),
-    );
+        }
+      }
+    }
   });
 
   it("classifies a pair independently of suit", () => {

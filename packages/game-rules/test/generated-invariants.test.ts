@@ -84,6 +84,17 @@ const generatedCaseArbitrary: fc.Arbitrary<GeneratedCase> = fc.oneof(
   ),
 );
 
+const arbitraryFiveCardCase: fc.Arbitrary<GeneratedCase> = fc.oneof(
+  createGeneratedCaseArbitrary(
+    SIX_PLAYER_CONFIGURATIONS,
+    exactShuffledSubset(physicalDeck(3, SIX_PLAYER_JOKERS), 5),
+  ),
+  createGeneratedCaseArbitrary(
+    FOUR_PLAYER_CONFIGURATIONS,
+    exactShuffledSubset(physicalDeck(2, FOUR_PLAYER_JOKERS), 5),
+  ),
+);
+
 const reorderedCaseArbitrary = generatedCaseArbitrary.chain((generated) =>
   fc
     .shuffledSubarray([...generated.cards], {
@@ -94,6 +105,34 @@ const reorderedCaseArbitrary = generatedCaseArbitrary.chain((generated) =>
 );
 
 describe("generated game-rule invariants", () => {
+  it("returns only legal representations for arbitrary five-card selections", () => {
+    fc.assert(
+      fc.property(arbitraryFiveCardCase, (generated) => {
+        const result = evaluatePlay({
+          cards: generated.cards.map(decode),
+          configuration: generated.configuration,
+          trumpRank: generated.trumpRank,
+          isFinishingPlay: generated.isFinishingPlay,
+        });
+
+        expect(
+          result.ok || result.reason === "cards-do-not-form-legal-play",
+        ).toBe(true);
+        if (!result.ok) {
+          return;
+        }
+
+        expectPhysicalAndRepresentedCards(
+          result.play,
+          generated.cards,
+          generated.configuration,
+        );
+        expectDeclaredForm(result.play);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
   it("conserves cards, returns a valid declared form, and ignores input order", () => {
     fc.assert(
       fc.property(reorderedCaseArbitrary, ({ generated, reordered }) => {
@@ -483,6 +522,16 @@ function physicalCardsOfRank(
       (_, copyIndex) => `${rank}${suit}#${copyIndex + 1}`,
     ),
   );
+}
+
+function physicalDeck(
+  maximumCopy: 2 | 3,
+  jokerCodes: readonly string[],
+): readonly string[] {
+  return [
+    ...RANKS.flatMap((rank) => physicalCardsOfRank(rank, maximumCopy)),
+    ...jokerCodes,
+  ];
 }
 
 function distinctRankPairArbitrary(): fc.Arbitrary<

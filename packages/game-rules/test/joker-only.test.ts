@@ -138,6 +138,11 @@ describe("Joker-only Play interpretation", () => {
 describe("Joker-only Play comparison", () => {
   it("makes all-BIG Plays stronger than SMALL-ranked Plays", () => {
     const smallSingle = legalLead(["SMALL#1"], SIX_PLAYER_CONFIGURATION, "5");
+    const mixedPair = legalLead(
+      ["SMALL#1", "BIG#1"],
+      SIX_PLAYER_CONFIGURATION,
+      "5",
+    );
     const smallTriple = legalLead(
       ["SMALL#1", "SMALL#2", "BIG#1"],
       SIX_PLAYER_CONFIGURATION,
@@ -150,11 +155,28 @@ describe("Joker-only Play comparison", () => {
     ).toBe(true);
     expect(
       evaluateResponse(
+        ["BIG#2", "BIG#3"],
+        mixedPair,
+        SIX_PLAYER_CONFIGURATION,
+        "5",
+      ).ok,
+    ).toBe(true);
+    expect(
+      evaluateResponse(
         ["BIG#1", "BIG#2", "BIG#3"],
         smallTriple,
         SIX_PLAYER_CONFIGURATION,
         "5",
       ).ok,
+    ).toBe(true);
+  });
+
+  it("ranks SMALL above the Trump Rank", () => {
+    const trumpSingle = legalLead(["5S#1"], SIX_PLAYER_CONFIGURATION, "5");
+
+    expect(
+      evaluateResponse(["SMALL#1"], trumpSingle, SIX_PLAYER_CONFIGURATION, "5")
+        .ok,
     ).toBe(true);
   });
 

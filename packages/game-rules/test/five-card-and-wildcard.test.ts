@@ -1,4 +1,3 @@
-import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -94,33 +93,23 @@ describe("natural five-card plays", () => {
   });
 
   it("orders every pair of five-card forms as documented", () => {
-    fc.assert(
-      fc.property(
-        fc.integer({ min: 0, max: FORM_FIXTURES.length - 1 }),
-        fc.integer({ min: 0, max: FORM_FIXTURES.length - 1 }),
-        (incumbentIndex, challengerIndex) => {
-          const incumbent = FORM_FIXTURES[incumbentIndex];
-          const challenger = FORM_FIXTURES[challengerIndex];
-          if (incumbent === undefined || challenger === undefined) {
-            throw new Error("Missing form fixture");
-          }
+    for (const [incumbentIndex, incumbent] of FORM_FIXTURES.entries()) {
+      for (const [challengerIndex, challenger] of FORM_FIXTURES.entries()) {
+        const previousPlay = legalLead(
+          incumbent.cards,
+          BASE_CONFIGURATION,
+          "4",
+        );
+        const result = evaluateResponse(
+          challenger.cards,
+          previousPlay,
+          BASE_CONFIGURATION,
+          "4",
+        );
 
-          const previousPlay = legalLead(
-            incumbent.cards,
-            BASE_CONFIGURATION,
-            "4",
-          );
-          const result = evaluateResponse(
-            challenger.cards,
-            previousPlay,
-            BASE_CONFIGURATION,
-            "4",
-          );
-
-          expect(result.ok).toBe(challengerIndex > incumbentIndex);
-        },
-      ),
-    );
+        expect(result.ok).toBe(challengerIndex > incumbentIndex);
+      }
+    }
   });
 
   it("compares straights by natural position even when a contained rank is Trump", () => {
@@ -186,6 +175,21 @@ describe("natural five-card plays", () => {
         highestOnly,
         "4",
       ),
+    ).toEqual({ ok: false, reason: "response-not-stronger" });
+  });
+
+  it("compares the fifth Flush rank and ties identical rank multisets", () => {
+    const incumbentCards = ["AS#1", "KS#1", "QS#1", "9S#1", "3S#1"];
+    const fifthRankChallenger = ["AH#1", "KH#1", "QH#1", "9H#1", "4H#1"];
+    const tiedChallenger = ["AD#1", "KD#1", "QD#1", "9D#1", "3D#1"];
+    const incumbent = legalLead(incumbentCards, BASE_CONFIGURATION, "5");
+
+    expect(
+      evaluateResponse(fifthRankChallenger, incumbent, BASE_CONFIGURATION, "5")
+        .ok,
+    ).toBe(true);
+    expect(
+      evaluateResponse(tiedChallenger, incumbent, BASE_CONFIGURATION, "5"),
     ).toEqual({ ok: false, reason: "response-not-stronger" });
   });
 
@@ -266,6 +270,21 @@ describe("general wildcard interpretation", () => {
     ).toMatchObject({
       ok: true,
       play: { form: "full-house", rank: "8" },
+    });
+  });
+
+  it("uses the Trump Rank when it competes with Ace in a wildcard Full House", () => {
+    const cards = ["AS#1", "AH#1", "5S#1", "5H#1", "SMALL#1"];
+
+    expect(evaluateLead(cards, BASE_CONFIGURATION, "5")).toMatchObject({
+      ok: true,
+      play: { form: "full-house", rank: "5" },
+    });
+    expect(
+      evaluateLead(cards, configuration({ wildcardRank: "weakest-rank" }), "5"),
+    ).toMatchObject({
+      ok: true,
+      play: { form: "full-house", rank: "A" },
     });
   });
 
