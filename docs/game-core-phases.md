@@ -13,6 +13,8 @@ deriveStartRequirements(state): StartRequirements
 
 State is opaque. Command, event, rejection, and view unions may gain variants through later phases. Tests use this seam, not internal handlers.
 
+`game-core` presents one interface. Lobby, setup, Hand, settlement, Tribute, tie-choice, Challenge Hand, view, and deterministic-randomness code may be internal modules; they do not create additional external seams.
+
 `game-core` depends only on `game-rules`. It does not know about sockets, SQL, authentication, revisions, presence, presets, Challenge Code lookup, clocks, or UI.
 
 Initial Room creation remains outside the Room executor. The creation path persists `RoomCreated`; `evolve(undefined, RoomCreated)` bootstraps state. There is no ordinary `CreateRoom` decision command.
