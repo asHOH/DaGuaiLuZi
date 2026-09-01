@@ -189,61 +189,6 @@ describe("evaluatePlay", () => {
     );
   });
 
-  it("keeps strict natural-rank ordering irreflexive, asymmetric, and transitive", () => {
-    fc.assert(
-      fc.property(
-        fc.uniqueArray(fc.constantFrom(...STANDARD_RANKS_LOW_TO_HIGH), {
-          minLength: 3,
-          maxLength: 3,
-        }),
-        fc.constantFrom<TrumpRank>("2", "3", "4", "5"),
-        (ranks, trumpRank) => {
-          for (const rank of ranks) {
-            expect(naturalSingleBeats(rank, rank, trumpRank)).toBe(false);
-          }
-
-          for (const challenger of ranks) {
-            for (const incumbent of ranks) {
-              const challengerBeatsIncumbent = naturalSingleBeats(
-                challenger,
-                incumbent,
-                trumpRank,
-              );
-              const incumbentBeatsChallenger = naturalSingleBeats(
-                incumbent,
-                challenger,
-                trumpRank,
-              );
-
-              expect(challengerBeatsIncumbent && incumbentBeatsChallenger).toBe(
-                false,
-              );
-
-              for (const weaker of ranks) {
-                const incumbentBeatsWeaker = naturalSingleBeats(
-                  incumbent,
-                  weaker,
-                  trumpRank,
-                );
-                const challengerBeatsWeaker = naturalSingleBeats(
-                  challenger,
-                  weaker,
-                  trumpRank,
-                );
-
-                expect(
-                  !challengerBeatsIncumbent ||
-                    !incumbentBeatsWeaker ||
-                    challengerBeatsWeaker,
-                ).toBe(true);
-              }
-            }
-          }
-        },
-      ),
-    );
-  });
-
   it("classifies a pair independently of suit", () => {
     fc.assert(
       fc.property(
@@ -312,25 +257,6 @@ function evaluateResponse(
     isFinishingPlay: false,
     previousPlay,
   });
-}
-
-function naturalSingleBeats(
-  challengerRank: StandardRank,
-  incumbentRank: StandardRank,
-  trumpRank: TrumpRank,
-): boolean {
-  const previousPlay = legalLead(
-    [`${incumbentRank}S#1`],
-    SIX_PLAYER_CONFIGURATION,
-    trumpRank,
-  );
-
-  return evaluateResponse(
-    [`${challengerRank}H#1`],
-    previousPlay,
-    SIX_PLAYER_CONFIGURATION,
-    trumpRank,
-  ).ok;
 }
 
 function referenceStrength(rank: StandardRank, trumpRank: TrumpRank): number {

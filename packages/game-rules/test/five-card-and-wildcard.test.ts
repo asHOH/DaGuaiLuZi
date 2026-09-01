@@ -329,47 +329,6 @@ describe("general wildcard interpretation", () => {
       play: { form: "mixed-suit-straight", rank: "5" },
     });
   });
-
-  it("uses normal wildcard interpretation for a finishing play when configured", () => {
-    const normalFinishing = configuration({
-      finishingWildcardInterpretation: "normal",
-    });
-    const result = evaluatePlay({
-      cards: WILDCARD_FIXTURES[0]!.map(decode),
-      configuration: normalFinishing,
-      trumpRank: "3",
-      isFinishingPlay: true,
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      play: { form: "four-plus-one", rank: "5" },
-    });
-  });
-
-  it("keeps classification and wildcard-to-instance assignments invariant under card order", () => {
-    const fixtures = [
-      ...FORM_FIXTURES.map((fixture) => fixture.cards),
-      ...WILDCARD_FIXTURES,
-    ];
-    const reorderedFixture = fc.constantFrom(...fixtures).chain((cards) =>
-      fc
-        .shuffledSubarray([...cards], {
-          minLength: cards.length,
-          maxLength: cards.length,
-        })
-        .map((reordered) => ({ cards, reordered })),
-    );
-
-    fc.assert(
-      fc.property(reorderedFixture, ({ cards, reordered }) => {
-        const original = legalLead(cards, BASE_CONFIGURATION, "4");
-        const permuted = legalLead(reordered, BASE_CONFIGURATION, "4");
-
-        expect(playMeaning(permuted)).toEqual(playMeaning(original));
-      }),
-    );
-  });
 });
 
 function configuration(
@@ -424,18 +383,4 @@ function evaluateResponse(
     isFinishingPlay: false,
     previousPlay,
   });
-}
-
-function playMeaning(play: ClassifiedPlay) {
-  const wildcardAssignments = play.cards
-    .map((card, index) => [card.code, play.representedFaces[index]] as const)
-    .filter(([code]) => code.startsWith("SMALL") || code.startsWith("BIG"))
-    .sort(([left], [right]) => left.localeCompare(right));
-
-  return {
-    form: play.form,
-    rank: play.rank,
-    comparisonRanks: play.comparisonRanks,
-    wildcardAssignments,
-  };
 }

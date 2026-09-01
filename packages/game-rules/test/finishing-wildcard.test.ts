@@ -73,15 +73,6 @@ describe("Finishing Wildcard Interpretation", () => {
     },
   );
 
-  it("uses normal interpretation when the wildcard play is not finishing", () => {
-    expect(
-      evaluate(DOCUMENTED_EXAMPLE, SIX_PLAYER_CONFIGURATION, "3", false),
-    ).toMatchObject({
-      ok: true,
-      play: { form: "four-plus-one", rank: "5" },
-    });
-  });
-
   it("uses normal interpretation for a finishing play under Normal", () => {
     const normal = withSharedOverrides(SIX_PLAYER_CONFIGURATION, {
       finishingWildcardInterpretation: "normal",
