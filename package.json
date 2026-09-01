@@ -7,14 +7,16 @@
   },
   "scripts": {
     "build": "pnpm --recursive --if-present run build",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm format:check && pnpm build && pnpm lint && pnpm typecheck:workspace && pnpm test:workspace",
     "fix": "pnpm lint:fix && pnpm format",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives",
     "lint:fix": "oxlint --fix --deny-warnings --report-unused-disable-directives",
-    "test": "pnpm --recursive --if-present run test",
-    "typecheck": "pnpm --recursive --if-present run typecheck"
+    "test": "pnpm build && pnpm test:workspace",
+    "test:workspace": "pnpm --recursive --if-present run test",
+    "typecheck": "pnpm build && pnpm typecheck:workspace",
+    "typecheck:workspace": "pnpm --recursive --if-present run typecheck"
   },
   "devDependencies": {
     "fast-check": "4.9.0",
