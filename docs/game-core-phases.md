@@ -41,7 +41,15 @@ Presence never enters `game-core`. Private Hand-start events contain the Hand Se
 - Implement membership, owner transfer, seats, readiness, Match Rules Configuration, Seating Policy, and Match selection.
 - Enforce Ruleset cardinality and Ruleset-change behavior.
 - Defer Challenge selection.
+- `RoomCreated` carries the Room ID, owner, complete initial Match Rules Configuration, and Seating Policy; it creates the owner's membership at join order `0` with no seat, readiness, or selected activity.
+- Commands cover join, leave, seat assignment/removal, readiness, complete Match Rules Configuration replacement, Seating Policy replacement, and Match selection. Every command carries its acting Player Account; only members act, except that a Player Account joins itself.
+- Accepted facts are explicit events. Owner departure emits membership removal plus ownership transfer to the remaining member with the lowest join order; the sole remaining owner cannot leave in this phase. A rejoin receives the next monotonic join order.
+- Membership cannot exceed the effective Ruleset's player count. Seat indices come from `game-rules` metadata; one member occupies at most one seat and assigning another seat moves that member atomically. Only seated members may become ready.
+- A `4p2d → 6p3d` change preserves seats `0..3`. A `6p3d → 4p2d` change is rejected with five or more members, preserves assignments when every occupied index is `0..3`, and otherwise clears all assignments. Every effective-Ruleset change clears readiness; no other lobby mutation does.
+- `derivePlayerView` exposes the complete non-secret lobby state without exposing authoritative state. `deriveStartRequirements` returns the ordered seated Player Account IDs only when a Match is selected, every required seat is occupied, and every occupant is ready; otherwise it returns no requirements.
+- Reject invalid authority, membership, capacity, seat, readiness, lifecycle, and no-change commands without events. Serialization seams validate command and configuration shapes; `evolve` applies supported facts without legality decisions.
 - Gate: event replay reconstructs identical state; complete 4p2d and 6p3d Match-lobby flows pass.
+- Tests also compare incremental folding with full event replay, cover owner departure and rejoin order, and exercise both directions of Ruleset change.
 
 ### 2. Deterministic Match start
 

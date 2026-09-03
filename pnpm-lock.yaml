@@ -33,6 +33,12 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(vite@8.2.2(yaml@2.9.0))
 
+  packages/game-core:
+    dependencies:
+      '@dglz/game-rules':
+        specifier: workspace:*
+        version: link:../game-rules
+
   packages/game-rules: {}
 
 packages:
