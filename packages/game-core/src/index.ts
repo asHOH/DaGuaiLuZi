@@ -1,8 +1,15 @@
 import {
   decodeCardInstance,
+  evaluatePlay,
+  hasAutomaticResponseClosure,
   RULESET_DEFINITIONS,
   type CardInstance,
+  type CardFaceCode,
   type CardInstanceCode,
+  type ClassifiedPlay,
+  type PlayForm,
+  type PlayRank,
+  type PlayRejectionReason,
   type RulesConfiguration,
   type RulesetId,
   type TrumpRank,
@@ -108,6 +115,49 @@ export type MatchStarted = Readonly<{
   failureCounters: FailureCounters;
 }>;
 
+export type CardsPlayed = Readonly<{
+  type: "CardsPlayed";
+  playerId: PlayerAccountId;
+  seatIndex: SeatIndex;
+  cards: readonly CardInstanceCode[];
+  form: PlayForm;
+  rank: PlayRank;
+  representedFaces: readonly CardFaceCode[];
+  comparisonRanks: readonly PlayRank[];
+}>;
+
+export type PlayerPassed = Readonly<{
+  type: "PlayerPassed";
+  playerId: PlayerAccountId;
+  seatIndex: SeatIndex;
+}>;
+
+export type PlayerFinished = Readonly<{
+  type: "PlayerFinished";
+  playerId: PlayerAccountId;
+  seatIndex: SeatIndex;
+  finishPosition: number;
+}>;
+
+export type TurnAdvanced = Readonly<{
+  type: "TurnAdvanced";
+  seatIndex: SeatIndex;
+}>;
+
+export type LeadReset = Readonly<{
+  type: "LeadReset";
+  seatIndex: SeatIndex;
+}>;
+
+export type HandResultDetermined = Readonly<{
+  type: "HandResultDetermined";
+  outcome: "win" | "draw";
+  firstFinisherTeam: TeamIndex;
+  winningTeam?: TeamIndex;
+  nextDealerTeam: TeamIndex;
+  caughtPlayerIds: readonly PlayerAccountId[];
+}>;
+
 export type Event =
   | RoomCreated
   | MemberJoined
@@ -121,7 +171,13 @@ export type Event =
   | MatchRulesConfigurationReplaced
   | SeatingPolicyReplaced
   | MatchSelected
-  | MatchStarted;
+  | MatchStarted
+  | CardsPlayed
+  | PlayerPassed
+  | PlayerFinished
+  | TurnAdvanced
+  | LeadReset
+  | HandResultDetermined;
 
 export type JoinRoom = Readonly<{
   type: "JoinRoom";
@@ -175,6 +231,17 @@ export type StartMatch = Readonly<{
   shuffleVersion: ShuffleVersion;
 }>;
 
+export type Play = Readonly<{
+  type: "Play";
+  playerId: PlayerAccountId;
+  cards: readonly CardInstanceCode[];
+}>;
+
+export type Pass = Readonly<{
+  type: "Pass";
+  playerId: PlayerAccountId;
+}>;
+
 export type Command =
   | JoinRoom
   | LeaveRoom
@@ -184,7 +251,9 @@ export type Command =
   | ReplaceMatchRulesConfiguration
   | ReplaceSeatingPolicy
   | SelectMatch
-  | StartMatch;
+  | StartMatch
+  | Play
+  | Pass;
 
 export type RejectionReason =
   | "room-not-created"
@@ -207,7 +276,13 @@ export type RejectionReason =
   | "match-rules-configuration-locked"
   | "seating-policy-locked"
   | "start-requirements-not-met"
-  | "invalid-hand-seed";
+  | "invalid-hand-seed"
+  | "room-not-active"
+  | "hand-result-determined"
+  | "not-current-player"
+  | "card-not-in-hand"
+  | "pass-on-open-lead"
+  | PlayRejectionReason;
 
 export type Rejection = Readonly<{
   reason: RejectionReason;
@@ -232,6 +307,24 @@ export type PlayerViewSeat = Readonly<{
   playerId: PlayerAccountId | undefined;
 }>;
 
+export type PlayerViewPlay = Readonly<{
+  playerId: PlayerAccountId;
+  seatIndex: SeatIndex;
+  cards: readonly CardInstanceCode[];
+  form: PlayForm;
+  rank: PlayRank;
+  representedFaces: readonly CardFaceCode[];
+  comparisonRanks: readonly PlayRank[];
+}>;
+
+export type PlayerViewHandResult = Readonly<{
+  outcome: "win" | "draw";
+  firstFinisherTeam: TeamIndex;
+  winningTeam?: TeamIndex;
+  nextDealerTeam: TeamIndex;
+  caughtPlayerIds: readonly PlayerAccountId[];
+}>;
+
 export type PlayerView = Readonly<{
   roomId: RoomId;
   lifecycle: Lifecycle;
@@ -250,6 +343,12 @@ export type PlayerView = Readonly<{
   failureCounters?: FailureCounters;
   handSizes?: readonly number[];
   hand?: readonly CardInstanceCode[];
+  currentActor?: PlayerAccountId;
+  currentActorSeat?: SeatIndex;
+  unbeatenPlay?: PlayerViewPlay;
+  passedPlayerIds?: readonly PlayerAccountId[];
+  finishPositions?: readonly (number | undefined)[];
+  handResult?: PlayerViewHandResult;
 }>;
 
 declare const STATE_BRAND: unique symbol;
@@ -274,6 +373,20 @@ type PlayerHand = Readonly<{
   cards: readonly CardInstance[];
 }>;
 
+type ActivePlay = Readonly<{
+  playerId: PlayerAccountId;
+  seatIndex: SeatIndex;
+  play: ClassifiedPlay;
+}>;
+
+type ActiveHand = Readonly<{
+  currentActorSeat: SeatIndex;
+  unbeatenPlay: ActivePlay | undefined;
+  passedSeats: readonly SeatIndex[];
+  finishPositions: readonly (number | undefined)[];
+  result: HandResultDetermined | undefined;
+}>;
+
 type ActiveMatch = Readonly<{
   dealerSeat: SeatIndex;
   dealerTeam: TeamIndex;
@@ -281,6 +394,7 @@ type ActiveMatch = Readonly<{
   trumpRank: TrumpRank;
   failureCounters: FailureCounters;
   hands: readonly PlayerHand[];
+  hand: ActiveHand;
 }>;
 
 type InternalState = {
@@ -350,6 +464,40 @@ function makeState(value: InternalState): State {
             playerId: hand.playerId,
             cards: [...hand.cards],
           })),
+          hand: {
+            ...value.activeMatch.hand,
+            passedSeats: [...value.activeMatch.hand.passedSeats],
+            finishPositions: [...value.activeMatch.hand.finishPositions],
+            result:
+              value.activeMatch.hand.result === undefined
+                ? undefined
+                : {
+                    ...value.activeMatch.hand.result,
+                    caughtPlayerIds: [
+                      ...value.activeMatch.hand.result.caughtPlayerIds,
+                    ],
+                  },
+            unbeatenPlay:
+              value.activeMatch.hand.unbeatenPlay === undefined
+                ? undefined
+                : {
+                    ...value.activeMatch.hand.unbeatenPlay,
+                    play: {
+                      ...value.activeMatch.hand.unbeatenPlay.play,
+                      cards: [
+                        ...value.activeMatch.hand.unbeatenPlay.play.cards,
+                      ],
+                      representedFaces: [
+                        ...value.activeMatch.hand.unbeatenPlay.play
+                          .representedFaces,
+                      ],
+                      comparisonRanks: [
+                        ...value.activeMatch.hand.unbeatenPlay.play
+                          .comparisonRanks,
+                      ],
+                    },
+                  },
+          },
         };
 
   return deepFreeze({
@@ -393,6 +541,19 @@ function cloneEvent(event: Event): Event {
       teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
       failureCounters: [...event.failureCounters] as [number, number],
     };
+  }
+
+  if (event.type === "CardsPlayed") {
+    return {
+      ...event,
+      cards: [...event.cards],
+      representedFaces: [...event.representedFaces],
+      comparisonRanks: [...event.comparisonRanks],
+    };
+  }
+
+  if (event.type === "HandResultDetermined") {
+    return { ...event, caughtPlayerIds: [...event.caughtPlayerIds] };
   }
 
   return event;
@@ -638,6 +799,286 @@ function decideStartMatch(state: InternalState, command: StartMatch): Decision {
   ]);
 }
 
+function handAtSeat(
+  activeMatch: ActiveMatch,
+  seatIndex: SeatIndex,
+): PlayerHand | undefined {
+  return activeMatch.hands[seatIndex];
+}
+
+function nextUnfinishedSeat(
+  activeMatch: ActiveMatch,
+  fromSeat: SeatIndex,
+  hands: readonly PlayerHand[] = activeMatch.hands,
+): SeatIndex | undefined {
+  for (let offset = 1; offset <= hands.length; offset += 1) {
+    const seatIndex = (fromSeat + offset) % hands.length;
+    const hand = hands[seatIndex];
+    if (hand !== undefined && hand.cards.length > 0) {
+      return seatIndex;
+    }
+  }
+
+  return undefined;
+}
+
+function playerAtSeat(
+  activeMatch: ActiveMatch,
+  seatIndex: SeatIndex,
+): PlayerAccountId | undefined {
+  return handAtSeat(activeMatch, seatIndex)?.playerId;
+}
+
+function resolveCardsFromHand(
+  codes: readonly CardInstanceCode[],
+  hand: PlayerHand,
+):
+  | Readonly<{ ok: true; cards: readonly CardInstance[] }>
+  | Readonly<{ ok: false; reason: "card-not-in-hand" }> {
+  const cards: CardInstance[] = [];
+  for (const code of codes) {
+    const card = hand.cards.find((candidate) => candidate.code === code);
+    if (card === undefined) {
+      return { ok: false, reason: "card-not-in-hand" };
+    }
+    cards.push(card);
+  }
+  return { ok: true, cards };
+}
+
+function remainingHands(
+  activeMatch: ActiveMatch,
+  seatIndex: SeatIndex,
+  playedCodes: ReadonlySet<CardInstanceCode>,
+): PlayerHand[] {
+  return activeMatch.hands.map((hand, index) =>
+    index === seatIndex
+      ? {
+          playerId: hand.playerId,
+          cards: hand.cards.filter((card) => !playedCodes.has(card.code)),
+        }
+      : { playerId: hand.playerId, cards: [...hand.cards] },
+  );
+}
+
+function serializePlayed(
+  playerId: PlayerAccountId,
+  seatIndex: SeatIndex,
+  play: ClassifiedPlay,
+): CardsPlayed {
+  return {
+    type: "CardsPlayed",
+    playerId,
+    seatIndex,
+    cards: play.cards.map((card) => card.code),
+    form: play.form,
+    rank: play.rank,
+    representedFaces: [...play.representedFaces],
+    comparisonRanks: [...play.comparisonRanks],
+  };
+}
+
+function teamFinished(hands: readonly PlayerHand[], team: TeamIndex): boolean {
+  return hands.every(
+    (hand, seatIndex) => seatIndex % 2 !== team || hand.cards.length === 0,
+  );
+}
+
+function resultAfterFinish(
+  hands: readonly PlayerHand[],
+  finishPositions: readonly (number | undefined)[],
+): HandResultDetermined | undefined {
+  const firstFinisherSeat = finishPositions.findIndex(
+    (position) => position === 1,
+  );
+  if (firstFinisherSeat < 0) {
+    return undefined;
+  }
+
+  const firstFinisherTeam = (firstFinisherSeat % 2) as TeamIndex;
+  if (teamFinished(hands, firstFinisherTeam)) {
+    return {
+      type: "HandResultDetermined",
+      outcome: "win",
+      firstFinisherTeam,
+      winningTeam: firstFinisherTeam,
+      nextDealerTeam: firstFinisherTeam,
+      caughtPlayerIds: hands
+        .filter(
+          (hand, seatIndex) =>
+            seatIndex % 2 !== firstFinisherTeam && hand.cards.length > 0,
+        )
+        .map((hand) => hand.playerId),
+    };
+  }
+
+  const otherTeam = (1 - firstFinisherTeam) as TeamIndex;
+  if (!teamFinished(hands, otherTeam)) {
+    return undefined;
+  }
+
+  return {
+    type: "HandResultDetermined",
+    outcome: "draw",
+    firstFinisherTeam,
+    nextDealerTeam: firstFinisherTeam,
+    caughtPlayerIds: [],
+  };
+}
+
+function responseCircuitComplete(
+  activeMatch: ActiveMatch,
+  activeHand: ActiveHand,
+  passedSeats: readonly SeatIndex[],
+): boolean {
+  const unbeatenSeat = activeHand.unbeatenPlay?.seatIndex;
+  if (unbeatenSeat === undefined) {
+    return false;
+  }
+
+  return activeMatch.hands.every(
+    (hand, seatIndex) =>
+      seatIndex === unbeatenSeat ||
+      hand.cards.length === 0 ||
+      passedSeats.includes(seatIndex),
+  );
+}
+
+function decidePlay(state: InternalState, command: Play): Decision {
+  if (state.lifecycle !== "ACTIVE" || state.activeMatch === undefined) {
+    return rejected("room-not-active");
+  }
+
+  const activeMatch = state.activeMatch;
+  const activeHand = activeMatch.hand;
+  if (findMember(state, command.playerId) === undefined) {
+    return rejected("not-a-member");
+  }
+  if (activeHand.result !== undefined) {
+    return rejected("hand-result-determined");
+  }
+
+  const seatIndex = activeHand.currentActorSeat;
+  const hand = handAtSeat(activeMatch, seatIndex);
+  if (hand?.playerId !== command.playerId) {
+    return rejected("not-current-player");
+  }
+
+  const cardsResult = resolveCardsFromHand(command.cards, hand);
+  if (!cardsResult.ok) {
+    return rejected(cardsResult.reason);
+  }
+
+  const playResult = evaluatePlay({
+    cards: cardsResult.cards,
+    configuration: state.rulesConfiguration,
+    trumpRank: activeMatch.trumpRank,
+    isFinishingPlay: cardsResult.cards.length === hand.cards.length,
+    ...(activeHand.unbeatenPlay === undefined
+      ? {}
+      : { previousPlay: activeHand.unbeatenPlay.play }),
+  });
+  if (!playResult.ok) {
+    return rejected(playResult.reason);
+  }
+
+  const play = playResult.play;
+  const playedCodes = new Set(play.cards.map((card) => card.code));
+  const hands = remainingHands(activeMatch, seatIndex, playedCodes);
+  const events: Event[] = [serializePlayed(command.playerId, seatIndex, play)];
+  const remainingHand = hands[seatIndex];
+  if (remainingHand === undefined) {
+    throw new Error("Current player hand disappeared");
+  }
+
+  const finishing = remainingHand.cards.length === 0;
+  let finishPositions = [...activeHand.finishPositions];
+  if (finishing) {
+    const finishPosition =
+      finishPositions.filter((position) => position !== undefined).length + 1;
+    finishPositions[seatIndex] = finishPosition;
+    events.push({
+      type: "PlayerFinished",
+      playerId: command.playerId,
+      seatIndex,
+      finishPosition,
+    });
+  }
+
+  const result = resultAfterFinish(hands, finishPositions);
+  if (result !== undefined) {
+    events.push(result);
+    return accepted(events);
+  }
+
+  if (hasAutomaticResponseClosure(play)) {
+    const leadSeat = finishing
+      ? nextUnfinishedSeat(activeMatch, seatIndex, hands)
+      : seatIndex;
+    if (leadSeat === undefined) {
+      throw new Error("No unfinished player remains after automatic closure");
+    }
+    events.push({ type: "LeadReset", seatIndex: leadSeat });
+    return accepted(events);
+  }
+
+  const nextSeat = nextUnfinishedSeat(activeMatch, seatIndex, hands);
+  if (nextSeat !== undefined) {
+    events.push({ type: "TurnAdvanced", seatIndex: nextSeat });
+  }
+  return accepted(events);
+}
+
+function decidePass(state: InternalState, command: Pass): Decision {
+  if (state.lifecycle !== "ACTIVE" || state.activeMatch === undefined) {
+    return rejected("room-not-active");
+  }
+
+  const activeMatch = state.activeMatch;
+  const activeHand = activeMatch.hand;
+  if (findMember(state, command.playerId) === undefined) {
+    return rejected("not-a-member");
+  }
+  if (activeHand.result !== undefined) {
+    return rejected("hand-result-determined");
+  }
+
+  const seatIndex = activeHand.currentActorSeat;
+  const hand = handAtSeat(activeMatch, seatIndex);
+  if (hand?.playerId !== command.playerId) {
+    return rejected("not-current-player");
+  }
+  if (activeHand.unbeatenPlay === undefined) {
+    return rejected("pass-on-open-lead");
+  }
+
+  const passedSeats = activeHand.passedSeats.includes(seatIndex)
+    ? [...activeHand.passedSeats]
+    : [...activeHand.passedSeats, seatIndex];
+  const events: Event[] = [
+    { type: "PlayerPassed", playerId: command.playerId, seatIndex },
+  ];
+
+  if (responseCircuitComplete(activeMatch, activeHand, passedSeats)) {
+    const unbeatenSeat = activeHand.unbeatenPlay.seatIndex;
+    const leadSeat =
+      handAtSeat(activeMatch, unbeatenSeat)?.cards.length === 0
+        ? nextUnfinishedSeat(activeMatch, unbeatenSeat)
+        : unbeatenSeat;
+    if (leadSeat === undefined) {
+      throw new Error("No unfinished player remains after lead reset");
+    }
+    events.push({ type: "LeadReset", seatIndex: leadSeat });
+    return accepted(events);
+  }
+
+  const nextSeat = nextUnfinishedSeat(activeMatch, seatIndex);
+  if (nextSeat !== undefined) {
+    events.push({ type: "TurnAdvanced", seatIndex: nextSeat });
+  }
+  return accepted(events);
+}
+
 export function decide(state: State | undefined, command: Command): Decision {
   if (command.type === "JoinRoom") {
     if (state === undefined) {
@@ -673,6 +1114,20 @@ export function decide(state: State | undefined, command: Command): Decision {
       return rejected("room-not-created");
     }
     return decideStartMatch(readState(state), command);
+  }
+
+  if (command.type === "Play") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decidePlay(readState(state), command);
+  }
+
+  if (command.type === "Pass") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decidePass(readState(state), command);
   }
 
   const membershipRejection = requireLobbyMember(
@@ -959,9 +1414,144 @@ export function evolve(state: State | undefined, event: Event): State {
           trumpRank: event.trumpRank,
           failureCounters: [...event.failureCounters] as [number, number],
           hands: dealHands(event),
+          hand: {
+            currentActorSeat: event.dealerSeat,
+            unbeatenPlay: undefined,
+            passedSeats: [],
+            finishPositions: Array(event.playerIds.length).fill(undefined),
+            result: undefined,
+          },
         },
       });
     }
+
+    case "CardsPlayed": {
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+
+      const playedCodes = new Set(event.cards);
+      const hands = current.activeMatch.hands.map((hand, seatIndex) =>
+        seatIndex === event.seatIndex
+          ? {
+              playerId: hand.playerId,
+              cards: hand.cards.filter((card) => !playedCodes.has(card.code)),
+            }
+          : { playerId: hand.playerId, cards: [...hand.cards] },
+      );
+      const decodedCards = event.cards.map((code) => {
+        const decoded = decodeCardInstance(code);
+        if (!decoded.ok) {
+          throw new Error("CardsPlayed contains an invalid card instance");
+        }
+        return decoded.card;
+      });
+      const activePlay: ActivePlay = {
+        playerId: event.playerId,
+        seatIndex: event.seatIndex,
+        play: {
+          cards: decodedCards,
+          representedFaces: [...event.representedFaces],
+          comparisonRanks: [...event.comparisonRanks],
+          cardCount: event.cards.length as 1 | 2 | 3 | 5,
+          form: event.form,
+          rank: event.rank,
+        },
+      };
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hands,
+          hand: {
+            ...current.activeMatch.hand,
+            unbeatenPlay: activePlay,
+            passedSeats: [],
+          },
+        },
+      });
+    }
+
+    case "PlayerPassed":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            passedSeats: current.activeMatch.hand.passedSeats.includes(
+              event.seatIndex,
+            )
+              ? [...current.activeMatch.hand.passedSeats]
+              : [...current.activeMatch.hand.passedSeats, event.seatIndex],
+          },
+        },
+      });
+
+    case "PlayerFinished":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            finishPositions: current.activeMatch.hand.finishPositions.map(
+              (position, seatIndex) =>
+                seatIndex === event.seatIndex ? event.finishPosition : position,
+            ),
+          },
+        },
+      });
+
+    case "TurnAdvanced":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            currentActorSeat: event.seatIndex,
+          },
+        },
+      });
+
+    case "LeadReset":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            currentActorSeat: event.seatIndex,
+            unbeatenPlay: undefined,
+            passedSeats: [],
+          },
+        },
+      });
+
+    case "HandResultDetermined":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: { ...current.activeMatch.hand, result: event },
+        },
+      });
   }
 }
 
@@ -1001,6 +1591,12 @@ export function derivePlayerView(
     const ownHand = current.activeMatch.hands.find(
       (hand) => hand.playerId === playerId,
     );
+    const activeHand = current.activeMatch.hand;
+    const currentActor = playerAtSeat(
+      current.activeMatch,
+      activeHand.currentActorSeat,
+    );
+    const unbeatenPlay = activeHand.unbeatenPlay;
     return deepFreeze({
       ...view,
       dealerSeat: current.activeMatch.dealerSeat,
@@ -1013,6 +1609,44 @@ export function derivePlayerView(
       ],
       handSizes: current.activeMatch.hands.map((hand) => hand.cards.length),
       hand: ownHand === undefined ? [] : ownHand.cards.map((card) => card.code),
+      ...(activeHand.result !== undefined || currentActor === undefined
+        ? {}
+        : {
+            currentActor,
+            currentActorSeat: activeHand.currentActorSeat,
+          }),
+      ...(unbeatenPlay === undefined
+        ? {}
+        : {
+            unbeatenPlay: {
+              playerId: unbeatenPlay.playerId,
+              seatIndex: unbeatenPlay.seatIndex,
+              cards: unbeatenPlay.play.cards.map((card) => card.code),
+              form: unbeatenPlay.play.form,
+              rank: unbeatenPlay.play.rank,
+              representedFaces: [...unbeatenPlay.play.representedFaces],
+              comparisonRanks: [...unbeatenPlay.play.comparisonRanks],
+            },
+          }),
+      passedPlayerIds: activeHand.passedSeats
+        .map((seatIndex) => playerAtSeat(current.activeMatch!, seatIndex))
+        .filter(
+          (candidate): candidate is PlayerAccountId => candidate !== undefined,
+        ),
+      finishPositions: [...activeHand.finishPositions],
+      ...(activeHand.result === undefined
+        ? {}
+        : {
+            handResult: {
+              outcome: activeHand.result.outcome,
+              firstFinisherTeam: activeHand.result.firstFinisherTeam,
+              ...(activeHand.result.winningTeam === undefined
+                ? {}
+                : { winningTeam: activeHand.result.winningTeam }),
+              nextDealerTeam: activeHand.result.nextDealerTeam,
+              caughtPlayerIds: [...activeHand.result.caughtPlayerIds],
+            },
+          }),
     });
   }
 

@@ -78,7 +78,17 @@ Presence never enters `game-core`. Private Hand-start events contain the Hand Se
 - Delegate combination legality and Automatic Response Closure to `game-rules`.
 - Emit no synthetic Passes for Automatic Response Closure.
 - Determine winning or drawn Hand result facts.
+- Add member-authored `Play` and `Pass` commands. `Play` carries canonical Card Instance codes; `game-core` resolves them only from the actor's current hand, supplies the active Rules Configuration, Trump Rank, finishing status, and unbeaten play to `game-rules`, and returns its rejection reason unchanged.
+- Add serialized `CardsPlayed`, `PlayerPassed`, `PlayerFinished`, `TurnAdvanced`, `LeadReset`, and `HandResultDetermined` facts. A played-card fact records Card Instance codes plus the chosen form, rank, represented faces, and comparison ranks; persisted events never contain decoded card objects.
+- Treat increasing seat indices modulo player count as counter-clockwise order. The dealer acts first. Only the current unfinished player acts; Pass is invalid on an open lead.
+- A legal play removes exactly those Card Instances, becomes the unbeaten play, and clears passes from the prior response circuit. A Pass belongs only to the current unbeaten play. Finished players are skipped.
+- After every Pass, reset the lead once every other seat relative to the unbeaten player has passed or finished. The unbeaten player leads again if unfinished; otherwise the next unfinished player counter-clockwise from that seat leads.
+- After a legal Automatic Response Closure pattern, reset immediately when the Hand continues. Emit `CardsPlayed` and `LeadReset` only, plus `PlayerFinished` when applicable; never synthesize `PlayerPassed` facts or inspect hidden hands.
+- Assign 1-based Finish Positions as hands empty. After each new finisher, end the Hand when either alternating-seat team has finished. If it is the first finisher's team, record a win and every unfinished opponent as caught; otherwise record a draw with nobody caught. The first finisher's team is recorded as the next Dealer Team in either result.
+- Phase 3 records the Hand result and stops accepting actions but does not yet advance Team Levels, failure counters, Dealer Team, lifecycle, or Match outcome; Phase 4 extends the same finishing-command event batch with settlement facts.
+- Player views expose the current actor, unbeaten serialized play, current-circuit passes, Finish Positions, public Hand result, and per-seat hand sizes. Only the requesting player's remaining Card Instance codes are visible; the Hand Seed and opponents' cards remain absent.
 - Gate: complete first-Hand scenarios and generated turn/card-conservation invariants pass for both Rulesets.
+- Tests cover leads, stronger responses, passes, re-entry after a new response, ordinary and automatic lead resets, finishing Wildcard interpretation, finished-player skipping, win and draw facts, rejection paths, full replay, and player-specific visibility. Generated legal-single scenarios conserve every Card Instance across remaining hands plus played facts and keep each accepted action on the current unfinished player.
 
 ### 4. Match settlement
 
