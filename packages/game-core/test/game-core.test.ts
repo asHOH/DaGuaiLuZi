@@ -100,6 +100,8 @@ describe("game-core lobby seam", () => {
       ],
       rulesConfiguration: SIX_PLAYER_CONFIGURATION,
       seatingPolicy: "fixed",
+      matchRulesConfigurationLocked: false,
+      seatingPolicyLocked: false,
       selectedActivity: undefined,
     });
     expect(deriveStartRequirements(state)).toBeUndefined();

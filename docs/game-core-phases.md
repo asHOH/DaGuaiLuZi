@@ -61,7 +61,16 @@ Presence never enters `game-core`. Private Hand-start events contain the Hand Se
 - Permanently lock Match Rules Configuration and Seating Policy when the first Match starts.
 - Record all reproducibility inputs in private Hand-start events.
 - Hide opponents' cards in player views.
+- Add an internal `StartMatch` command carrying the fresh Hand Seed plus supported randomness and shuffle versions. It has no Player Account actor and revalidates the same durable conditions as `deriveStartRequirements`; presence remains external.
+- Accept start as one `MatchStarted` event containing the Ruleset, resolved Rules Configuration, Seating Policy, Hand Seed, algorithm versions, resolved seat-ordered Player Accounts, dealer seat, Dealer Team, initial Team Levels `[2, 2]`, Trump Rank `2`, and Team-Level-`5` failure counters `[0, 0]`. Do not persist a duplicate deal in the event.
+- Support only `dglz-random-v1` and `dglz-shuffle-v1`. Random v1 derives a separate SplitMix64 stream for each UTF-8 `Hand Seed / Ruleset ID / domain` tuple using FNV-1a-64; bounded choices use rejection sampling. Shuffle v1 is descending Fisher–Yates.
+- Use domains `seating`, `initial-dealer`, and `deck`. Fixed Seating preserves lobby seat order; Randomized Seating uniformly permutes those Player Accounts. Dealer selection is an independent uniform seat choice, and alternating seat parity identifies the Dealer Team.
+- Build each physical deck in `2..A` rank order, `S/H/D/C` suit order, then `SMALL/BIG`, with deck copy number outermost. Shuffle the combined deck and deal round-robin in seat-index order; both Rulesets yield 27 Card Instances per player.
+- `evolve(MatchStarted)` deterministically reconstructs hands from the event inputs, installs resolved seats and initial Match facts, changes lifecycle to `ACTIVE`, and locks Match Rules Configuration and Seating Policy. Active-Room lobby commands reject without events; start cannot repeat.
+- Active player views expose public initial Match facts, every hand size, and only the requesting Player Account's Card Instances. They never expose the Hand Seed, algorithm versions, or opponents' cards. Active state yields no start requirements.
+- No first-Hand Rule Variant requires another seeded choice. Add further domains only in the phase that needs them.
 - Gate: identical inputs reproduce identical events and deals; lifecycle locks, card conservation, and seating-permutation invariants pass.
+- Tests use fixed fixtures plus generated seeds to prove deterministic replay, exact card conservation, 27-card hands, valid randomized permutations, fixed-seat preservation, domain independence, start revalidation, active locks, and player-specific visibility for both Rulesets.
 
 ### 3. Active Hand play
 

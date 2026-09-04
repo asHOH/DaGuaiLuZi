@@ -1,7 +1,11 @@
 import {
+  decodeCardInstance,
   RULESET_DEFINITIONS,
+  type CardInstance,
+  type CardInstanceCode,
   type RulesConfiguration,
   type RulesetId,
+  type TrumpRank,
 } from "@dglz/game-rules";
 
 export type RoomId = string;
@@ -13,6 +17,16 @@ export type Lifecycle =
 
 export type SeatingPolicy = "fixed" | "randomized";
 export type SelectedActivity = "match";
+export type TeamIndex = 0 | 1;
+export type TeamLevel = "2" | "3" | "4" | "5" | "6";
+export type TeamLevels = readonly [TeamLevel, TeamLevel];
+export type FailureCounters = readonly [number, number];
+export type HandSeed = string;
+
+export const RANDOMNESS_VERSION = "dglz-random-v1" as const;
+export const SHUFFLE_VERSION = "dglz-shuffle-v1" as const;
+export type RandomnessVersion = typeof RANDOMNESS_VERSION;
+export type ShuffleVersion = typeof SHUFFLE_VERSION;
 
 export type RoomCreated = Readonly<{
   type: "RoomCreated";
@@ -78,6 +92,22 @@ export type MatchSelected = Readonly<{
   type: "MatchSelected";
 }>;
 
+export type MatchStarted = Readonly<{
+  type: "MatchStarted";
+  rulesetId: RulesetId;
+  rulesConfiguration: RulesConfiguration;
+  seatingPolicy: SeatingPolicy;
+  handSeed: HandSeed;
+  randomnessVersion: RandomnessVersion;
+  shuffleVersion: ShuffleVersion;
+  playerIds: readonly PlayerAccountId[];
+  dealerSeat: SeatIndex;
+  dealerTeam: TeamIndex;
+  teamLevels: TeamLevels;
+  trumpRank: TrumpRank;
+  failureCounters: FailureCounters;
+}>;
+
 export type Event =
   | RoomCreated
   | MemberJoined
@@ -90,7 +120,8 @@ export type Event =
   | SeatAssignmentsCleared
   | MatchRulesConfigurationReplaced
   | SeatingPolicyReplaced
-  | MatchSelected;
+  | MatchSelected
+  | MatchStarted;
 
 export type JoinRoom = Readonly<{
   type: "JoinRoom";
@@ -136,6 +167,14 @@ export type SelectMatch = Readonly<{
   playerId: PlayerAccountId;
 }>;
 
+/** Internal command submitted by the Room executor after its external presence check. */
+export type StartMatch = Readonly<{
+  type: "StartMatch";
+  handSeed: HandSeed;
+  randomnessVersion: RandomnessVersion;
+  shuffleVersion: ShuffleVersion;
+}>;
+
 export type Command =
   | JoinRoom
   | LeaveRoom
@@ -144,7 +183,8 @@ export type Command =
   | SetReadiness
   | ReplaceMatchRulesConfiguration
   | ReplaceSeatingPolicy
-  | SelectMatch;
+  | SelectMatch
+  | StartMatch;
 
 export type RejectionReason =
   | "room-not-created"
@@ -163,7 +203,11 @@ export type RejectionReason =
   | "ruleset-change-would-exceed-capacity"
   | "rules-configuration-unchanged"
   | "seating-policy-unchanged"
-  | "match-already-selected";
+  | "match-already-selected"
+  | "match-rules-configuration-locked"
+  | "seating-policy-locked"
+  | "start-requirements-not-met"
+  | "invalid-hand-seed";
 
 export type Rejection = Readonly<{
   reason: RejectionReason;
@@ -196,7 +240,16 @@ export type PlayerView = Readonly<{
   seats: readonly PlayerViewSeat[];
   rulesConfiguration: RulesConfiguration;
   seatingPolicy: SeatingPolicy;
+  matchRulesConfigurationLocked: boolean;
+  seatingPolicyLocked: boolean;
   selectedActivity: SelectedActivity | undefined;
+  dealerSeat?: SeatIndex;
+  dealerTeam?: TeamIndex;
+  teamLevels?: TeamLevels;
+  trumpRank?: TrumpRank;
+  failureCounters?: FailureCounters;
+  handSizes?: readonly number[];
+  hand?: readonly CardInstanceCode[];
 }>;
 
 declare const STATE_BRAND: unique symbol;
@@ -216,6 +269,20 @@ type Seat = Readonly<{
   playerId: PlayerAccountId;
 }>;
 
+type PlayerHand = Readonly<{
+  playerId: PlayerAccountId;
+  cards: readonly CardInstance[];
+}>;
+
+type ActiveMatch = Readonly<{
+  dealerSeat: SeatIndex;
+  dealerTeam: TeamIndex;
+  teamLevels: TeamLevels;
+  trumpRank: TrumpRank;
+  failureCounters: FailureCounters;
+  hands: readonly PlayerHand[];
+}>;
+
 type InternalState = {
   roomId: RoomId;
   lifecycle: Lifecycle;
@@ -225,8 +292,11 @@ type InternalState = {
   readyPlayerIds: readonly PlayerAccountId[];
   rulesConfiguration: RulesConfiguration;
   seatingPolicy: SeatingPolicy;
+  matchRulesConfigurationLocked: boolean;
+  seatingPolicyLocked: boolean;
   selectedActivity: SelectedActivity | undefined;
   nextJoinOrder: number;
+  activeMatch: ActiveMatch | undefined;
 };
 
 function cloneRulesConfiguration(
@@ -263,12 +333,32 @@ function deepFreeze<T>(value: T): T {
 }
 
 function makeState(value: InternalState): State {
+  const activeMatch =
+    value.activeMatch === undefined
+      ? undefined
+      : {
+          ...value.activeMatch,
+          teamLevels: [...value.activeMatch.teamLevels] as [
+            TeamLevel,
+            TeamLevel,
+          ],
+          failureCounters: [...value.activeMatch.failureCounters] as [
+            number,
+            number,
+          ],
+          hands: value.activeMatch.hands.map((hand) => ({
+            playerId: hand.playerId,
+            cards: [...hand.cards],
+          })),
+        };
+
   return deepFreeze({
     ...value,
     members: value.members.map((member) => ({ ...member })),
     seats: value.seats.map((seat) => ({ ...seat })),
     readyPlayerIds: [...value.readyPlayerIds],
     rulesConfiguration: cloneRulesConfiguration(value.rulesConfiguration),
+    activeMatch,
   }) as unknown as State;
 }
 
@@ -292,6 +382,16 @@ function cloneEvent(event: Event): Event {
     return {
       ...event,
       rulesConfiguration: cloneRulesConfiguration(event.rulesConfiguration),
+    };
+  }
+
+  if (event.type === "MatchStarted") {
+    return {
+      ...event,
+      rulesConfiguration: cloneRulesConfiguration(event.rulesConfiguration),
+      playerIds: [...event.playerIds],
+      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+      failureCounters: [...event.failureCounters] as [number, number],
     };
   }
 
@@ -348,6 +448,196 @@ function requireLobbyMember(
   return undefined;
 }
 
+const UINT64_MASK = (1n << 64n) - 1n;
+const UINT64_RANGE = 1n << 64n;
+const FNV64_OFFSET_BASIS = 0xcbf29ce484222325n;
+const FNV64_PRIME = 0x100000001b3n;
+const SPLIT_MIX_GAMMA = 0x9e3779b97f4a7c15n;
+const SPLIT_MIX_MULTIPLIER_1 = 0xbf58476d1ce4e5b9n;
+const SPLIT_MIX_MULTIPLIER_2 = 0x94d049bb133111ebn;
+
+function fnv1a64(value: string): bigint {
+  let hash = FNV64_OFFSET_BASIS;
+  for (const byte of new TextEncoder().encode(value)) {
+    hash ^= BigInt(byte);
+    hash = (hash * FNV64_PRIME) & UINT64_MASK;
+  }
+  return hash;
+}
+
+function makeRandomStream(
+  handSeed: HandSeed,
+  rulesetId: RulesetId,
+  domain: string,
+): () => bigint {
+  let state = fnv1a64(`${handSeed}/${rulesetId}/${domain}`);
+  return () => {
+    state = (state + SPLIT_MIX_GAMMA) & UINT64_MASK;
+    let value = state;
+    value = ((value ^ (value >> 30n)) * SPLIT_MIX_MULTIPLIER_1) & UINT64_MASK;
+    value = ((value ^ (value >> 27n)) * SPLIT_MIX_MULTIPLIER_2) & UINT64_MASK;
+    return (value ^ (value >> 31n)) & UINT64_MASK;
+  };
+}
+
+function boundedChoice(nextUint64: () => bigint, bound: number): number {
+  if (!Number.isSafeInteger(bound) || bound <= 0) {
+    throw new Error("Random choice bound must be a positive safe integer");
+  }
+
+  const boundBigInt = BigInt(bound);
+  const limit = UINT64_RANGE - (UINT64_RANGE % boundBigInt);
+  let value = nextUint64();
+  while (value >= limit) {
+    value = nextUint64();
+  }
+  return Number(value % boundBigInt);
+}
+
+function shuffled<T>(values: readonly T[], nextUint64: () => bigint): T[] {
+  const result = [...values];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = boundedChoice(nextUint64, index + 1);
+    [result[index], result[swapIndex]] = [result[swapIndex]!, result[index]!];
+  }
+  return result;
+}
+
+const STANDARD_RANKS = [
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K",
+  "A",
+] as const;
+const SUITS = ["S", "H", "D", "C"] as const;
+const JOKER_RANKS = ["SMALL", "BIG"] as const;
+
+function buildDeck(rulesetId: RulesetId): CardInstance[] {
+  const deckCount = RULESET_DEFINITIONS[rulesetId].deckCount;
+  const cards: CardInstance[] = [];
+  const addCard = (code: string) => {
+    const decoded = decodeCardInstance(code);
+    if (!decoded.ok) {
+      throw new Error("Built an invalid card instance");
+    }
+    cards.push(decoded.card);
+  };
+
+  for (let copyNumber = 1; copyNumber <= deckCount; copyNumber += 1) {
+    for (const rank of STANDARD_RANKS) {
+      for (const suit of SUITS) {
+        addCard(`${rank}${suit}#${copyNumber}`);
+      }
+    }
+    for (const jokerRank of JOKER_RANKS) {
+      addCard(`${jokerRank}#${copyNumber}`);
+    }
+  }
+
+  return cards;
+}
+
+function dealHands(event: MatchStarted): PlayerHand[] {
+  const nextDeckValue = makeRandomStream(
+    event.handSeed,
+    event.rulesetId,
+    "deck",
+  );
+  const deck = shuffled(buildDeck(event.rulesetId), nextDeckValue);
+  const hands = event.playerIds.map((playerId) => ({
+    playerId,
+    cards: [] as CardInstance[],
+  }));
+
+  for (const [cardIndex, card] of deck.entries()) {
+    const hand = hands[cardIndex % hands.length];
+    if (hand === undefined) {
+      throw new Error("Cannot deal a deck without players");
+    }
+    hand.cards.push(card);
+  }
+
+  return hands;
+}
+
+function startPlayerIds(state: InternalState): PlayerAccountId[] | undefined {
+  if (!isLobby(state) || state.selectedActivity !== "match") {
+    return undefined;
+  }
+
+  const seatCount =
+    RULESET_DEFINITIONS[state.rulesConfiguration.rulesetId].playerCount;
+  const playerIds: PlayerAccountId[] = [];
+  for (let seatIndex = 0; seatIndex < seatCount; seatIndex += 1) {
+    const assignment = state.seats.find((seat) => seat.seatIndex === seatIndex);
+    if (assignment === undefined || !hasReady(state, assignment.playerId)) {
+      return undefined;
+    }
+    playerIds.push(assignment.playerId);
+  }
+  return playerIds;
+}
+
+function decideStartMatch(state: InternalState, command: StartMatch): Decision {
+  if (!isLobby(state)) {
+    return rejected("room-not-in-lobby");
+  }
+
+  const playerIds = startPlayerIds(state);
+  if (playerIds === undefined) {
+    return rejected("start-requirements-not-met");
+  }
+  if (command.handSeed.length === 0) {
+    return rejected("invalid-hand-seed");
+  }
+  const resolvedPlayerIds =
+    state.seatingPolicy === "fixed"
+      ? [...playerIds]
+      : shuffled(
+          playerIds,
+          makeRandomStream(
+            command.handSeed,
+            state.rulesConfiguration.rulesetId,
+            "seating",
+          ),
+        );
+  const dealerSeat = boundedChoice(
+    makeRandomStream(
+      command.handSeed,
+      state.rulesConfiguration.rulesetId,
+      "initial-dealer",
+    ),
+    resolvedPlayerIds.length,
+  );
+
+  return accepted([
+    {
+      type: "MatchStarted",
+      rulesetId: state.rulesConfiguration.rulesetId,
+      rulesConfiguration: state.rulesConfiguration,
+      seatingPolicy: state.seatingPolicy,
+      handSeed: command.handSeed,
+      randomnessVersion: command.randomnessVersion,
+      shuffleVersion: command.shuffleVersion,
+      playerIds: resolvedPlayerIds,
+      dealerSeat,
+      dealerTeam: (dealerSeat % 2) as TeamIndex,
+      teamLevels: ["2", "2"],
+      trumpRank: "2",
+      failureCounters: [0, 0],
+    },
+  ]);
+}
+
 export function decide(state: State | undefined, command: Command): Decision {
   if (command.type === "JoinRoom") {
     if (state === undefined) {
@@ -376,6 +666,13 @@ export function decide(state: State | undefined, command: Command): Decision {
         joinOrder: current.nextJoinOrder,
       },
     ]);
+  }
+
+  if (command.type === "StartMatch") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decideStartMatch(readState(state), command);
   }
 
   const membershipRejection = requireLobbyMember(
@@ -471,6 +768,9 @@ export function decide(state: State | undefined, command: Command): Decision {
       if (command.playerId !== current.ownerId) {
         return rejected("owner-only");
       }
+      if (current.matchRulesConfigurationLocked) {
+        return rejected("match-rules-configuration-locked");
+      }
       if (
         sameRulesConfiguration(
           current.rulesConfiguration,
@@ -511,6 +811,9 @@ export function decide(state: State | undefined, command: Command): Decision {
       if (command.playerId !== current.ownerId) {
         return rejected("owner-only");
       }
+      if (current.seatingPolicyLocked) {
+        return rejected("seating-policy-locked");
+      }
       if (command.seatingPolicy === current.seatingPolicy) {
         return rejected("seating-policy-unchanged");
       }
@@ -549,8 +852,11 @@ export function evolve(state: State | undefined, event: Event): State {
       readyPlayerIds: [],
       rulesConfiguration: event.rulesConfiguration,
       seatingPolicy: event.seatingPolicy,
+      matchRulesConfigurationLocked: false,
+      seatingPolicyLocked: false,
       selectedActivity: undefined,
       nextJoinOrder: 1,
+      activeMatch: undefined,
     });
   }
 
@@ -632,12 +938,36 @@ export function evolve(state: State | undefined, event: Event): State {
 
     case "MatchSelected":
       return makeState({ ...current, selectedActivity: "match" });
+
+    case "MatchStarted": {
+      const seats = event.playerIds.map((playerId, seatIndex) => ({
+        seatIndex,
+        playerId,
+      }));
+      return makeState({
+        ...current,
+        lifecycle: "ACTIVE",
+        seats,
+        rulesConfiguration: event.rulesConfiguration,
+        seatingPolicy: event.seatingPolicy,
+        matchRulesConfigurationLocked: true,
+        seatingPolicyLocked: true,
+        activeMatch: {
+          dealerSeat: event.dealerSeat,
+          dealerTeam: event.dealerTeam,
+          teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+          trumpRank: event.trumpRank,
+          failureCounters: [...event.failureCounters] as [number, number],
+          hands: dealHands(event),
+        },
+      });
+    }
   }
 }
 
 export function derivePlayerView(
   state: State,
-  _playerId: PlayerAccountId,
+  playerId: PlayerAccountId,
 ): PlayerView {
   const current = readState(state);
   const seatCount =
@@ -650,7 +980,7 @@ export function derivePlayerView(
     seats.push({ seatIndex, playerId: assignment?.playerId });
   }
 
-  return deepFreeze({
+  const view: PlayerView = {
     roomId: current.roomId,
     lifecycle: current.lifecycle,
     ownerId: current.ownerId,
@@ -662,30 +992,37 @@ export function derivePlayerView(
     seats,
     rulesConfiguration: cloneRulesConfiguration(current.rulesConfiguration),
     seatingPolicy: current.seatingPolicy,
+    matchRulesConfigurationLocked: current.matchRulesConfigurationLocked,
+    seatingPolicyLocked: current.seatingPolicyLocked,
     selectedActivity: current.selectedActivity,
-  });
+  };
+
+  if (current.activeMatch !== undefined) {
+    const ownHand = current.activeMatch.hands.find(
+      (hand) => hand.playerId === playerId,
+    );
+    return deepFreeze({
+      ...view,
+      dealerSeat: current.activeMatch.dealerSeat,
+      dealerTeam: current.activeMatch.dealerTeam,
+      teamLevels: [...current.activeMatch.teamLevels] as [TeamLevel, TeamLevel],
+      trumpRank: current.activeMatch.trumpRank,
+      failureCounters: [...current.activeMatch.failureCounters] as [
+        number,
+        number,
+      ],
+      handSizes: current.activeMatch.hands.map((hand) => hand.cards.length),
+      hand: ownHand === undefined ? [] : ownHand.cards.map((card) => card.code),
+    });
+  }
+
+  return deepFreeze(view);
 }
 
 export function deriveStartRequirements(
   state: State,
 ): StartRequirements | undefined {
   const current = readState(state);
-  if (current.lifecycle !== "LOBBY" || current.selectedActivity !== "match") {
-    return undefined;
-  }
-
-  const seatCount =
-    RULESET_DEFINITIONS[current.rulesConfiguration.rulesetId].playerCount;
-  const playerIds: PlayerAccountId[] = [];
-  for (let seatIndex = 0; seatIndex < seatCount; seatIndex += 1) {
-    const assignment = current.seats.find(
-      (seat) => seat.seatIndex === seatIndex,
-    );
-    if (assignment === undefined || !hasReady(current, assignment.playerId)) {
-      return undefined;
-    }
-    playerIds.push(assignment.playerId);
-  }
-
-  return deepFreeze({ playerIds });
+  const playerIds = startPlayerIds(current);
+  return playerIds === undefined ? undefined : deepFreeze({ playerIds });
 }
