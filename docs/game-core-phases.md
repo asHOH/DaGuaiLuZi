@@ -95,7 +95,15 @@ Presence never enters `game-core`. Private Hand-start events contain the Hand Se
 - Apply Dealer Team changes, Team Level advancement, Trump Rank `5` failure counters, and both Match Ending settings.
 - Make the finishing play emit one atomic event batch containing all settlement facts.
 - Implement natural Match completion and Match abortion, retaining completed Hands and final Team Levels as required.
+- Extend a Hand-ending `Play` batch after `HandResultDetermined` with one `HandSettled` fact containing the completed Hand number and resulting Dealer Team, Team Levels, and failure counters. The completed-Hand count begins at zero and advances exactly once per settled Hand.
+- The first finisher's team becomes the next Dealer Team. Only a winning current Dealer Team advances one Team Level; a draw or a different winning team advances neither team. The settled Hand retains the Trump Rank it began with; Phase 5 applies the next Dealer Team's level when starting the next Hand.
+- A Hand begun by a Dealer Team at Trump Rank `5` increments that team's failure counter unless that team wins. Both a draw and an opposing-team win are failures; other counters never change.
+- A current Dealer Team winning at Team Level `5` advances to terminal rank `6` and wins the Match. Under `three-failure-limit-at-5`, its third failure instead completes the Match with the opposing team as winner. Under `no-failure-limit-at-5`, failures are recorded but never end the Match.
+- Append `MatchCompleted` to the same finishing-play batch for a terminal result. Record the winning team, ending reason, final Team Levels, and completed-Hand count; return the Room to `LOBBY`, clear the selected activity and readiness, and retain the settled Match facts. Non-terminal settlement leaves the Room `ACTIVE` with no accepted Hand actions until Phase 5 starts the next Hand.
+- Add owner-authored `AbortMatch`. While a Match is active, it emits `MatchAborted` with final Team Levels and completed-Hand count, returns the Room to `LOBBY`, clears selection and readiness, and retains only public Match summary state; incomplete-Hand facts remain private persisted events. Non-owners and non-active Rooms reject without events.
+- Retain the active Match aggregate after completion or abortion so replay and later history formatting keep final facts. Player views expose completed-Hand count and a completed/aborted Match summary, but expose Hand cards, action state, and Hand result only while the Room remains `ACTIVE`.
 - Gate: settlement, draws, team changes, terminal rank `6`, three-failure loss, and completion pass from completed-Hand states; abortion passes from an active, incomplete Hand.
+- Tests cover Dealer and non-Dealer wins, draws, both Match Ending settings, failure-counter isolation, terminal-rank and third-failure completion, owner authorization, readiness reset, post-terminal action rejection, atomic event ordering, immutable events/views, full replay, and generated settlement invariants for both Rulesets.
 
 ### 5. Subsequent Hands and Tribute
 

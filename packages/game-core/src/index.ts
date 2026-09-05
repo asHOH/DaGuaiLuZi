@@ -158,6 +158,28 @@ export type HandResultDetermined = Readonly<{
   caughtPlayerIds: readonly PlayerAccountId[];
 }>;
 
+export type HandSettled = Readonly<{
+  type: "HandSettled";
+  handNumber: number;
+  dealerTeam: TeamIndex;
+  teamLevels: TeamLevels;
+  failureCounters: FailureCounters;
+}>;
+
+export type MatchCompleted = Readonly<{
+  type: "MatchCompleted";
+  winningTeam: TeamIndex;
+  endingReason: "team-level-6" | "three-failure-limit-at-5";
+  teamLevels: TeamLevels;
+  completedHandCount: number;
+}>;
+
+export type MatchAborted = Readonly<{
+  type: "MatchAborted";
+  teamLevels: TeamLevels;
+  completedHandCount: number;
+}>;
+
 export type Event =
   | RoomCreated
   | MemberJoined
@@ -177,7 +199,10 @@ export type Event =
   | PlayerFinished
   | TurnAdvanced
   | LeadReset
-  | HandResultDetermined;
+  | HandResultDetermined
+  | HandSettled
+  | MatchCompleted
+  | MatchAborted;
 
 export type JoinRoom = Readonly<{
   type: "JoinRoom";
@@ -242,6 +267,11 @@ export type Pass = Readonly<{
   playerId: PlayerAccountId;
 }>;
 
+export type AbortMatch = Readonly<{
+  type: "AbortMatch";
+  playerId: PlayerAccountId;
+}>;
+
 export type Command =
   | JoinRoom
   | LeaveRoom
@@ -253,7 +283,8 @@ export type Command =
   | SelectMatch
   | StartMatch
   | Play
-  | Pass;
+  | Pass
+  | AbortMatch;
 
 export type RejectionReason =
   | "room-not-created"
@@ -325,6 +356,20 @@ export type PlayerViewHandResult = Readonly<{
   caughtPlayerIds: readonly PlayerAccountId[];
 }>;
 
+export type PlayerViewMatchSummary =
+  | Readonly<{
+      outcome: "completed";
+      winningTeam: TeamIndex;
+      endingReason: "team-level-6" | "three-failure-limit-at-5";
+      teamLevels: TeamLevels;
+      completedHandCount: number;
+    }>
+  | Readonly<{
+      outcome: "aborted";
+      teamLevels: TeamLevels;
+      completedHandCount: number;
+    }>;
+
 export type PlayerView = Readonly<{
   roomId: RoomId;
   lifecycle: Lifecycle;
@@ -341,6 +386,8 @@ export type PlayerView = Readonly<{
   teamLevels?: TeamLevels;
   trumpRank?: TrumpRank;
   failureCounters?: FailureCounters;
+  completedHandCount?: number;
+  matchSummary?: PlayerViewMatchSummary;
   handSizes?: readonly number[];
   hand?: readonly CardInstanceCode[];
   currentActor?: PlayerAccountId;
@@ -393,8 +440,10 @@ type ActiveMatch = Readonly<{
   teamLevels: TeamLevels;
   trumpRank: TrumpRank;
   failureCounters: FailureCounters;
+  completedHandCount: number;
   hands: readonly PlayerHand[];
   hand: ActiveHand;
+  summary: PlayerViewMatchSummary | undefined;
 }>;
 
 type InternalState = {
@@ -460,6 +509,16 @@ function makeState(value: InternalState): State {
             number,
             number,
           ],
+          summary:
+            value.activeMatch.summary === undefined
+              ? undefined
+              : {
+                  ...value.activeMatch.summary,
+                  teamLevels: [...value.activeMatch.summary.teamLevels] as [
+                    TeamLevel,
+                    TeamLevel,
+                  ],
+                },
           hands: value.activeMatch.hands.map((hand) => ({
             playerId: hand.playerId,
             cards: [...hand.cards],
@@ -554,6 +613,21 @@ function cloneEvent(event: Event): Event {
 
   if (event.type === "HandResultDetermined") {
     return { ...event, caughtPlayerIds: [...event.caughtPlayerIds] };
+  }
+
+  if (event.type === "HandSettled") {
+    return {
+      ...event,
+      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+      failureCounters: [...event.failureCounters] as [number, number],
+    };
+  }
+
+  if (event.type === "MatchCompleted" || event.type === "MatchAborted") {
+    return {
+      ...event,
+      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+    };
   }
 
   return event;
@@ -926,6 +1000,81 @@ function resultAfterFinish(
   };
 }
 
+function advanceTeamLevel(level: TeamLevel): TeamLevel {
+  switch (level) {
+    case "2":
+      return "3";
+    case "3":
+      return "4";
+    case "4":
+      return "5";
+    case "5":
+      return "6";
+    case "6":
+      return "6";
+  }
+}
+
+function settleHand(
+  state: InternalState,
+  activeMatch: ActiveMatch,
+  result: HandResultDetermined,
+): { settlement: HandSettled; completion: MatchCompleted | undefined } {
+  const currentDealerTeam = activeMatch.dealerTeam;
+  const winningCurrentDealer =
+    result.outcome === "win" && result.winningTeam === currentDealerTeam;
+  const teamLevels = [...activeMatch.teamLevels] as [TeamLevel, TeamLevel];
+  if (winningCurrentDealer) {
+    teamLevels[currentDealerTeam] = advanceTeamLevel(
+      teamLevels[currentDealerTeam],
+    );
+  }
+
+  const failureCounters = [...activeMatch.failureCounters] as [number, number];
+  const startedAtFive = activeMatch.trumpRank === "5";
+  if (startedAtFive && !winningCurrentDealer) {
+    failureCounters[currentDealerTeam] += 1;
+  }
+
+  const handNumber = activeMatch.completedHandCount + 1;
+  const nextDealerTeam = result.nextDealerTeam;
+  const settlement: HandSettled = {
+    type: "HandSettled",
+    handNumber,
+    dealerTeam: nextDealerTeam,
+    teamLevels,
+    failureCounters,
+  };
+
+  let completion: MatchCompleted | undefined;
+  if (
+    winningCurrentDealer &&
+    activeMatch.teamLevels[currentDealerTeam] === "5"
+  ) {
+    completion = {
+      type: "MatchCompleted",
+      winningTeam: currentDealerTeam,
+      endingReason: "team-level-6",
+      teamLevels,
+      completedHandCount: handNumber,
+    };
+  } else if (
+    state.rulesConfiguration.matchEnding === "three-failure-limit-at-5" &&
+    startedAtFive &&
+    failureCounters[currentDealerTeam] >= 3
+  ) {
+    completion = {
+      type: "MatchCompleted",
+      winningTeam: (1 - currentDealerTeam) as TeamIndex,
+      endingReason: "three-failure-limit-at-5",
+      teamLevels,
+      completedHandCount: handNumber,
+    };
+  }
+
+  return { settlement, completion };
+}
+
 function responseCircuitComplete(
   activeMatch: ActiveMatch,
   activeHand: ActiveHand,
@@ -942,6 +1091,25 @@ function responseCircuitComplete(
       hand.cards.length === 0 ||
       passedSeats.includes(seatIndex),
   );
+}
+
+function decideAbortMatch(state: InternalState, command: AbortMatch): Decision {
+  if (state.lifecycle !== "ACTIVE" || state.activeMatch === undefined) {
+    return rejected("room-not-active");
+  }
+  if (findMember(state, command.playerId) === undefined) {
+    return rejected("not-a-member");
+  }
+  if (command.playerId !== state.ownerId) {
+    return rejected("owner-only");
+  }
+  return accepted([
+    {
+      type: "MatchAborted",
+      teamLevels: state.activeMatch.teamLevels,
+      completedHandCount: state.activeMatch.completedHandCount,
+    },
+  ]);
 }
 
 function decidePlay(state: InternalState, command: Play): Decision {
@@ -1008,6 +1176,11 @@ function decidePlay(state: InternalState, command: Play): Decision {
   const result = resultAfterFinish(hands, finishPositions);
   if (result !== undefined) {
     events.push(result);
+    const settled = settleHand(state, activeMatch, result);
+    events.push(settled.settlement);
+    if (settled.completion !== undefined) {
+      events.push(settled.completion);
+    }
     return accepted(events);
   }
 
@@ -1128,6 +1301,13 @@ export function decide(state: State | undefined, command: Command): Decision {
       return rejected("room-not-created");
     }
     return decidePass(readState(state), command);
+  }
+
+  if (command.type === "AbortMatch") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decideAbortMatch(readState(state), command);
   }
 
   const membershipRejection = requireLobbyMember(
@@ -1413,6 +1593,7 @@ export function evolve(state: State | undefined, event: Event): State {
           teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
           trumpRank: event.trumpRank,
           failureCounters: [...event.failureCounters] as [number, number],
+          completedHandCount: 0,
           hands: dealHands(event),
           hand: {
             currentActorSeat: event.dealerSeat,
@@ -1421,6 +1602,7 @@ export function evolve(state: State | undefined, event: Event): State {
             finishPositions: Array(event.playerIds.length).fill(undefined),
             result: undefined,
           },
+          summary: undefined,
         },
       });
     }
@@ -1552,6 +1734,65 @@ export function evolve(state: State | undefined, event: Event): State {
           hand: { ...current.activeMatch.hand, result: event },
         },
       });
+
+    case "HandSettled":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          dealerTeam: event.dealerTeam,
+          teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+          failureCounters: [...event.failureCounters] as [number, number],
+          completedHandCount: event.handNumber,
+        },
+      });
+
+    case "MatchCompleted":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        lifecycle: "LOBBY",
+        readyPlayerIds: [],
+        selectedActivity: undefined,
+        activeMatch: {
+          ...current.activeMatch,
+          teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+          completedHandCount: event.completedHandCount,
+          summary: {
+            outcome: "completed",
+            winningTeam: event.winningTeam,
+            endingReason: event.endingReason,
+            teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+            completedHandCount: event.completedHandCount,
+          },
+        },
+      });
+
+    case "MatchAborted":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        lifecycle: "LOBBY",
+        readyPlayerIds: [],
+        selectedActivity: undefined,
+        activeMatch: {
+          ...current.activeMatch,
+          teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+          completedHandCount: event.completedHandCount,
+          summary: {
+            outcome: "aborted",
+            teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+            completedHandCount: event.completedHandCount,
+          },
+        },
+      });
   }
 }
 
@@ -1588,6 +1829,27 @@ export function derivePlayerView(
   };
 
   if (current.activeMatch !== undefined) {
+    const retainedMatchFacts = {
+      teamLevels: [...current.activeMatch.teamLevels] as [TeamLevel, TeamLevel],
+      completedHandCount: current.activeMatch.completedHandCount,
+      ...(current.activeMatch.summary === undefined
+        ? {}
+        : { matchSummary: current.activeMatch.summary }),
+    };
+    if (current.lifecycle !== "ACTIVE") {
+      return deepFreeze({ ...view, ...retainedMatchFacts });
+    }
+
+    const publicMatchFacts = {
+      ...retainedMatchFacts,
+      dealerSeat: current.activeMatch.dealerSeat,
+      dealerTeam: current.activeMatch.dealerTeam,
+      failureCounters: [...current.activeMatch.failureCounters] as [
+        number,
+        number,
+      ],
+    };
+
     const ownHand = current.activeMatch.hands.find(
       (hand) => hand.playerId === playerId,
     );
@@ -1599,14 +1861,8 @@ export function derivePlayerView(
     const unbeatenPlay = activeHand.unbeatenPlay;
     return deepFreeze({
       ...view,
-      dealerSeat: current.activeMatch.dealerSeat,
-      dealerTeam: current.activeMatch.dealerTeam,
-      teamLevels: [...current.activeMatch.teamLevels] as [TeamLevel, TeamLevel],
+      ...publicMatchFacts,
       trumpRank: current.activeMatch.trumpRank,
-      failureCounters: [...current.activeMatch.failureCounters] as [
-        number,
-        number,
-      ],
       handSizes: current.activeMatch.hands.map((hand) => hand.cards.length),
       hand: ownHand === undefined ? [] : ownHand.cards.map((card) => card.code),
       ...(activeHand.result !== undefined || currentActor === undefined
