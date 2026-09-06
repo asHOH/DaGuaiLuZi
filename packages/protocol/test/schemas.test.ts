@@ -8,6 +8,7 @@ import {
   LoginResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   RulesConfigurationSchema,
+  RoomCommandEnvelopeSchema,
   RoomResponseEnvelopeSchema,
   RoomCommandAckSchema,
   RoomViewSyncEnvelopeSchema,
@@ -96,6 +97,21 @@ describe("protocol schemas", () => {
       payload: { type: "JoinRoom" },
     } as const;
     expect(JoinRoomCommandEnvelopeSchema.parse(command)).toEqual(command);
+    for (const payload of [
+      { type: "SelectMatch" },
+      { type: "AssignSeat", seatIndex: 0 },
+      { type: "SetReadiness", ready: true },
+    ] as const) {
+      expect(
+        RoomCommandEnvelopeSchema.safeParse({ ...command, payload }).success,
+      ).toBe(true);
+    }
+    expect(
+      JoinRoomCommandEnvelopeSchema.safeParse({
+        ...command,
+        payload: { type: "SelectMatch" },
+      }).success,
+    ).toBe(false);
     expect(
       JoinRoomCommandEnvelopeSchema.safeParse({
         ...command,
@@ -169,9 +185,30 @@ describe("protocol schemas", () => {
     expect(
       RoomViewDataSchema.safeParse({
         ...data,
-        view: { ...data.view, lifecycle: "ACTIVE" },
+        view: {
+          ...data.view,
+          lifecycle: "ACTIVE",
+          selectedActivity: "match",
+          dealerSeat: 0,
+          dealerTeam: 0,
+          teamLevels: ["2", "2"],
+          trumpRank: "2",
+          failureCounters: [0, 0],
+          completedHandCount: 0,
+          handSizes: [27, 27, 27, 27],
+          hand: ["AS#1"],
+          currentActor: "alice",
+          currentActorSeat: 0,
+          passedPlayerIds: [],
+          finishPositions: [null, null, null, null],
+          setupStage: "play",
+          tributeTransfers: [],
+          returnCandidates: [],
+          pendingPlayerIds: [],
+          eligibleTributeCards: [],
+        },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       RoomResponseEnvelopeSchema.safeParse({
         protocolVersion: PROTOCOL_VERSION,

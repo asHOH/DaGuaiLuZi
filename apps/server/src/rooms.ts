@@ -2,6 +2,8 @@ import { asc, eq } from "drizzle-orm";
 import {
   derivePlayerView,
   evolve,
+  RANDOMNESS_VERSION,
+  SHUFFLE_VERSION,
   type PlayerAccountId,
   type PlayerView as CorePlayerView,
   type Event,
@@ -25,12 +27,21 @@ import type { AppDatabase } from "./db/index.js";
 import { roomEvents } from "./db/schema.js";
 
 const ROOM_EVENT_SCHEMA_VERSION = 1;
+const PlayerIdSchema = z.string().min(1).max(128);
+const TeamIndexSchema = z.union([z.literal(0), z.literal(1)]);
+const TeamLevelSchema = z.enum(["2", "3", "4", "5", "6"]);
+const TeamLevelsSchema = z.tuple([TeamLevelSchema, TeamLevelSchema]);
+const FailureCountersSchema = z.tuple([
+  z.number().int().nonnegative(),
+  z.number().int().nonnegative(),
+]);
+const TrumpRankSchema = z.enum(["2", "3", "4", "5"]);
 
 const RoomCreatedPayloadSchema = z
   .object({
     type: z.literal("RoomCreated"),
     roomId: RoomIdSchema,
-    ownerId: z.string().min(1).max(128),
+    ownerId: PlayerIdSchema,
     rulesConfiguration: RulesConfigurationSchema,
     seatingPolicy: SeatingPolicySchema,
   })
@@ -39,20 +50,122 @@ const RoomCreatedPayloadSchema = z
 const MemberJoinedPayloadSchema = z
   .object({
     type: z.literal("MemberJoined"),
-    playerId: z.string().min(1).max(128),
+    playerId: PlayerIdSchema,
     joinOrder: z.number().int().nonnegative(),
   })
   .strict();
 
-const PersistedRoomEventRowSchema = z.object({
-  roomId: z.string().min(1).max(128),
-  sequence: z.number().int().positive(),
-  eventType: z.string(),
-  eventSchemaVersion: z.number().int().positive(),
-  causationCommandId: z.string().nullable(),
-  recordedAt: z.number().int().positive(),
-  payload: z.string(),
-});
+const MatchSelectedPayloadSchema = z
+  .object({ type: z.literal("MatchSelected") })
+  .strict();
+
+const SeatAssignedPayloadSchema = z
+  .object({
+    type: z.literal("SeatAssigned"),
+    playerId: PlayerIdSchema,
+    seatIndex: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const ReadinessChangedPayloadSchema = z
+  .object({
+    type: z.literal("ReadinessChanged"),
+    playerId: PlayerIdSchema,
+    ready: z.boolean(),
+  })
+  .strict();
+
+const ReadinessClearedPayloadSchema = z
+  .object({ type: z.literal("ReadinessCleared") })
+  .strict();
+
+const SeatAssignmentsClearedPayloadSchema = z
+  .object({ type: z.literal("SeatAssignmentsCleared") })
+  .strict();
+
+const MatchStartedPayloadSchema = z
+  .object({
+    type: z.literal("MatchStarted"),
+    rulesetId: z.enum(["dglz-6p-3d-v1", "dglz-4p-2d-v1"]),
+    rulesConfiguration: RulesConfigurationSchema,
+    seatingPolicy: SeatingPolicySchema,
+    handSeed: z.string().min(1).max(256),
+    randomnessVersion: z.literal(RANDOMNESS_VERSION),
+    shuffleVersion: z.literal(SHUFFLE_VERSION),
+    playerIds: z.array(PlayerIdSchema).min(1).max(6),
+    dealerSeat: z.number().int().nonnegative(),
+    dealerTeam: TeamIndexSchema,
+    teamLevels: TeamLevelsSchema,
+    trumpRank: TrumpRankSchema,
+    failureCounters: FailureCountersSchema,
+  })
+  .strict()
+  .superRefine((event, context) => {
+    const playerCount = event.rulesetId === "dglz-6p-3d-v1" ? 6 : 4;
+    if (event.rulesConfiguration.rulesetId !== event.rulesetId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "ruleset-mismatch",
+        path: ["rulesConfiguration", "rulesetId"],
+      });
+    }
+    if (event.playerIds.length !== playerCount) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "invalid-player-count",
+        path: ["playerIds"],
+      });
+    }
+    if (new Set(event.playerIds).size !== event.playerIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "duplicate-player",
+        path: ["playerIds"],
+      });
+    }
+    if (event.dealerSeat >= playerCount) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "invalid-dealer-seat",
+        path: ["dealerSeat"],
+      });
+    }
+    if (event.dealerTeam !== event.dealerSeat % 2) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "dealer-team-mismatch",
+        path: ["dealerTeam"],
+      });
+    }
+    if (event.trumpRank !== event.teamLevels[event.dealerTeam]) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "trump-rank-mismatch",
+        path: ["trumpRank"],
+      });
+    }
+  });
+
+const PersistedRoomEventRowSchema = z
+  .object({
+    roomId: z.string().min(1).max(128),
+    sequence: z.number().int().positive(),
+    eventType: z.enum([
+      "RoomCreated",
+      "MemberJoined",
+      "MatchSelected",
+      "SeatAssigned",
+      "ReadinessChanged",
+      "ReadinessCleared",
+      "SeatAssignmentsCleared",
+      "MatchStarted",
+    ]),
+    eventSchemaVersion: z.number().int().positive(),
+    causationCommandId: CommandIdSchema.nullable(),
+    recordedAt: z.number().int().positive(),
+    payload: z.string(),
+  })
+  .strict();
 
 export class UnsupportedPersistedEventError extends Error {
   public constructor() {
@@ -175,7 +288,63 @@ function eventPayload(event: Event): string {
   if (event.type === "MemberJoined") {
     return JSON.stringify(MemberJoinedPayloadSchema.parse(event));
   }
+  if (event.type === "MatchSelected") {
+    return JSON.stringify(MatchSelectedPayloadSchema.parse(event));
+  }
+  if (event.type === "SeatAssigned") {
+    return JSON.stringify(SeatAssignedPayloadSchema.parse(event));
+  }
+  if (event.type === "ReadinessChanged") {
+    return JSON.stringify(ReadinessChangedPayloadSchema.parse(event));
+  }
+  if (event.type === "ReadinessCleared") {
+    return JSON.stringify(ReadinessClearedPayloadSchema.parse(event));
+  }
+  if (event.type === "SeatAssignmentsCleared") {
+    return JSON.stringify(SeatAssignmentsClearedPayloadSchema.parse(event));
+  }
+  if (event.type === "MatchStarted") {
+    return JSON.stringify(MatchStartedPayloadSchema.parse(event));
+  }
   throw new UnsupportedPersistedEventError();
+}
+
+export type CommittedRoomEvents = Readonly<{
+  roomId: string;
+  expectedRevision: number;
+  causationCommandId: string | null;
+  events: readonly Event[];
+}>;
+
+function appendEventRows(
+  insertEvent: { run: (...values: unknown[]) => unknown },
+  command: CommittedRoomEvents,
+): void {
+  command.events.forEach((event, offset) => {
+    insertEvent.run(
+      command.roomId,
+      command.expectedRevision + offset + 1,
+      event.type,
+      ROOM_EVENT_SCHEMA_VERSION,
+      command.causationCommandId,
+      Date.now(),
+      eventPayload(event),
+    );
+  });
+}
+
+export function appendRoomEvents(
+  database: AppDatabase,
+  events: CommittedRoomEvents,
+): void {
+  const insertEvent = database.sqlite.prepare(
+    `INSERT INTO room_events
+       (room_id, sequence, event_type, event_schema_version, causation_command_id, recorded_at, payload)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  database.sqlite.transaction(() => {
+    appendEventRows(insertEvent, events);
+  })();
 }
 
 export function commitRoomCommand(
@@ -201,22 +370,18 @@ export function commitRoomCommand(
       command.requestFingerprint,
       JSON.stringify(acknowledgement),
     );
-    command.events.forEach((event, offset) => {
-      insertEvent.run(
-        command.roomId,
-        command.expectedRevision + offset + 1,
-        event.type,
-        ROOM_EVENT_SCHEMA_VERSION,
-        command.commandId,
-        Date.now(),
-        eventPayload(event),
-      );
+    appendEventRows(insertEvent, {
+      roomId: command.roomId,
+      expectedRevision: command.expectedRevision,
+      causationCommandId: command.commandId,
+      events: command.events,
     });
   });
   commit();
 }
 
 export type LoadedRoom = Readonly<{
+  roomId: string;
   state: State;
   revision: number;
 }>;
@@ -251,19 +416,44 @@ export function loadRoom(
     } catch {
       throw new UnsupportedPersistedEventError();
     }
-    if (state === undefined && row.data.eventType === "RoomCreated") {
-      const parsedEvent = RoomCreatedPayloadSchema.safeParse(decoded);
-      if (!parsedEvent.success || parsedEvent.data.roomId !== roomId) {
-        throw new UnsupportedPersistedEventError();
+    const parsedEvent = (() => {
+      switch (row.data.eventType) {
+        case "RoomCreated":
+          return RoomCreatedPayloadSchema.safeParse(decoded);
+        case "MemberJoined":
+          return MemberJoinedPayloadSchema.safeParse(decoded);
+        case "MatchSelected":
+          return MatchSelectedPayloadSchema.safeParse(decoded);
+        case "SeatAssigned":
+          return SeatAssignedPayloadSchema.safeParse(decoded);
+        case "ReadinessChanged":
+          return ReadinessChangedPayloadSchema.safeParse(decoded);
+        case "ReadinessCleared":
+          return ReadinessClearedPayloadSchema.safeParse(decoded);
+        case "SeatAssignmentsCleared":
+          return SeatAssignmentsClearedPayloadSchema.safeParse(decoded);
+        case "MatchStarted":
+          return MatchStartedPayloadSchema.safeParse(decoded);
       }
+    })();
+    if (!parsedEvent.success) {
+      throw new UnsupportedPersistedEventError();
+    }
+    if (state === undefined && parsedEvent.data.type !== "RoomCreated") {
+      throw new UnsupportedPersistedEventError();
+    }
+    if (state !== undefined && parsedEvent.data.type === "RoomCreated") {
+      throw new UnsupportedPersistedEventError();
+    }
+    if (
+      parsedEvent.data.type === "RoomCreated" &&
+      parsedEvent.data.roomId !== roomId
+    ) {
+      throw new UnsupportedPersistedEventError();
+    }
+    try {
       state = evolve(state, parsedEvent.data);
-    } else if (state !== undefined && row.data.eventType === "MemberJoined") {
-      const parsedEvent = MemberJoinedPayloadSchema.safeParse(decoded);
-      if (!parsedEvent.success) {
-        throw new UnsupportedPersistedEventError();
-      }
-      state = evolve(state, parsedEvent.data);
-    } else {
+    } catch {
       throw new UnsupportedPersistedEventError();
     }
     revision = row.data.sequence;
@@ -271,7 +461,7 @@ export function loadRoom(
   if (state === undefined) {
     throw new UnsupportedPersistedEventError();
   }
-  return { state, revision };
+  return { roomId, state, revision };
 }
 
 export function deriveRoomView(
@@ -294,6 +484,36 @@ export function deriveRoomView(
       seatingPolicy: view.seatingPolicy,
       matchRulesConfigurationLocked: view.matchRulesConfigurationLocked,
       seatingPolicyLocked: view.seatingPolicyLocked,
+      ...(view.selectedActivity === undefined
+        ? {}
+        : { selectedActivity: view.selectedActivity }),
+      ...(view.lifecycle !== "ACTIVE"
+        ? {}
+        : {
+            dealerSeat: view.dealerSeat,
+            dealerTeam: view.dealerTeam,
+            teamLevels: view.teamLevels,
+            trumpRank: view.trumpRank,
+            failureCounters: view.failureCounters,
+            completedHandCount: view.completedHandCount,
+            handSizes: view.handSizes,
+            hand: view.hand,
+            ...(view.currentActor === undefined
+              ? {}
+              : {
+                  currentActor: view.currentActor,
+                  currentActorSeat: view.currentActorSeat,
+                }),
+            passedPlayerIds: view.passedPlayerIds,
+            finishPositions: view.finishPositions?.map(
+              (position) => position ?? null,
+            ),
+            setupStage: view.setupStage,
+            tributeTransfers: view.tributeTransfers,
+            returnCandidates: view.returnCandidates,
+            pendingPlayerIds: view.pendingPlayerIds,
+            eligibleTributeCards: view.eligibleTributeCards,
+          }),
     },
   });
 }

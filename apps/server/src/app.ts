@@ -46,7 +46,7 @@ import {
   loadRoom,
   UnsupportedPersistedEventError,
 } from "./rooms.js";
-import { RoomExecutorRegistry } from "./room-executor.js";
+import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
 
 export type ServerOptions = Readonly<{
   dbPath?: string;
@@ -315,6 +315,22 @@ export async function createApp(
     }
   }
 
+  const connectedRoomAccounts =
+    (roomId: string): RoomPresence =>
+    async () => {
+      const accountIds = new Set<string>();
+      for (const connected of await io.in(roomId).fetchSockets()) {
+        const data = connected.data as SocketData;
+        const account = resolveSession(database, data.sessionToken);
+        if (account === undefined || account.accountId !== data.accountId) {
+          connected.disconnect(true);
+          continue;
+        }
+        accountIds.add(account.accountId);
+      }
+      return accountIds;
+    };
+
   io.on("connection", (socket) => {
     const data = socket.data as SocketData;
     const initialRoomId = data.initialRoomId;
@@ -330,14 +346,8 @@ export async function createApp(
         if (executor === undefined) {
           return;
         }
-        socket.emit(
-          SOCKET_ROOM_VIEW_EVENT,
-          RoomViewSyncEnvelopeSchema.parse({
-            protocolVersion: PROTOCOL_VERSION,
-            type: SOCKET_ROOM_VIEW_EVENT,
-            data: executor.viewFor(account.accountId),
-          }),
-        );
+        await executor.autoStart(connectedRoomAccounts(initialRoomId));
+        await publishRoomViews(initialRoomId, executor);
       })().catch((error: unknown) => {
         app.log.error(
           { err: error, roomId: initialRoomId },
@@ -382,14 +392,15 @@ export async function createApp(
               respond(commandErrorAck(commandId, "room-not-found"));
               return;
             }
+            await Promise.resolve(socket.join(parsed.data.roomId));
             const result = await executor.execute(
               account.accountId,
               parsed.data,
+              connectedRoomAccounts(parsed.data.roomId),
             );
             respond(result);
             if (result.ok) {
               try {
-                await Promise.resolve(socket.join(parsed.data.roomId));
                 await publishRoomViews(parsed.data.roomId, executor);
               } catch (error) {
                 app.log.error(
@@ -397,6 +408,8 @@ export async function createApp(
                   "room view publication failed",
                 );
               }
+            } else if (executor.viewFor(account.accountId) === undefined) {
+              await Promise.resolve(socket.leave(parsed.data.roomId));
             }
           })
           .catch(() => respond(commandErrorAck(commandId, "internal-error")));
@@ -536,7 +549,10 @@ export async function createApp(
     };
     const state = evolve(undefined, event);
     appendRoomCreated(database, event);
-    const data = deriveRoomView({ state, revision: 1 }, account.accountId);
+    const data = deriveRoomView(
+      { roomId: event.roomId, state, revision: 1 },
+      account.accountId,
+    );
     if (data === undefined) {
       return sendError(reply, "internal-error");
     }

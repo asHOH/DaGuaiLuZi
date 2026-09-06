@@ -62,17 +62,48 @@ export const JoinRoomPayloadSchema = z
   .strict();
 export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
 
+export const SelectMatchPayloadSchema = z
+  .object({ type: z.literal("SelectMatch") })
+  .strict();
+export type SelectMatchPayload = z.infer<typeof SelectMatchPayloadSchema>;
+
+export const AssignSeatPayloadSchema = z
+  .object({
+    type: z.literal("AssignSeat"),
+    seatIndex: z.number().int().nonnegative(),
+  })
+  .strict();
+export type AssignSeatPayload = z.infer<typeof AssignSeatPayloadSchema>;
+
+export const SetReadinessPayloadSchema = z
+  .object({
+    type: z.literal("SetReadiness"),
+    ready: z.boolean(),
+  })
+  .strict();
+export type SetReadinessPayload = z.infer<typeof SetReadinessPayloadSchema>;
+
+export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
+  JoinRoomPayloadSchema,
+  SelectMatchPayloadSchema,
+  AssignSeatPayloadSchema,
+  SetReadinessPayloadSchema,
+]);
+export type RoomCommandPayload = z.infer<typeof RoomCommandPayloadSchema>;
+
 export const RoomCommandEnvelopeSchema = z
   .object({
     protocolVersion: z.literal(PROTOCOL_VERSION),
     commandId: CommandIdSchema,
     roomId: RoomIdSchema,
     expectedRevision: RoomRevisionSchema,
-    payload: JoinRoomPayloadSchema,
+    payload: RoomCommandPayloadSchema,
   })
   .strict();
 export type RoomCommandEnvelope = z.infer<typeof RoomCommandEnvelopeSchema>;
-export const JoinRoomCommandEnvelopeSchema = RoomCommandEnvelopeSchema;
+export const JoinRoomCommandEnvelopeSchema = RoomCommandEnvelopeSchema.extend({
+  payload: JoinRoomPayloadSchema,
+});
 
 export const LoginCommandSchema = z
   .object({ username: UsernameSchema, password: PasswordSchema })
@@ -208,19 +239,94 @@ export const PlayerViewSeatSchema = z
   })
   .strict();
 
-export const PlayerViewSchema = z
+const SelectedActivitySchema = z.enum(["match", "challenge"]);
+const TeamIndexSchema = z.union([z.literal(0), z.literal(1)]);
+const TeamLevelSchema = z.enum(["2", "3", "4", "5", "6"]);
+const TeamLevelsSchema = z.tuple([TeamLevelSchema, TeamLevelSchema]);
+const FailureCountersSchema = z.tuple([
+  z.number().int().nonnegative(),
+  z.number().int().nonnegative(),
+]);
+const TrumpRankSchema = z.enum(["2", "3", "4", "5"]);
+const CardInstanceCodeSchema = z.string().min(1).max(32);
+const SetupStageSchema = z.enum([
+  "tribute-selection",
+  "recipient-pairing-tie",
+  "return-card-selection",
+  "leader-selection-tie",
+  "play",
+]);
+
+const PlayerViewTributeTransferSchema = z
   .object({
-    roomId: RoomIdSchema,
-    lifecycle: z.literal("LOBBY"),
-    ownerId: identifier,
-    members: z.array(PlayerViewMemberSchema),
-    seats: z.array(PlayerViewSeatSchema),
-    rulesConfiguration: RulesConfigurationSchema,
-    seatingPolicy: SeatingPolicySchema,
-    matchRulesConfigurationLocked: z.boolean(),
-    seatingPolicyLocked: z.boolean(),
+    giverId: identifier,
+    giverSeat: z.number().int().nonnegative(),
+    recipientId: identifier,
+    recipientSeat: z.number().int().nonnegative(),
+    card: CardInstanceCodeSchema,
+    rank: z.string().min(1).max(32),
   })
   .strict();
+
+const PlayerViewReturnCandidatesSchema = z
+  .object({
+    giverId: identifier,
+    giverSeat: z.number().int().nonnegative(),
+    recipientId: identifier,
+    recipientSeat: z.number().int().nonnegative(),
+    tributeCard: CardInstanceCodeSchema,
+    candidateCards: z.array(CardInstanceCodeSchema),
+  })
+  .strict();
+
+const playerViewBaseShape = {
+  roomId: RoomIdSchema,
+  ownerId: identifier,
+  members: z.array(PlayerViewMemberSchema),
+  seats: z.array(PlayerViewSeatSchema),
+  rulesConfiguration: RulesConfigurationSchema,
+  seatingPolicy: SeatingPolicySchema,
+  matchRulesConfigurationLocked: z.boolean(),
+  seatingPolicyLocked: z.boolean(),
+};
+
+const lobbyPlayerViewSchema = z
+  .object({
+    ...playerViewBaseShape,
+    lifecycle: z.literal("LOBBY"),
+    selectedActivity: SelectedActivitySchema.optional(),
+  })
+  .strict();
+
+const activePlayerViewSchema = z
+  .object({
+    ...playerViewBaseShape,
+    lifecycle: z.literal("ACTIVE"),
+    selectedActivity: z.literal("match"),
+    dealerSeat: z.number().int().nonnegative(),
+    dealerTeam: TeamIndexSchema,
+    teamLevels: TeamLevelsSchema,
+    trumpRank: TrumpRankSchema,
+    failureCounters: FailureCountersSchema,
+    completedHandCount: z.number().int().nonnegative(),
+    handSizes: z.array(z.number().int().nonnegative()),
+    hand: z.array(CardInstanceCodeSchema),
+    currentActor: identifier,
+    currentActorSeat: z.number().int().nonnegative(),
+    passedPlayerIds: z.array(identifier),
+    finishPositions: z.array(z.number().int().nonnegative().nullable()),
+    setupStage: SetupStageSchema,
+    tributeTransfers: z.array(PlayerViewTributeTransferSchema),
+    returnCandidates: z.array(PlayerViewReturnCandidatesSchema),
+    pendingPlayerIds: z.array(identifier),
+    eligibleTributeCards: z.array(CardInstanceCodeSchema),
+  })
+  .strict();
+
+export const PlayerViewSchema = z.discriminatedUnion("lifecycle", [
+  lobbyPlayerViewSchema,
+  activePlayerViewSchema,
+]);
 
 export type PlayerView = z.infer<typeof PlayerViewSchema>;
 

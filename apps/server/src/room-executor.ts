@@ -1,8 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import {
   decide,
+  deriveStartRequirements,
   evolve,
+  RANDOMNESS_VERSION,
+  SHUFFLE_VERSION,
+  type Command,
+  type Event,
   type PlayerAccountId,
   type State,
 } from "@dglz/game-core";
@@ -15,12 +20,15 @@ import {
 
 import type { AppDatabase } from "./db/index.js";
 import {
+  appendRoomEvents,
   commitRoomCommand,
   deriveRoomView,
   findAcceptedCommand,
   loadRoom,
   type LoadedRoom,
 } from "./rooms.js";
+
+export type RoomPresence = () => Promise<ReadonlySet<PlayerAccountId>>;
 
 function commandError(
   commandId: string,
@@ -54,6 +62,43 @@ export function roomCommandFingerprint(envelope: RoomCommandEnvelope): string {
     .digest("hex");
 }
 
+function toDomainCommand(
+  accountId: PlayerAccountId,
+  envelope: RoomCommandEnvelope,
+): Command {
+  switch (envelope.payload.type) {
+    case "JoinRoom":
+      return { type: "JoinRoom", playerId: accountId };
+    case "SelectMatch":
+      return { type: "SelectMatch", playerId: accountId };
+    case "AssignSeat":
+      return {
+        type: "AssignSeat",
+        playerId: accountId,
+        seatIndex: envelope.payload.seatIndex,
+      };
+    case "SetReadiness":
+      return {
+        type: "SetReadiness",
+        playerId: accountId,
+        ready: envelope.payload.ready,
+      };
+  }
+}
+
+function freshStartCommand(): Command {
+  return {
+    type: "StartMatch",
+    handSeed: randomBytes(32).toString("base64url"),
+    randomnessVersion: RANDOMNESS_VERSION,
+    shuffleVersion: SHUFFLE_VERSION,
+  };
+}
+
+function foldEvents(state: State, events: readonly Event[]): State {
+  return events.reduce((current, event) => evolve(current, event), state);
+}
+
 export class RoomExecutor {
   private current: LoadedRoom;
   private queue: Promise<void> = Promise.resolve();
@@ -76,9 +121,10 @@ export class RoomExecutor {
   public execute(
     accountId: PlayerAccountId,
     envelope: RoomCommandEnvelope,
+    presence?: RoomPresence,
   ): Promise<RoomCommandAck> {
     const result = this.queue.then(() =>
-      this.executeSerialized(accountId, envelope),
+      this.executeSerialized(accountId, envelope, presence),
     );
     this.queue = result.then(
       () => undefined,
@@ -87,10 +133,20 @@ export class RoomExecutor {
     return result;
   }
 
-  private executeSerialized(
+  public autoStart(presence: RoomPresence): Promise<void> {
+    const result = this.queue.then(() => this.autoStartSerialized(presence));
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async executeSerialized(
     accountId: PlayerAccountId,
     envelope: RoomCommandEnvelope,
-  ): RoomCommandAck {
+    presence: RoomPresence | undefined,
+  ): Promise<RoomCommandAck> {
     const fingerprint = roomCommandFingerprint(envelope);
     const stored = findAcceptedCommand(this.database, envelope.commandId);
     if (stored !== undefined) {
@@ -112,10 +168,10 @@ export class RoomExecutor {
 
     let decision;
     try {
-      decision = decide(this.current.state, {
-        type: "JoinRoom",
-        playerId: accountId,
-      });
+      decision = decide(
+        this.current.state,
+        toDomainCommand(accountId, envelope),
+      );
     } catch {
       return commandError(envelope.commandId, "internal-error");
     }
@@ -125,19 +181,52 @@ export class RoomExecutor {
       });
     }
 
+    let events = [...decision.events];
     let candidateState: State;
     try {
-      candidateState = decision.events.reduce(
-        (state, event) => evolve(state, event),
-        this.current.state,
-      );
+      candidateState = foldEvents(this.current.state, events);
     } catch {
       return commandError(envelope.commandId, "internal-error");
     }
 
-    const nextRevision = this.current.revision + decision.events.length;
+    if (presence !== undefined) {
+      const requirements = deriveStartRequirements(candidateState);
+      if (requirements !== undefined) {
+        let connected: ReadonlySet<PlayerAccountId>;
+        try {
+          connected = await presence();
+        } catch {
+          return commandError(envelope.commandId, "internal-error");
+        }
+        if (
+          requirements.playerIds.every((playerId) => connected.has(playerId))
+        ) {
+          let startDecision;
+          try {
+            startDecision = decide(candidateState, freshStartCommand());
+          } catch {
+            return commandError(envelope.commandId, "internal-error");
+          }
+          if (!startDecision.ok) {
+            return commandError(envelope.commandId, "internal-error");
+          }
+          events = [...events, ...startDecision.events];
+          try {
+            candidateState = foldEvents(this.current.state, events);
+          } catch {
+            return commandError(envelope.commandId, "internal-error");
+          }
+        }
+      }
+    }
+
+    const nextRevision = this.current.revision + events.length;
     const view = deriveRoomView(
-      { state: candidateState, revision: nextRevision },
+      {
+        roomId: this.current.roomId,
+        state: candidateState,
+        revision: nextRevision,
+      },
       accountId,
     );
     if (view === undefined) {
@@ -158,7 +247,7 @@ export class RoomExecutor {
         requestFingerprint: fingerprint,
         acknowledgement,
         expectedRevision: this.current.revision,
-        events: decision.events,
+        events,
       });
     } catch {
       const raced = findAcceptedCommand(this.database, envelope.commandId);
@@ -176,8 +265,57 @@ export class RoomExecutor {
       return commandError(envelope.commandId, "internal-error");
     }
 
-    this.current = { state: candidateState, revision: nextRevision };
+    this.current = {
+      roomId: this.current.roomId,
+      state: candidateState,
+      revision: nextRevision,
+    };
     return acknowledgement;
+  }
+
+  private async autoStartSerialized(presence: RoomPresence): Promise<void> {
+    const requirements = deriveStartRequirements(this.current.state);
+    if (requirements === undefined) {
+      return;
+    }
+
+    let connected: ReadonlySet<PlayerAccountId>;
+    try {
+      connected = await presence();
+    } catch {
+      return;
+    }
+    if (!requirements.playerIds.every((playerId) => connected.has(playerId))) {
+      return;
+    }
+
+    let decision;
+    try {
+      decision = decide(this.current.state, freshStartCommand());
+    } catch {
+      return;
+    }
+    if (!decision.ok) {
+      return;
+    }
+
+    let candidateState: State;
+    try {
+      candidateState = foldEvents(this.current.state, decision.events);
+      appendRoomEvents(this.database, {
+        roomId: this.current.roomId,
+        expectedRevision: this.current.revision,
+        causationCommandId: null,
+        events: decision.events,
+      });
+    } catch {
+      return;
+    }
+    this.current = {
+      roomId: this.current.roomId,
+      state: candidateState,
+      revision: this.current.revision + decision.events.length,
+    };
   }
 }
 
