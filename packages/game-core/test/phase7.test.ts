@@ -213,6 +213,24 @@ describe("game-core Challenge Hands and hardening", () => {
     });
   });
 
+  it("clears stale readiness when first selection changes the effective Ruleset", () => {
+    const state = lobby(SIX_PLAYER_CONFIGURATION, 4);
+    const selected = decide(state, {
+      type: "SelectChallengeHand",
+      playerId: "p1",
+      template: initialTemplate(FOUR_PLAYER_CONFIGURATION),
+    });
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) throw new Error(selected.rejection.reason);
+    expect(selected.events.map((event) => event.type)).toEqual([
+      "ChallengeHandSelected",
+      "ReadinessCleared",
+    ]);
+    expect(
+      deriveStartRequirements(fold(state, selected.events)),
+    ).toBeUndefined();
+  });
+
   it("applies effective-Ruleset transitions without coupling Match configuration", () => {
     let state = lobby(FOUR_PLAYER_CONFIGURATION, 4);
     state = apply(state, { type: "SelectMatch", playerId: "p1" });

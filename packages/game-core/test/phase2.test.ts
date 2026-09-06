@@ -208,7 +208,7 @@ describe("game-core deterministic Match start", () => {
     ]);
   });
 
-  it("rejects starts before durable requirements and empty Hand Seeds", () => {
+  it("rejects starts before durable requirements and invalid reproducibility inputs", () => {
     const lobby = evolve(undefined, {
       type: "RoomCreated",
       roomId: "room-2",
@@ -239,6 +239,29 @@ describe("game-core deterministic Match start", () => {
     ).toEqual({
       ok: false,
       rejection: { reason: "invalid-hand-seed" },
+    });
+    expect(
+      decide(ready, {
+        type: "StartMatch",
+        handSeed: "seed",
+        randomnessVersion:
+          "unsupported" as unknown as typeof RANDOMNESS_VERSION,
+        shuffleVersion: SHUFFLE_VERSION,
+      }),
+    ).toEqual({
+      ok: false,
+      rejection: { reason: "unsupported-randomness-version" },
+    });
+    expect(
+      decide(ready, {
+        type: "StartMatch",
+        handSeed: "seed",
+        randomnessVersion: RANDOMNESS_VERSION,
+        shuffleVersion: "unsupported" as unknown as typeof SHUFFLE_VERSION,
+      }),
+    ).toEqual({
+      ok: false,
+      rejection: { reason: "unsupported-shuffle-version" },
     });
   });
 

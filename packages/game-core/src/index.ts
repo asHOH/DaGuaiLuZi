@@ -2709,6 +2709,12 @@ function decideStartMatch(state: InternalState, command: StartMatch): Decision {
   if (command.handSeed.length === 0) {
     return rejected("invalid-hand-seed");
   }
+  if (command.randomnessVersion !== RANDOMNESS_VERSION) {
+    return rejected("unsupported-randomness-version");
+  }
+  if (command.shuffleVersion !== SHUFFLE_VERSION) {
+    return rejected("unsupported-shuffle-version");
+  }
   const resolvedPlayerIds =
     state.seatingPolicy === "fixed"
       ? [...playerIds]
@@ -2782,7 +2788,11 @@ function decideSelectChallengeHand(
       template: command.template,
     },
   ];
-  if (state.selectedActivity !== undefined && state.readyPlayerIds.length > 0) {
+  if (
+    state.readyPlayerIds.length > 0 &&
+    (state.selectedActivity !== undefined ||
+      effectiveRulesetId(state) !== command.template.rulesetId)
+  ) {
     events.push({ type: "ReadinessCleared" });
   }
   if (state.seats.some((seat) => seat.seatIndex >= capacity)) {
