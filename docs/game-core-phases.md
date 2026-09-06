@@ -142,13 +142,20 @@ Presence never enters `game-core`. Private Hand-start events contain the Hand Se
 
 ### 7. Challenge Hands and hardening
 
-- Add resolved Challenge Template selection, effective-Ruleset seat handling, and readiness reset.
-- Apply active-Room locks during a Challenge Hand; its first start permanently locks only Seating Policy. Its template configuration neither replaces nor locks Match Rules Configuration.
-- Reproduce source logical-seat setup and seeded choices while recording independent actions and results.
-- End after one Hand; implement Challenge Hand abortion without a public result or completed-Hand history.
-- Complete interrupted/archive lifecycle evolution.
-- Audit player-specific views and completed-Hand event sufficiency across every phase.
-- Gate: source deal reproduction, reusable independent challenges, abort privacy, event replay, and hidden-information tests pass.
+- Define a server-private `ChallengeTemplate` value with Ruleset, resolved Rules Configuration, Hand Seed, randomness/shuffle versions, Dealer Team, Team Levels, failure counters, and a setup union: initial-Hand dealer seat or subsequent-Hand seat-indexed Finish Positions/result facts needed for Tribute and first lead. It contains no Challenge Code or source Player Account identity.
+- Add owner-authored `SelectChallengeHand` carrying an already-resolved template; Challenge Code lookup, throttling, persistence, and template creation stay outside `game-core`. Reject malformed/version-incompatible templates and selections whose effective Ruleset is smaller than current membership.
+- Treat the selected activity's Ruleset as the lobby's effective Ruleset for membership capacity, valid seats, rendered seat count, and `deriveStartRequirements`. Switching Match/Challenge selection clears readiness; shrinking clears out-of-range assignments, while growth preserves valid assignments.
+- Match Rules Configuration changes remain allowed until the first Match starts. While a Challenge Hand is selected, they do not change its effective Ruleset, clear Challenge readiness, or replace the selected template.
+- Add internal `StartChallengeHand`, accepted only for a selected Challenge with every effective seat durably ready. Apply the Room Seating Policy to map current Player Accounts onto source logical seats, using the template Hand Seed and existing `seating` domain when randomized.
+- Emit self-sufficient `ChallengeHandStarted` facts with the template setup and resolved seat-ordered current Player Accounts. Reuse the existing deal, Tribute, Return, tie-choice, leader, play, and Hand-result implementation; the same template and logical seat mapping reproduce the source seat-indexed deal and seeded choices.
+- Starting the first Match permanently locks Match Rules Configuration and Seating Policy. Starting the first Challenge Hand permanently locks only Seating Policy; its template configuration becomes the active Hand configuration without replacing or locking the Room's Match configuration.
+- Mark the active aggregate as Match or Challenge Hand so Match settlement/next-Hand commands cannot run against a Challenge. When its Hand result is determined, append `ChallengeHandCompleted`, return the Room to `LOBBY`, clear selection/readiness, expose a completed Challenge result, and retain enough public facts for history; never start a second Hand.
+- Add owner-authored `AbortChallengeHand`. Emit `ChallengeHandAborted`, return to `LOBBY`, clear selection/readiness, and expose no result or completed-Hand summary; incomplete private events remain only in the persisted stream.
+- Add internal `InterruptRoom` for an active Match or Challenge and owner-authored `ArchiveRoom` for an interrupted Room. `RoomInterrupted`/`RoomArchived` are terminal view states that reveal no active hands or seeds. Creating a replacement Room with copied Match configuration remains outside this module.
+- Keep active-Room membership, seat, activity, configuration, and Seating Policy locks identical for Matches and Challenge Hands. Reject activity-specific start, abort, continuation, ballot, and play commands in the wrong lifecycle/kind without events.
+- Player views expose the selected/active activity kind, effective Ruleset seating, active Challenge public facts, and a completed Challenge result only after natural completion. They never expose template/Hand Seeds, opponents' cards, source identities, or aborted/interrupted private Hand facts.
+- Tests cover effective-Ruleset selection transitions, readiness/seat handling, lock isolation, first/subsequent source setup reproduction, reusable independent Challenge runs, both Rulesets, Tribute/tie seeded choices, one-Hand completion, abort privacy/authority, interruption/archive, replay/event order, immutable views/events, and generated deal/card-conservation determinism.
+- Gate: all prior Match flows remain unchanged; source deals and setup choices reproduce by logical seat, completed Challenges retain history facts, and aborted/interrupted views disclose no private state.
 
 ## Completion gate
 
