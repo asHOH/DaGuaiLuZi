@@ -1,0 +1,35 @@
+{
+  "name": "@dglz/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "dependencies": {
+    "@dglz/game-core": "workspace:*",
+    "@dglz/protocol": "workspace:*",
+    "@fastify/cookie": "11.1.2",
+    "@fastify/helmet": "13.1.1",
+    "@fastify/rate-limit": "11.2.0",
+    "argon2": "0.45.1",
+    "better-sqlite3": "13.0.3",
+    "drizzle-orm": "0.45.2",
+    "fastify": "5.12.3",
+    "zod": "4.5.4"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "provision-account": "node dist/provision-account.js",
+    "test": "vitest run test",
+    "typecheck": "tsc -p tsconfig.test.json"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "isolatedDeclarations": false,
+    "skipLibCheck": true,
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../../packages/game-core" },
+    { "path": "../../packages/protocol" }
+  ],
+  "include": ["src/**/*.ts"]
+}
