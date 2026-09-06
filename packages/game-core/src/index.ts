@@ -30,6 +30,13 @@ export type TeamLevels = readonly [TeamLevel, TeamLevel];
 export type FailureCounters = readonly [number, number];
 export type HandSeed = string;
 
+export type SetupStage =
+  | "tribute-selection"
+  | "recipient-pairing-tie"
+  | "return-card-selection"
+  | "leader-selection-tie"
+  | "play";
+
 export const RANDOMNESS_VERSION = "dglz-random-v1" as const;
 export const SHUFFLE_VERSION = "dglz-shuffle-v1" as const;
 export type RandomnessVersion = typeof RANDOMNESS_VERSION;
@@ -180,6 +187,66 @@ export type MatchAborted = Readonly<{
   completedHandCount: number;
 }>;
 
+export type HandStarted = Readonly<{
+  type: "HandStarted";
+  handNumber: number;
+  rulesetId: RulesetId;
+  rulesConfiguration: RulesConfiguration;
+  seatingPolicy: SeatingPolicy;
+  playerIds: readonly PlayerAccountId[];
+  dealerTeam: TeamIndex;
+  teamLevels: TeamLevels;
+  failureCounters: FailureCounters;
+  trumpRank: TrumpRank;
+  handSeed: HandSeed;
+  randomnessVersion: RandomnessVersion;
+  shuffleVersion: ShuffleVersion;
+}>;
+
+export type TributeCardSelected = Readonly<{
+  type: "TributeCardSelected";
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  card: CardInstanceCode;
+  rank: PlayRank;
+}>;
+
+export type TributeTransferred = Readonly<{
+  type: "TributeTransferred";
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+  card: CardInstanceCode;
+  rank: PlayRank;
+}>;
+
+export type ReturnCandidatesOffered = Readonly<{
+  type: "ReturnCandidatesOffered";
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+  tributeCard: CardInstanceCode;
+  candidateCards: readonly CardInstanceCode[];
+}>;
+
+export type ReturnTransferred = Readonly<{
+  type: "ReturnTransferred";
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+  tributeCard: CardInstanceCode;
+  card: CardInstanceCode;
+}>;
+
+export type HandLeaderChosen = Readonly<{
+  type: "HandLeaderChosen";
+  playerId: PlayerAccountId;
+  seatIndex: SeatIndex;
+}>;
+
 export type Event =
   | RoomCreated
   | MemberJoined
@@ -202,7 +269,13 @@ export type Event =
   | HandResultDetermined
   | HandSettled
   | MatchCompleted
-  | MatchAborted;
+  | MatchAborted
+  | HandStarted
+  | TributeCardSelected
+  | TributeTransferred
+  | ReturnCandidatesOffered
+  | ReturnTransferred
+  | HandLeaderChosen;
 
 export type JoinRoom = Readonly<{
   type: "JoinRoom";
@@ -272,6 +345,32 @@ export type AbortMatch = Readonly<{
   playerId: PlayerAccountId;
 }>;
 
+/** Internal command submitted by the Room executor after the previous Hand settles. */
+export type StartNextHand = Readonly<{
+  type: "StartNextHand";
+  handSeed: HandSeed;
+  randomnessVersion: RandomnessVersion;
+  shuffleVersion: ShuffleVersion;
+}>;
+
+export type SelectTributeCard = Readonly<{
+  type: "SelectTributeCard";
+  playerId: PlayerAccountId;
+  card: CardInstanceCode;
+}>;
+
+export type OfferReturnCandidates = Readonly<{
+  type: "OfferReturnCandidates";
+  playerId: PlayerAccountId;
+  candidateCards: readonly CardInstanceCode[];
+}>;
+
+export type SelectReturnCard = Readonly<{
+  type: "SelectReturnCard";
+  playerId: PlayerAccountId;
+  card: CardInstanceCode;
+}>;
+
 export type Command =
   | JoinRoom
   | LeaveRoom
@@ -284,7 +383,11 @@ export type Command =
   | StartMatch
   | Play
   | Pass
-  | AbortMatch;
+  | AbortMatch
+  | StartNextHand
+  | SelectTributeCard
+  | OfferReturnCandidates
+  | SelectReturnCard;
 
 export type RejectionReason =
   | "room-not-created"
@@ -310,6 +413,16 @@ export type RejectionReason =
   | "invalid-hand-seed"
   | "room-not-active"
   | "hand-result-determined"
+  | "hand-not-settled"
+  | "hand-setup-incomplete"
+  | "unsupported-randomness-version"
+  | "unsupported-shuffle-version"
+  | "tribute-card-not-eligible"
+  | "not-pending-setup-actor"
+  | "return-candidates-invalid"
+  | "return-card-not-eligible"
+  | "recipient-pairing-tie"
+  | "leader-selection-tie"
   | "not-current-player"
   | "card-not-in-hand"
   | "pass-on-open-lead"
@@ -370,6 +483,24 @@ export type PlayerViewMatchSummary =
       completedHandCount: number;
     }>;
 
+export type PlayerViewTributeTransfer = Readonly<{
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+  card: CardInstanceCode;
+  rank: PlayRank;
+}>;
+
+export type PlayerViewReturnCandidates = Readonly<{
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+  tributeCard: CardInstanceCode;
+  candidateCards: readonly CardInstanceCode[];
+}>;
+
 export type PlayerView = Readonly<{
   roomId: RoomId;
   lifecycle: Lifecycle;
@@ -396,6 +527,11 @@ export type PlayerView = Readonly<{
   passedPlayerIds?: readonly PlayerAccountId[];
   finishPositions?: readonly (number | undefined)[];
   handResult?: PlayerViewHandResult;
+  setupStage?: SetupStage;
+  tributeTransfers?: readonly PlayerViewTributeTransfer[];
+  returnCandidates?: readonly PlayerViewReturnCandidates[];
+  pendingPlayerIds?: readonly PlayerAccountId[];
+  eligibleTributeCards?: readonly CardInstanceCode[];
 }>;
 
 declare const STATE_BRAND: unique symbol;
@@ -426,12 +562,63 @@ type ActivePlay = Readonly<{
   play: ClassifiedPlay;
 }>;
 
+type SetupGiver = Readonly<{
+  playerId: PlayerAccountId;
+  seatIndex: SeatIndex;
+  rank: PlayRank;
+  eligibleCards: readonly CardInstanceCode[];
+}>;
+
+type TributeSelection = Readonly<{
+  giverSeat: SeatIndex;
+  card: CardInstanceCode;
+  rank: PlayRank;
+}>;
+
+type TributeTransferState = Readonly<{
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+  card: CardInstanceCode;
+  rank: PlayRank;
+}>;
+
+type ReturnOfferState = Readonly<{
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+  tributeCard: CardInstanceCode;
+  candidateCards: readonly CardInstanceCode[];
+}>;
+
+type ReturnTransferState = Readonly<{
+  giverSeat: SeatIndex;
+  recipientSeat: SeatIndex;
+  tributeCard: CardInstanceCode;
+  card: CardInstanceCode;
+}>;
+
+type HandSetup = Readonly<{
+  stage: SetupStage;
+  firstFinisherSeat: SeatIndex;
+  givers: readonly SetupGiver[];
+  recipientSeats: readonly SeatIndex[];
+  tributeSelections: readonly TributeSelection[];
+  tributeTransfers: readonly TributeTransferState[];
+  returnOffers: readonly ReturnOfferState[];
+  returnTransfers: readonly ReturnTransferState[];
+}>;
+
 type ActiveHand = Readonly<{
+  handSeed: HandSeed;
   currentActorSeat: SeatIndex;
   unbeatenPlay: ActivePlay | undefined;
   passedSeats: readonly SeatIndex[];
   finishPositions: readonly (number | undefined)[];
   result: HandResultDetermined | undefined;
+  setup: HandSetup;
 }>;
 
 type ActiveMatch = Readonly<{
@@ -495,6 +682,30 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
+function cloneHandSetup(setup: HandSetup): HandSetup {
+  return {
+    ...setup,
+    givers: setup.givers.map((giver) => ({
+      ...giver,
+      eligibleCards: [...giver.eligibleCards],
+    })),
+    recipientSeats: [...setup.recipientSeats],
+    tributeSelections: setup.tributeSelections.map((selection) => ({
+      ...selection,
+    })),
+    tributeTransfers: setup.tributeTransfers.map((transfer) => ({
+      ...transfer,
+    })),
+    returnOffers: setup.returnOffers.map((offer) => ({
+      ...offer,
+      candidateCards: [...offer.candidateCards],
+    })),
+    returnTransfers: setup.returnTransfers.map((transfer) => ({
+      ...transfer,
+    })),
+  };
+}
+
 function makeState(value: InternalState): State {
   const activeMatch =
     value.activeMatch === undefined
@@ -525,6 +736,7 @@ function makeState(value: InternalState): State {
           })),
           hand: {
             ...value.activeMatch.hand,
+            setup: cloneHandSetup(value.activeMatch.hand.setup),
             passedSeats: [...value.activeMatch.hand.passedSeats],
             finishPositions: [...value.activeMatch.hand.finishPositions],
             result:
@@ -602,6 +814,16 @@ function cloneEvent(event: Event): Event {
     };
   }
 
+  if (event.type === "HandStarted") {
+    return {
+      ...event,
+      rulesConfiguration: cloneRulesConfiguration(event.rulesConfiguration),
+      playerIds: [...event.playerIds],
+      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+      failureCounters: [...event.failureCounters] as [number, number],
+    };
+  }
+
   if (event.type === "CardsPlayed") {
     return {
       ...event,
@@ -609,6 +831,10 @@ function cloneEvent(event: Event): Event {
       representedFaces: [...event.representedFaces],
       comparisonRanks: [...event.comparisonRanks],
     };
+  }
+
+  if (event.type === "ReturnCandidatesOffered") {
+    return { ...event, candidateCards: [...event.candidateCards] };
   }
 
   if (event.type === "HandResultDetermined") {
@@ -781,7 +1007,13 @@ function buildDeck(rulesetId: RulesetId): CardInstance[] {
   return cards;
 }
 
-function dealHands(event: MatchStarted): PlayerHand[] {
+type HandDealInput = Readonly<{
+  handSeed: HandSeed;
+  rulesetId: RulesetId;
+  playerIds: readonly PlayerAccountId[];
+}>;
+
+function dealHands(event: HandDealInput): PlayerHand[] {
   const nextDeckValue = makeRandomStream(
     event.handSeed,
     event.rulesetId,
@@ -804,6 +1036,294 @@ function dealHands(event: MatchStarted): PlayerHand[] {
   return hands;
 }
 
+function tributeRankStrength(rank: PlayRank, trumpRank: TrumpRank): number {
+  if (rank === "BIG") return 16;
+  if (rank === "SMALL") return 15;
+  if (rank === trumpRank) return 14;
+  return STANDARD_RANKS.indexOf(rank as (typeof STANDARD_RANKS)[number]);
+}
+
+function cardTributeRank(card: CardInstance): PlayRank {
+  return card.face.rank;
+}
+
+function tributeEligibleCards(
+  hand: PlayerHand,
+  rulesetId: RulesetId,
+  trumpRank: TrumpRank,
+): { rank: PlayRank; cards: readonly CardInstance[] } | undefined {
+  const candidates =
+    rulesetId === "dglz-4p-2d-v1"
+      ? hand.cards.filter((card) => card.face.kind === "suited")
+      : hand.cards;
+  if (candidates.length === 0) return undefined;
+
+  const rank = candidates.reduce(
+    (highest, card) =>
+      tributeRankStrength(cardTributeRank(card), trumpRank) >
+      tributeRankStrength(highest, trumpRank)
+        ? cardTributeRank(card)
+        : highest,
+    cardTributeRank(candidates[0]!),
+  );
+  return {
+    rank,
+    cards: candidates.filter((card) => cardTributeRank(card) === rank),
+  };
+}
+
+function tributeRankCompare(
+  left: PlayRank,
+  right: PlayRank,
+  trumpRank: TrumpRank,
+): number {
+  return (
+    tributeRankStrength(left, trumpRank) - tributeRankStrength(right, trumpRank)
+  );
+}
+
+function setupForNextHand(
+  previous: ActiveMatch,
+  hands: readonly PlayerHand[],
+  rulesetId: RulesetId,
+  trumpRank: TrumpRank,
+): HandSetup {
+  const previousResult = previous.hand.result;
+  const firstFinisherSeat = Math.max(
+    0,
+    previous.hand.finishPositions.findIndex((position) => position === 1),
+  );
+  const caughtIds = new Set(previousResult?.caughtPlayerIds ?? []);
+  const givers: SetupGiver[] = [];
+  for (const [seatIndex, hand] of hands.entries()) {
+    if (!caughtIds.has(hand.playerId)) continue;
+    const eligible = tributeEligibleCards(hand, rulesetId, trumpRank);
+    if (eligible === undefined) continue;
+    givers.push({
+      playerId: hand.playerId,
+      seatIndex,
+      rank: eligible.rank,
+      eligibleCards: eligible.cards.map((card) => card.code),
+    });
+  }
+
+  const recipientSeats: SeatIndex[] = [];
+  const winningTeam = previousResult?.winningTeam;
+  if (winningTeam !== undefined) {
+    const wanted = givers.length;
+    hands
+      .map((hand, seatIndex) => ({
+        hand,
+        seatIndex,
+        finishPosition: previous.hand.finishPositions[seatIndex],
+      }))
+      .filter(
+        (entry) =>
+          entry.seatIndex % 2 === winningTeam &&
+          entry.finishPosition !== undefined,
+      )
+      .sort((left, right) => left.finishPosition! - right.finishPosition!)
+      .slice(0, wanted)
+      .forEach((entry) => recipientSeats.push(entry.seatIndex));
+  }
+
+  return {
+    stage: givers.length === 0 ? "play" : "tribute-selection",
+    firstFinisherSeat,
+    givers,
+    recipientSeats,
+    tributeSelections: [],
+    tributeTransfers: [],
+    returnOffers: [],
+    returnTransfers: [],
+  };
+}
+
+function selectedTribute(
+  setup: HandSetup,
+  giverSeat: SeatIndex,
+): TributeSelection | undefined {
+  return setup.tributeSelections.find(
+    (selection) => selection.giverSeat === giverSeat,
+  );
+}
+
+function hasTributeTransfer(setup: HandSetup, giverSeat: SeatIndex): boolean {
+  return setup.tributeTransfers.some(
+    (transfer) => transfer.giverSeat === giverSeat,
+  );
+}
+
+function tributeTransferEvents(state: InternalState): TributeTransferred[] {
+  const activeMatch = state.activeMatch;
+  if (activeMatch === undefined) return [];
+  const setup = activeMatch.hand.setup;
+  if (setup.tributeSelections.length !== setup.givers.length) return [];
+
+  const availableRecipients = new Set(
+    setup.recipientSeats.filter(
+      (seatIndex) =>
+        !setup.tributeTransfers.some(
+          (transfer) => transfer.recipientSeat === seatIndex,
+        ),
+    ),
+  );
+  const pairs: Array<{
+    giver: SetupGiver;
+    recipientSeat: SeatIndex;
+  }> = [];
+
+  if (
+    state.rulesConfiguration.tributeRecipientPairing ===
+    "adjacent-first-automatic"
+  ) {
+    for (const giver of setup.givers) {
+      if (hasTributeTransfer(setup, giver.seatIndex)) continue;
+      const precedingSeat =
+        (giver.seatIndex - 1 + activeMatch.hands.length) %
+        activeMatch.hands.length;
+      if (availableRecipients.delete(precedingSeat)) {
+        pairs.push({ giver, recipientSeat: precedingSeat });
+      }
+    }
+
+    const remainingGivers = setup.givers.filter(
+      (giver) =>
+        !hasTributeTransfer(setup, giver.seatIndex) &&
+        !pairs.some((pair) => pair.giver.seatIndex === giver.seatIndex),
+    );
+    const remainingRecipients = [...availableRecipients];
+    if (remainingGivers.length === remainingRecipients.length) {
+      remainingGivers.forEach((giver, index) => {
+        const recipientSeat = remainingRecipients[index];
+        if (recipientSeat !== undefined) pairs.push({ giver, recipientSeat });
+      });
+    }
+  } else {
+    const orderedGivers = setup.givers
+      .filter((giver) => !hasTributeTransfer(setup, giver.seatIndex))
+      .sort((left, right) =>
+        tributeRankCompare(left.rank, right.rank, activeMatch.trumpRank),
+      )
+      .reverse();
+    const recipients = [...availableRecipients];
+    let giverIndex = 0;
+    let recipientIndex = 0;
+    while (giverIndex < orderedGivers.length) {
+      const rank = orderedGivers[giverIndex]!.rank;
+      const group: SetupGiver[] = [];
+      while (
+        giverIndex < orderedGivers.length &&
+        tributeRankCompare(
+          orderedGivers[giverIndex]!.rank,
+          rank,
+          activeMatch.trumpRank,
+        ) === 0
+      ) {
+        group.push(orderedGivers[giverIndex]!);
+        giverIndex += 1;
+      }
+      if (group.length !== 1) {
+        recipientIndex += group.length;
+        continue;
+      }
+      const recipientSeat = recipients[recipientIndex];
+      if (recipientSeat === undefined) break;
+      pairs.push({ giver: group[0]!, recipientSeat });
+      recipientIndex += 1;
+    }
+  }
+
+  return pairs.flatMap(({ giver, recipientSeat }) => {
+    const recipient = handAtSeat(activeMatch, recipientSeat);
+    const selection = selectedTribute(setup, giver.seatIndex);
+    if (recipient === undefined || selection === undefined) return [];
+    return [
+      {
+        type: "TributeTransferred",
+        giverId: giver.playerId,
+        giverSeat: giver.seatIndex,
+        recipientId: recipient.playerId,
+        recipientSeat,
+        card: selection.card,
+        rank: giver.rank,
+      },
+    ];
+  });
+}
+
+function recipientPairingTiePending(
+  state: InternalState,
+  setup: HandSetup,
+  transferCount: number,
+): boolean {
+  if (
+    state.rulesConfiguration.tributeRecipientPairing !==
+      "finish-position-by-tribute-rank" ||
+    setup.tributeSelections.length !== setup.givers.length ||
+    transferCount >= setup.givers.length
+  ) {
+    return false;
+  }
+  const ordered = setup.givers
+    .filter((giver) => !hasTributeTransfer(setup, giver.seatIndex))
+    .sort((left, right) =>
+      tributeRankCompare(left.rank, right.rank, state.activeMatch!.trumpRank),
+    )
+    .reverse();
+  if (ordered.length < 2) return false;
+  return (
+    tributeRankCompare(
+      ordered[0]!.rank,
+      ordered[1]!.rank,
+      state.activeMatch!.trumpRank,
+    ) === 0
+  );
+}
+
+function allTributesTransferred(setup: HandSetup): boolean {
+  return setup.tributeTransfers.length === setup.givers.length;
+}
+
+function allReturnsTransferred(setup: HandSetup): boolean {
+  return setup.returnTransfers.length === setup.tributeTransfers.length;
+}
+
+function leaderEvent(state: InternalState): HandLeaderChosen | undefined {
+  const activeMatch = state.activeMatch;
+  if (activeMatch === undefined) return undefined;
+  const setup = activeMatch.hand.setup;
+  if (!allTributesTransferred(setup) || !allReturnsTransferred(setup)) {
+    return undefined;
+  }
+
+  let leaderSeat = setup.firstFinisherSeat;
+  if (
+    state.rulesConfiguration.nextHandLeader === "highest-tribute" &&
+    setup.givers.length > 0
+  ) {
+    const highest = setup.givers.reduce(
+      (best, giver) =>
+        tributeRankCompare(giver.rank, best.rank, activeMatch.trumpRank) > 0
+          ? giver
+          : best,
+      setup.givers[0]!,
+    );
+    const tied = setup.givers.filter(
+      (giver) =>
+        tributeRankCompare(giver.rank, highest.rank, activeMatch.trumpRank) ===
+        0,
+    );
+    if (tied.length > 1) return undefined;
+    leaderSeat = highest.seatIndex;
+  }
+
+  const playerId = playerAtSeat(activeMatch, leaderSeat);
+  return playerId === undefined
+    ? undefined
+    : { type: "HandLeaderChosen", playerId, seatIndex: leaderSeat };
+}
+
 function startPlayerIds(state: InternalState): PlayerAccountId[] | undefined {
   if (!isLobby(state) || state.selectedActivity !== "match") {
     return undefined;
@@ -820,6 +1340,290 @@ function startPlayerIds(state: InternalState): PlayerAccountId[] | undefined {
     playerIds.push(assignment.playerId);
   }
   return playerIds;
+}
+
+function foldAcceptedState(
+  state: InternalState,
+  events: readonly Event[],
+): InternalState {
+  let next = state as unknown as State;
+  for (const event of events) next = evolve(next, event);
+  return readState(next);
+}
+
+function decideStartNextHand(
+  state: InternalState,
+  command: StartNextHand,
+): Decision {
+  if (state.lifecycle !== "ACTIVE" || state.activeMatch === undefined) {
+    return rejected("room-not-active");
+  }
+  if (state.activeMatch.hand.result === undefined) {
+    return rejected("hand-not-settled");
+  }
+  if (command.handSeed.length === 0) {
+    return rejected("invalid-hand-seed");
+  }
+  if (command.randomnessVersion !== RANDOMNESS_VERSION) {
+    return rejected("unsupported-randomness-version");
+  }
+  if (command.shuffleVersion !== SHUFFLE_VERSION) {
+    return rejected("unsupported-shuffle-version");
+  }
+
+  const handNumber = state.activeMatch.completedHandCount + 1;
+  const event: HandStarted = {
+    type: "HandStarted",
+    handNumber,
+    rulesetId: state.rulesConfiguration.rulesetId,
+    rulesConfiguration: state.rulesConfiguration,
+    seatingPolicy: state.seatingPolicy,
+    playerIds: state.activeMatch.hands.map((hand) => hand.playerId),
+    dealerTeam: state.activeMatch.hand.result.nextDealerTeam,
+    teamLevels: state.activeMatch.teamLevels,
+    failureCounters: state.activeMatch.failureCounters,
+    trumpRank: state.activeMatch.teamLevels[
+      state.activeMatch.hand.result.nextDealerTeam
+    ] as TrumpRank,
+    handSeed: command.handSeed,
+    randomnessVersion: command.randomnessVersion,
+    shuffleVersion: command.shuffleVersion,
+  };
+  const events: Event[] = [event];
+  let candidate = foldAcceptedState(state, events);
+  const activeHand = candidate.activeMatch!.hand;
+  if (activeHand.setup.givers.length === 0) {
+    const leader = leaderEvent(candidate);
+    if (leader !== undefined) events.push(leader);
+    return accepted(events);
+  }
+
+  if (state.rulesConfiguration.tributeCardSelection === "fair-random") {
+    for (const giver of activeHand.setup.givers) {
+      const index = boundedChoice(
+        makeRandomStream(
+          command.handSeed,
+          state.rulesConfiguration.rulesetId,
+          `tribute-card/${giver.seatIndex}`,
+        ),
+        giver.eligibleCards.length,
+      );
+      events.push({
+        type: "TributeCardSelected",
+        giverId: giver.playerId,
+        giverSeat: giver.seatIndex,
+        card: giver.eligibleCards[index]!,
+        rank: giver.rank,
+      });
+    }
+    candidate = foldAcceptedState(candidate, events.slice(1));
+    const transfers = tributeTransferEvents(candidate);
+    events.push(...transfers);
+  }
+
+  return accepted(events);
+}
+
+function activeSetup(state: InternalState): ActiveMatch | undefined {
+  return state.lifecycle === "ACTIVE" ? state.activeMatch : undefined;
+}
+
+function pendingReturn(activeMatch: ActiveMatch):
+  | {
+      transfer: TributeTransferState;
+      offer: ReturnOfferState | undefined;
+    }
+  | undefined {
+  const setup = activeMatch.hand.setup;
+  const transfer = setup.tributeTransfers.find(
+    (candidate) =>
+      !setup.returnTransfers.some(
+        (returned) =>
+          returned.giverSeat === candidate.giverSeat &&
+          returned.recipientSeat === candidate.recipientSeat,
+      ),
+  );
+  if (transfer === undefined) return undefined;
+  return {
+    transfer,
+    offer: setup.returnOffers.find(
+      (candidate) =>
+        candidate.giverSeat === transfer.giverSeat &&
+        candidate.recipientSeat === transfer.recipientSeat,
+    ),
+  };
+}
+
+function decideSelectTributeCard(
+  state: InternalState,
+  command: SelectTributeCard,
+): Decision {
+  const activeMatch = activeSetup(state);
+  if (activeMatch === undefined) return rejected("room-not-active");
+  if (findMember(state, command.playerId) === undefined) {
+    return rejected("not-a-member");
+  }
+  if (activeMatch.hand.result !== undefined) {
+    return rejected("hand-result-determined");
+  }
+  if (activeMatch.hand.setup.stage !== "tribute-selection") {
+    return rejected(
+      activeMatch.hand.setup.stage === "recipient-pairing-tie"
+        ? "recipient-pairing-tie"
+        : activeMatch.hand.setup.stage === "leader-selection-tie"
+          ? "leader-selection-tie"
+          : "hand-setup-incomplete",
+    );
+  }
+  const giver = activeMatch.hand.setup.givers.find(
+    (candidate) => candidate.playerId === command.playerId,
+  );
+  if (giver === undefined) return rejected("not-pending-setup-actor");
+  if (selectedTribute(activeMatch.hand.setup, giver.seatIndex) !== undefined) {
+    return rejected("not-pending-setup-actor");
+  }
+  if (!giver.eligibleCards.includes(command.card)) {
+    return rejected("tribute-card-not-eligible");
+  }
+
+  const events: Event[] = [
+    {
+      type: "TributeCardSelected",
+      giverId: giver.playerId,
+      giverSeat: giver.seatIndex,
+      card: command.card,
+      rank: giver.rank,
+    },
+  ];
+  const candidate = foldAcceptedState(state, events);
+  events.push(...tributeTransferEvents(candidate));
+  return accepted(events);
+}
+
+function returnSelectionConfiguration(
+  configuration: RulesConfiguration,
+): "recipient-choice" | "giver-choice-from-candidates" {
+  return configuration.rulesetId === "dglz-6p-3d-v1"
+    ? configuration.returnCardSelection
+    : "recipient-choice";
+}
+
+function decideOfferReturnCandidates(
+  state: InternalState,
+  command: OfferReturnCandidates,
+): Decision {
+  const activeMatch = activeSetup(state);
+  if (activeMatch === undefined) return rejected("room-not-active");
+  if (findMember(state, command.playerId) === undefined) {
+    return rejected("not-a-member");
+  }
+  if (activeMatch.hand.setup.stage !== "return-card-selection") {
+    return rejected("hand-setup-incomplete");
+  }
+  const pending = pendingReturn(activeMatch);
+  if (pending === undefined || pending.offer !== undefined) {
+    return rejected("not-pending-setup-actor");
+  }
+  const { transfer } = pending;
+  const selection = returnSelectionConfiguration(state.rulesConfiguration);
+  if (selection !== "giver-choice-from-candidates") {
+    return rejected("return-candidates-invalid");
+  }
+  const tribute = decodeCardInstance(transfer.card);
+  if (!tribute.ok || tribute.card.face.kind !== "joker") {
+    return rejected("return-candidates-invalid");
+  }
+  const expectedCount = tribute.card.face.rank === "SMALL" ? 2 : 3;
+  if (command.playerId !== transfer.recipientId) {
+    return rejected("not-pending-setup-actor");
+  }
+  if (command.candidateCards.length !== expectedCount) {
+    return rejected("return-candidates-invalid");
+  }
+  if (new Set(command.candidateCards).size !== expectedCount) {
+    return rejected("return-candidates-invalid");
+  }
+  const recipientHand = handAtSeat(activeMatch, transfer.recipientSeat);
+  if (recipientHand === undefined) return rejected("return-candidates-invalid");
+  const candidates = command.candidateCards.map((code) =>
+    recipientHand.cards.find((card) => card.code === code),
+  );
+  if (candidates.some((card) => card === undefined)) {
+    return rejected("return-candidates-invalid");
+  }
+  if (
+    new Set(candidates.map((card) => card!.face.rank)).size !== expectedCount
+  ) {
+    return rejected("return-candidates-invalid");
+  }
+  return accepted([
+    {
+      type: "ReturnCandidatesOffered",
+      giverId: transfer.giverId,
+      giverSeat: transfer.giverSeat,
+      recipientId: transfer.recipientId,
+      recipientSeat: transfer.recipientSeat,
+      tributeCard: transfer.card,
+      candidateCards: [...command.candidateCards],
+    },
+  ]);
+}
+
+function decideSelectReturnCard(
+  state: InternalState,
+  command: SelectReturnCard,
+): Decision {
+  const activeMatch = activeSetup(state);
+  if (activeMatch === undefined) return rejected("room-not-active");
+  if (findMember(state, command.playerId) === undefined) {
+    return rejected("not-a-member");
+  }
+  if (activeMatch.hand.setup.stage !== "return-card-selection") {
+    return rejected("hand-setup-incomplete");
+  }
+  const pending = pendingReturn(activeMatch);
+  if (pending === undefined) return rejected("not-pending-setup-actor");
+  const { transfer, offer } = pending;
+  if (
+    offer === undefined &&
+    returnSelectionConfiguration(state.rulesConfiguration) ===
+      "giver-choice-from-candidates"
+  ) {
+    const tribute = decodeCardInstance(transfer.card);
+    if (tribute.ok && tribute.card.face.kind === "joker") {
+      return rejected("return-candidates-invalid");
+    }
+  }
+  const expectedActor = offer?.giverId ?? transfer.recipientId;
+  if (command.playerId !== expectedActor) {
+    return rejected("not-pending-setup-actor");
+  }
+  if (offer !== undefined && !offer.candidateCards.includes(command.card)) {
+    return rejected("return-card-not-eligible");
+  }
+  const recipientHand = handAtSeat(activeMatch, transfer.recipientSeat);
+  if (
+    recipientHand === undefined ||
+    !recipientHand.cards.some((card) => card.code === command.card)
+  ) {
+    return rejected("return-card-not-eligible");
+  }
+
+  const events: Event[] = [
+    {
+      type: "ReturnTransferred",
+      giverId: transfer.giverId,
+      giverSeat: transfer.giverSeat,
+      recipientId: transfer.recipientId,
+      recipientSeat: transfer.recipientSeat,
+      tributeCard: transfer.card,
+      card: command.card,
+    },
+  ];
+  const candidate = foldAcceptedState(state, events);
+  const leader = leaderEvent(candidate);
+  if (leader !== undefined) events.push(leader);
+  return accepted(events);
 }
 
 function decideStartMatch(state: InternalState, command: StartMatch): Decision {
@@ -1125,6 +1929,9 @@ function decidePlay(state: InternalState, command: Play): Decision {
   if (activeHand.result !== undefined) {
     return rejected("hand-result-determined");
   }
+  if (activeHand.setup.stage !== "play") {
+    return rejected("hand-setup-incomplete");
+  }
 
   const seatIndex = activeHand.currentActorSeat;
   const hand = handAtSeat(activeMatch, seatIndex);
@@ -1214,6 +2021,9 @@ function decidePass(state: InternalState, command: Pass): Decision {
   }
   if (activeHand.result !== undefined) {
     return rejected("hand-result-determined");
+  }
+  if (activeHand.setup.stage !== "play") {
+    return rejected("hand-setup-incomplete");
   }
 
   const seatIndex = activeHand.currentActorSeat;
@@ -1308,6 +2118,34 @@ export function decide(state: State | undefined, command: Command): Decision {
       return rejected("room-not-created");
     }
     return decideAbortMatch(readState(state), command);
+  }
+
+  if (command.type === "StartNextHand") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decideStartNextHand(readState(state), command);
+  }
+
+  if (command.type === "SelectTributeCard") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decideSelectTributeCard(readState(state), command);
+  }
+
+  if (command.type === "OfferReturnCandidates") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decideOfferReturnCandidates(readState(state), command);
+  }
+
+  if (command.type === "SelectReturnCard") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decideSelectReturnCard(readState(state), command);
   }
 
   const membershipRejection = requireLobbyMember(
@@ -1596,11 +2434,62 @@ export function evolve(state: State | undefined, event: Event): State {
           completedHandCount: 0,
           hands: dealHands(event),
           hand: {
+            handSeed: event.handSeed,
             currentActorSeat: event.dealerSeat,
             unbeatenPlay: undefined,
             passedSeats: [],
             finishPositions: Array(event.playerIds.length).fill(undefined),
             result: undefined,
+            setup: {
+              stage: "play",
+              firstFinisherSeat: event.dealerSeat,
+              givers: [],
+              recipientSeats: [],
+              tributeSelections: [],
+              tributeTransfers: [],
+              returnOffers: [],
+              returnTransfers: [],
+            },
+          },
+          summary: undefined,
+        },
+      });
+    }
+
+    case "HandStarted": {
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      const hands = dealHands(event);
+      const setup = setupForNextHand(
+        current.activeMatch,
+        hands,
+        event.rulesetId,
+        event.trumpRank,
+      );
+      return makeState({
+        ...current,
+        lifecycle: "ACTIVE",
+        seats: event.playerIds.map((playerId, seatIndex) => ({
+          seatIndex,
+          playerId,
+        })),
+        activeMatch: {
+          ...current.activeMatch,
+          dealerTeam: event.dealerTeam,
+          teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
+          trumpRank: event.trumpRank,
+          failureCounters: [...event.failureCounters] as [number, number],
+          completedHandCount: event.handNumber - 1,
+          hands,
+          hand: {
+            handSeed: event.handSeed,
+            currentActorSeat: setup.firstFinisherSeat,
+            unbeatenPlay: undefined,
+            passedSeats: [],
+            finishPositions: Array(event.playerIds.length).fill(undefined),
+            result: undefined,
+            setup,
           },
           summary: undefined,
         },
@@ -1735,6 +2624,234 @@ export function evolve(state: State | undefined, event: Event): State {
         },
       });
 
+    case "TributeCardSelected":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      if (
+        current.activeMatch.hand.setup.tributeSelections.some(
+          (selection) => selection.giverSeat === event.giverSeat,
+        )
+      ) {
+        return makeState(current);
+      }
+      const nextSetup: HandSetup = {
+        ...current.activeMatch.hand.setup,
+        tributeSelections: [
+          ...current.activeMatch.hand.setup.tributeSelections,
+          {
+            giverSeat: event.giverSeat,
+            card: event.card,
+            rank: event.rank,
+          },
+        ],
+      };
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            setup: {
+              ...nextSetup,
+              stage: recipientPairingTiePending(
+                current,
+                nextSetup,
+                nextSetup.tributeTransfers.length,
+              )
+                ? "recipient-pairing-tie"
+                : nextSetup.stage,
+            },
+          },
+        },
+      });
+
+    case "TributeTransferred":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      const nextTransfers = [
+        ...current.activeMatch.hand.setup.tributeTransfers,
+        {
+          giverId: event.giverId,
+          giverSeat: event.giverSeat,
+          recipientId: event.recipientId,
+          recipientSeat: event.recipientSeat,
+          card: event.card,
+          rank: event.rank,
+        },
+      ];
+      const transferSetup: HandSetup = {
+        ...current.activeMatch.hand.setup,
+        tributeTransfers: nextTransfers,
+      };
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hands: current.activeMatch.hands.map((hand, seatIndex) => {
+            if (seatIndex === event.giverSeat) {
+              return {
+                playerId: hand.playerId,
+                cards: hand.cards.filter((card) => card.code !== event.card),
+              };
+            }
+            if (seatIndex === event.recipientSeat) {
+              const card = current.activeMatch!.hands[
+                event.giverSeat
+              ]?.cards.find((candidate) => candidate.code === event.card);
+              return card === undefined
+                ? { playerId: hand.playerId, cards: [...hand.cards] }
+                : { playerId: hand.playerId, cards: [...hand.cards, card] };
+            }
+            return { playerId: hand.playerId, cards: [...hand.cards] };
+          }),
+          hand: {
+            ...current.activeMatch.hand,
+            setup: {
+              ...transferSetup,
+              stage:
+                nextTransfers.length >= transferSetup.givers.length
+                  ? "return-card-selection"
+                  : recipientPairingTiePending(
+                        current,
+                        transferSetup,
+                        nextTransfers.length,
+                      )
+                    ? "recipient-pairing-tie"
+                    : current.activeMatch.hand.setup.stage,
+            },
+          },
+        },
+      });
+
+    case "ReturnCandidatesOffered":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            setup: {
+              ...current.activeMatch.hand.setup,
+              returnOffers: [
+                ...current.activeMatch.hand.setup.returnOffers,
+                {
+                  giverId: event.giverId,
+                  giverSeat: event.giverSeat,
+                  recipientId: event.recipientId,
+                  recipientSeat: event.recipientSeat,
+                  tributeCard: event.tributeCard,
+                  candidateCards: [...event.candidateCards],
+                },
+              ],
+            },
+          },
+        },
+      });
+
+    case "ReturnTransferred":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hands: current.activeMatch.hands.map((hand, seatIndex) => {
+            if (seatIndex === event.recipientSeat) {
+              return {
+                playerId: hand.playerId,
+                cards: hand.cards.filter((card) => card.code !== event.card),
+              };
+            }
+            if (seatIndex === event.giverSeat) {
+              const card = current.activeMatch!.hands[
+                event.recipientSeat
+              ]?.cards.find((candidate) => candidate.code === event.card);
+              return card === undefined
+                ? { playerId: hand.playerId, cards: [...hand.cards] }
+                : { playerId: hand.playerId, cards: [...hand.cards, card] };
+            }
+            return { playerId: hand.playerId, cards: [...hand.cards] };
+          }),
+          hand: {
+            ...current.activeMatch.hand,
+            setup: {
+              ...current.activeMatch.hand.setup,
+              stage: (() => {
+                const nextReturnCount =
+                  current.activeMatch!.hand.setup.returnTransfers.length + 1;
+                if (
+                  nextReturnCount <
+                  current.activeMatch!.hand.setup.tributeTransfers.length
+                ) {
+                  return current.activeMatch!.hand.setup.stage;
+                }
+                if (
+                  current.rulesConfiguration.nextHandLeader ===
+                    "highest-tribute" &&
+                  current.activeMatch!.hand.setup.givers.length > 1
+                ) {
+                  const highest = current.activeMatch!.hand.setup.givers.reduce(
+                    (best, giver) =>
+                      tributeRankCompare(
+                        giver.rank,
+                        best.rank,
+                        current.activeMatch!.trumpRank,
+                      ) > 0
+                        ? giver
+                        : best,
+                    current.activeMatch!.hand.setup.givers[0]!,
+                  );
+                  if (
+                    current.activeMatch!.hand.setup.givers.filter(
+                      (giver) =>
+                        tributeRankCompare(
+                          giver.rank,
+                          highest.rank,
+                          current.activeMatch!.trumpRank,
+                        ) === 0,
+                    ).length > 1
+                  ) {
+                    return "leader-selection-tie";
+                  }
+                }
+                return "return-card-selection";
+              })(),
+              returnTransfers: [
+                ...current.activeMatch.hand.setup.returnTransfers,
+                {
+                  giverSeat: event.giverSeat,
+                  recipientSeat: event.recipientSeat,
+                  tributeCard: event.tributeCard,
+                  card: event.card,
+                },
+              ],
+            },
+          },
+        },
+      });
+
+    case "HandLeaderChosen":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            currentActorSeat: event.seatIndex,
+            setup: { ...current.activeMatch.hand.setup, stage: "play" },
+          },
+        },
+      });
+
     case "HandSettled":
       if (current.activeMatch === undefined) {
         return makeState(current);
@@ -1859,13 +2976,41 @@ export function derivePlayerView(
       activeHand.currentActorSeat,
     );
     const unbeatenPlay = activeHand.unbeatenPlay;
+    const pendingReturnChoice = pendingReturn(current.activeMatch);
+    const pendingPlayerIds =
+      activeHand.setup.stage === "tribute-selection"
+        ? activeHand.setup.givers
+            .filter(
+              (giver) =>
+                selectedTribute(activeHand.setup, giver.seatIndex) ===
+                undefined,
+            )
+            .map((giver) => giver.playerId)
+        : activeHand.setup.stage === "return-card-selection" &&
+            pendingReturnChoice !== undefined
+          ? [
+              pendingReturnChoice.offer?.giverId ??
+                pendingReturnChoice.transfer.recipientId,
+            ]
+          : [];
+    const ownGiver = activeHand.setup.givers.find(
+      (giver) => giver.playerId === playerId,
+    );
+    const eligibleTributeCards =
+      activeHand.setup.stage === "tribute-selection" &&
+      ownGiver !== undefined &&
+      selectedTribute(activeHand.setup, ownGiver.seatIndex) === undefined
+        ? [...ownGiver.eligibleCards]
+        : [];
     return deepFreeze({
       ...view,
       ...publicMatchFacts,
       trumpRank: current.activeMatch.trumpRank,
       handSizes: current.activeMatch.hands.map((hand) => hand.cards.length),
       hand: ownHand === undefined ? [] : ownHand.cards.map((card) => card.code),
-      ...(activeHand.result !== undefined || currentActor === undefined
+      ...(activeHand.setup.stage !== "play" ||
+      activeHand.result !== undefined ||
+      currentActor === undefined
         ? {}
         : {
             currentActor,
@@ -1890,6 +3035,25 @@ export function derivePlayerView(
           (candidate): candidate is PlayerAccountId => candidate !== undefined,
         ),
       finishPositions: [...activeHand.finishPositions],
+      setupStage: activeHand.setup.stage,
+      tributeTransfers: activeHand.setup.tributeTransfers.map((transfer) => ({
+        giverId: transfer.giverId,
+        giverSeat: transfer.giverSeat,
+        recipientId: transfer.recipientId,
+        recipientSeat: transfer.recipientSeat,
+        card: transfer.card,
+        rank: transfer.rank,
+      })),
+      returnCandidates: activeHand.setup.returnOffers.map((offer) => ({
+        giverId: offer.giverId,
+        giverSeat: offer.giverSeat,
+        recipientId: offer.recipientId,
+        recipientSeat: offer.recipientSeat,
+        tributeCard: offer.tributeCard,
+        candidateCards: [...offer.candidateCards],
+      })),
+      pendingPlayerIds,
+      eligibleTributeCards,
       ...(activeHand.result === undefined
         ? {}
         : {
