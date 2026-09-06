@@ -10,6 +10,8 @@ export const PasswordSchema = z.string().min(1).max(1024);
 export const RulesetIdSchema = z.enum(["dglz-6p-3d-v1", "dglz-4p-2d-v1"]);
 export const SeatingPolicySchema = z.enum(["fixed", "randomized"]);
 export const RoomIdSchema = z.string().uuid();
+export const CommandIdSchema = z.string().uuid();
+export const RoomRevisionSchema = z.number().int().positive();
 
 const sharedRulesConfiguration = {
   wildcardRank: z.enum(["weakest-rank", "strongest-rank"]),
@@ -55,6 +57,23 @@ export type RulesConfiguration = z.infer<typeof RulesConfigurationSchema>;
 export type RulesetId = z.infer<typeof RulesetIdSchema>;
 export type SeatingPolicy = z.infer<typeof SeatingPolicySchema>;
 
+export const JoinRoomPayloadSchema = z
+  .object({ type: z.literal("JoinRoom") })
+  .strict();
+export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
+
+export const RoomCommandEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    commandId: CommandIdSchema,
+    roomId: RoomIdSchema,
+    expectedRevision: RoomRevisionSchema,
+    payload: JoinRoomPayloadSchema,
+  })
+  .strict();
+export type RoomCommandEnvelope = z.infer<typeof RoomCommandEnvelopeSchema>;
+export const JoinRoomCommandEnvelopeSchema = RoomCommandEnvelopeSchema;
+
 export const LoginCommandSchema = z
   .object({ username: UsernameSchema, password: PasswordSchema })
   .strict();
@@ -80,9 +99,52 @@ export const ProtocolErrorCodeSchema = z.enum([
   "rate-limited",
   "unsupported-persisted-event",
   "internal-error",
+  "domain-rejected",
+  "stale-revision",
+  "command-id-reused",
 ]);
 
 export type ProtocolErrorCode = z.infer<typeof ProtocolErrorCodeSchema>;
+
+export const RoomCommandErrorSchema = z
+  .object({
+    code: ProtocolErrorCodeSchema,
+    reason: z.string().min(1).optional(),
+    currentRevision: RoomRevisionSchema.optional(),
+  })
+  .strict();
+
+export const RoomCommandSuccessDataSchema = z.lazy(() => RoomViewDataSchema);
+export type RoomCommandSuccessData = z.infer<
+  typeof RoomCommandSuccessDataSchema
+>;
+
+export const RoomCommandSuccessEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    ok: z.literal(true),
+    commandId: CommandIdSchema,
+    data: RoomCommandSuccessDataSchema,
+  })
+  .strict();
+
+export const RoomCommandErrorEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    ok: z.literal(false),
+    commandId: CommandIdSchema,
+    error: RoomCommandErrorSchema,
+  })
+  .strict();
+
+export const RoomCommandAckSchema = z.discriminatedUnion("ok", [
+  RoomCommandSuccessEnvelopeSchema,
+  RoomCommandErrorEnvelopeSchema,
+]);
+export type RoomCommandAck = z.infer<typeof RoomCommandAckSchema>;
+
+export const SOCKET_ROOM_COMMAND_EVENT = "room:command" as const;
+export const SOCKET_ROOM_VIEW_EVENT = "room:view" as const;
 
 export const ErrorEnvelopeSchema = z
   .object({
@@ -170,6 +232,15 @@ export const RoomViewDataSchema = z
   .strict();
 
 export type RoomViewData = z.infer<typeof RoomViewDataSchema>;
+
+export const RoomViewSyncEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    type: z.literal("room:view"),
+    data: RoomViewDataSchema,
+  })
+  .strict();
+export type RoomViewSyncEnvelope = z.infer<typeof RoomViewSyncEnvelopeSchema>;
 
 export const LoginResponseEnvelopeSchema = z
   .object({

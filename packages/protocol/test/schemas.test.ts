@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   CreateRoomCommandSchema,
+  JoinRoomCommandEnvelopeSchema,
   ErrorEnvelopeSchema,
   LoginCommandSchema,
   LoginResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   RulesConfigurationSchema,
   RoomResponseEnvelopeSchema,
+  RoomCommandAckSchema,
+  RoomViewSyncEnvelopeSchema,
   RoomViewDataSchema,
   errorEnvelope,
   parseProtocolVersion,
@@ -82,6 +85,60 @@ describe("protocol schemas", () => {
         error: { code: "reload-required" },
       },
     );
+  });
+
+  it("validates the revisioned JoinRoom command and acknowledgements", () => {
+    const command = {
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: "da9f540e-fd4b-4d74-be39-ccc7f080cab4",
+      roomId: "da9f540e-fd4b-4d74-be39-ccc7f080cab4",
+      expectedRevision: 1,
+      payload: { type: "JoinRoom" },
+    } as const;
+    expect(JoinRoomCommandEnvelopeSchema.parse(command)).toEqual(command);
+    expect(
+      JoinRoomCommandEnvelopeSchema.safeParse({
+        ...command,
+        payload: { type: "JoinRoom", playerId: "untrusted" },
+      }).success,
+    ).toBe(false);
+    expect(
+      RoomCommandAckSchema.safeParse({
+        protocolVersion: PROTOCOL_VERSION,
+        ok: false,
+        commandId: command.commandId,
+        error: { code: "stale-revision", currentRevision: 2 },
+      }).success,
+    ).toBe(true);
+    expect(
+      RoomViewSyncEnvelopeSchema.safeParse({
+        protocolVersion: PROTOCOL_VERSION,
+        type: "room:view",
+        data: {
+          revision: 1,
+          view: {
+            roomId: command.roomId,
+            lifecycle: "LOBBY",
+            ownerId: "alice",
+            members: [{ playerId: "alice", joinOrder: 0, ready: false }],
+            seats: [{ seatIndex: 0 }],
+            rulesConfiguration: {
+              rulesetId: "dglz-4p-2d-v1",
+              wildcardRank: "strongest-rank",
+              finishingWildcardInterpretation: "weakest-form-and-rank",
+              flushTieBreaking: "descending-ranks",
+              nextHandLeader: "first-finisher",
+              tributeCardSelection: "fair-random",
+              tributeRecipientPairing: "adjacent-first-automatic",
+              matchEnding: "no-failure-limit-at-5",
+            },
+            seatingPolicy: "fixed",
+            matchRulesConfigurationLocked: false,
+            seatingPolicyLocked: false,
+          },
+        },
+      }).success,
+    ).toBe(true);
   });
 
   it("validates the revisioned lobby view", () => {

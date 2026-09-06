@@ -4,10 +4,14 @@ import {
   evolve,
   type PlayerAccountId,
   type PlayerView as CorePlayerView,
+  type Event,
   type RoomCreated,
   type State,
 } from "@dglz/game-core";
 import {
+  CommandIdSchema,
+  RoomCommandAckSchema,
+  type RoomCommandAck,
   RoomIdSchema,
   RulesConfigurationSchema,
   RoomViewDataSchema,
@@ -29,6 +33,14 @@ const RoomCreatedPayloadSchema = z
     ownerId: z.string().min(1).max(128),
     rulesConfiguration: RulesConfigurationSchema,
     seatingPolicy: SeatingPolicySchema,
+  })
+  .strict();
+
+const MemberJoinedPayloadSchema = z
+  .object({
+    type: z.literal("MemberJoined"),
+    playerId: z.string().min(1).max(128),
+    joinOrder: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -91,6 +103,119 @@ export function appendRoomCreated(
     .run();
 }
 
+export type AcceptedCommandRecord = Readonly<{
+  accountId: string;
+  roomId: string;
+  requestFingerprint: string;
+  acknowledgement: RoomCommandAck;
+}>;
+
+const AcceptedCommandRowSchema = z.object({
+  commandId: CommandIdSchema,
+  accountId: z.string().min(1),
+  roomId: RoomIdSchema,
+  requestFingerprint: z.string().min(1),
+  acknowledgement: z.string().min(1),
+});
+
+export function findAcceptedCommand(
+  database: AppDatabase,
+  commandId: string,
+): AcceptedCommandRecord | undefined {
+  const row = database.sqlite
+    .prepare(
+      `SELECT command_id AS commandId,
+              account_id AS accountId,
+              room_id AS roomId,
+              request_fingerprint AS requestFingerprint,
+              acknowledgement
+         FROM accepted_commands
+        WHERE command_id = ?`,
+    )
+    .get(commandId);
+  if (row === undefined) {
+    return undefined;
+  }
+  const parsedRow = AcceptedCommandRowSchema.parse(row);
+  let acknowledgement: unknown;
+  try {
+    acknowledgement = JSON.parse(parsedRow.acknowledgement) as unknown;
+  } catch {
+    throw new UnsupportedPersistedEventError();
+  }
+  const parsedAcknowledgement = RoomCommandAckSchema.safeParse(acknowledgement);
+  if (
+    !parsedAcknowledgement.success ||
+    parsedAcknowledgement.data.commandId !== parsedRow.commandId
+  ) {
+    throw new UnsupportedPersistedEventError();
+  }
+  return {
+    accountId: parsedRow.accountId,
+    roomId: parsedRow.roomId,
+    requestFingerprint: parsedRow.requestFingerprint,
+    acknowledgement: parsedAcknowledgement.data,
+  };
+}
+
+export type CommittedRoomCommand = Readonly<{
+  commandId: string;
+  accountId: string;
+  roomId: string;
+  requestFingerprint: string;
+  acknowledgement: RoomCommandAck;
+  expectedRevision: number;
+  events: readonly Event[];
+}>;
+
+function eventPayload(event: Event): string {
+  if (event.type === "RoomCreated") {
+    return JSON.stringify(RoomCreatedPayloadSchema.parse(event));
+  }
+  if (event.type === "MemberJoined") {
+    return JSON.stringify(MemberJoinedPayloadSchema.parse(event));
+  }
+  throw new UnsupportedPersistedEventError();
+}
+
+export function commitRoomCommand(
+  database: AppDatabase,
+  command: CommittedRoomCommand,
+): void {
+  const acknowledgement = RoomCommandAckSchema.parse(command.acknowledgement);
+  const insertCommand = database.sqlite.prepare(
+    `INSERT INTO accepted_commands
+       (command_id, account_id, room_id, request_fingerprint, acknowledgement)
+     VALUES (?, ?, ?, ?, ?)`,
+  );
+  const insertEvent = database.sqlite.prepare(
+    `INSERT INTO room_events
+       (room_id, sequence, event_type, event_schema_version, causation_command_id, recorded_at, payload)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const commit = database.sqlite.transaction(() => {
+    insertCommand.run(
+      command.commandId,
+      command.accountId,
+      command.roomId,
+      command.requestFingerprint,
+      JSON.stringify(acknowledgement),
+    );
+    command.events.forEach((event, offset) => {
+      insertEvent.run(
+        command.roomId,
+        command.expectedRevision + offset + 1,
+        event.type,
+        ROOM_EVENT_SCHEMA_VERSION,
+        command.commandId,
+        Date.now(),
+        eventPayload(event),
+      );
+    });
+  });
+  commit();
+}
+
 export type LoadedRoom = Readonly<{
   state: State;
   revision: number;
@@ -117,11 +242,7 @@ export function loadRoom(
     if (!row.success || row.data.sequence !== revision + 1) {
       throw new UnsupportedPersistedEventError();
     }
-    if (
-      state !== undefined ||
-      row.data.eventSchemaVersion !== ROOM_EVENT_SCHEMA_VERSION ||
-      row.data.eventType !== "RoomCreated"
-    ) {
+    if (row.data.eventSchemaVersion !== ROOM_EVENT_SCHEMA_VERSION) {
       throw new UnsupportedPersistedEventError();
     }
     let decoded: unknown;
@@ -130,11 +251,21 @@ export function loadRoom(
     } catch {
       throw new UnsupportedPersistedEventError();
     }
-    const parsedEvent = RoomCreatedPayloadSchema.safeParse(decoded);
-    if (!parsedEvent.success || parsedEvent.data.roomId !== roomId) {
+    if (state === undefined && row.data.eventType === "RoomCreated") {
+      const parsedEvent = RoomCreatedPayloadSchema.safeParse(decoded);
+      if (!parsedEvent.success || parsedEvent.data.roomId !== roomId) {
+        throw new UnsupportedPersistedEventError();
+      }
+      state = evolve(state, parsedEvent.data);
+    } else if (state !== undefined && row.data.eventType === "MemberJoined") {
+      const parsedEvent = MemberJoinedPayloadSchema.safeParse(decoded);
+      if (!parsedEvent.success) {
+        throw new UnsupportedPersistedEventError();
+      }
+      state = evolve(state, parsedEvent.data);
+    } else {
       throw new UnsupportedPersistedEventError();
     }
-    state = evolve(state, parsedEvent.data);
     revision = row.data.sequence;
   }
   if (state === undefined) {

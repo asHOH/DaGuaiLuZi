@@ -52,4 +52,14 @@ export const roomEvents = sqliteTable(
   }),
 );
 
-export const schema = { accounts, sessions, roomEvents };
+export const acceptedCommands = sqliteTable("accepted_commands", {
+  commandId: text("command_id").primaryKey(),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  roomId: text("room_id").notNull(),
+  requestFingerprint: text("request_fingerprint").notNull(),
+  acknowledgement: text("acknowledgement").notNull(),
+});
+
+export const schema = { accounts, sessions, roomEvents, acceptedCommands };

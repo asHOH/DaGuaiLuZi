@@ -7,15 +7,24 @@ import Fastify, {
 import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import { Server as SocketIOServer, type Socket } from "socket.io";
 import { evolve } from "@dglz/game-core";
 import {
+  CommandIdSchema,
   CreateRoomCommandSchema,
   LoginCommandSchema,
   LoginResponseDataSchema,
   LogoutResponseDataSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
+  RoomCommandAckSchema,
+  RoomCommandEnvelopeSchema,
   RoomIdSchema,
+  RoomViewSyncEnvelopeSchema,
+  SOCKET_ROOM_COMMAND_EVENT,
+  SOCKET_ROOM_VIEW_EVENT,
+  type ProtocolErrorCode,
+  type RoomCommandAck,
   errorEnvelope,
   parseProtocolVersion,
   successEnvelope,
@@ -37,6 +46,7 @@ import {
   loadRoom,
   UnsupportedPersistedEventError,
 } from "./rooms.js";
+import { RoomExecutorRegistry } from "./room-executor.js";
 
 export type ServerOptions = Readonly<{
   dbPath?: string;
@@ -61,6 +71,9 @@ function normalizeAllowedOrigin(value: string | undefined): string | undefined {
 function errorStatus(code: Parameters<typeof errorEnvelope>[0]): number {
   switch (code) {
     case "reload-required":
+    case "domain-rejected":
+    case "stale-revision":
+    case "command-id-reused":
       return 409;
     case "malformed-input":
       return 400;
@@ -99,6 +112,79 @@ function requestAccount(
   return resolveSession(database, requestCookieToken(request));
 }
 
+type SocketData = {
+  accountId?: string;
+  sessionToken?: string;
+  initialRoomId?: string;
+};
+
+function socketError(
+  code: ProtocolErrorCode,
+): Error & { data: { code: string } } {
+  const error = new Error(code) as Error & { data: { code: string } };
+  error.data = { code };
+  return error;
+}
+
+function socketProtocolVersion(socket: Socket): number | undefined {
+  const header = socket.handshake.headers[PROTOCOL_VERSION_HEADER];
+  const fromHeader = parseProtocolVersion(
+    typeof header === "string" || Array.isArray(header) ? header : undefined,
+  );
+  if (fromHeader !== undefined) {
+    return fromHeader;
+  }
+  const auth = socket.handshake.auth as
+    { protocolVersion?: unknown } | undefined;
+  if (typeof auth?.protocolVersion === "number") {
+    return Number.isSafeInteger(auth.protocolVersion)
+      ? auth.protocolVersion
+      : undefined;
+  }
+  return typeof auth?.protocolVersion === "string"
+    ? parseProtocolVersion(auth.protocolVersion)
+    : undefined;
+}
+
+function socketRequestedRoomId(
+  socket: Socket,
+):
+  Readonly<{ provided: false }> | Readonly<{ provided: true; value: unknown }> {
+  const auth = socket.handshake.auth as { roomId?: unknown } | undefined;
+  if (auth !== undefined && Object.hasOwn(auth, "roomId")) {
+    return { provided: true, value: auth.roomId };
+  }
+  if (Object.hasOwn(socket.handshake.query, "roomId")) {
+    return { provided: true, value: socket.handshake.query.roomId };
+  }
+  return { provided: false };
+}
+
+function commandErrorAck(
+  commandId: string,
+  code: ProtocolErrorCode,
+): RoomCommandAck {
+  return RoomCommandAckSchema.parse({
+    protocolVersion: PROTOCOL_VERSION,
+    ok: false,
+    commandId,
+    error: { code },
+  });
+}
+
+function commandIdFromUnknown(value: unknown): string {
+  if (typeof value === "object" && value !== null && "commandId" in value) {
+    const commandId = (value as { commandId?: unknown }).commandId;
+    if (
+      typeof commandId === "string" &&
+      CommandIdSchema.safeParse(commandId).success
+    ) {
+      return commandId;
+    }
+  }
+  return randomUUID();
+}
+
 function cookieOptions(secure: boolean): {
   httpOnly: true;
   sameSite: "lax";
@@ -131,6 +217,197 @@ export async function createApp(
   await app.register(cookie);
   await app.register(helmet);
   await app.register(rateLimit, { global: false, hook: "preHandler" });
+  const roomExecutors = new RoomExecutorRegistry(database);
+  const io = new SocketIOServer(app.server, {
+    cors: {
+      origin: allowedOrigin ?? false,
+      credentials: true,
+    },
+    allowRequest: (request, callback) => {
+      const originHeader = request.headers.origin;
+      if (
+        originHeader !== undefined &&
+        (Array.isArray(originHeader) ||
+          allowedOrigin === undefined ||
+          originHeader !== allowedOrigin)
+      ) {
+        callback("origin-forbidden", false);
+        return;
+      }
+      callback(null, true);
+    },
+  });
+
+  io.use((socket, next) => {
+    if (socketProtocolVersion(socket) !== PROTOCOL_VERSION) {
+      next(socketError("reload-required"));
+      return;
+    }
+
+    const cookieHeader = socket.handshake.headers.cookie;
+    const token =
+      typeof cookieHeader === "string"
+        ? app.parseCookie(cookieHeader)[SESSION_COOKIE_NAME]
+        : undefined;
+    const account = resolveSession(database, token);
+    if (account === undefined || token === undefined) {
+      next(socketError("unauthorized"));
+      return;
+    }
+
+    const requestedRoom = socketRequestedRoomId(socket);
+    const data = socket.data as SocketData;
+    data.accountId = account.accountId;
+    data.sessionToken = token;
+    if (!requestedRoom.provided) {
+      next();
+      return;
+    }
+    const parsedRoomId = RoomIdSchema.safeParse(requestedRoom.value);
+    if (!parsedRoomId.success) {
+      next(socketError("malformed-input"));
+      return;
+    }
+    data.initialRoomId = parsedRoomId.data;
+
+    void roomExecutors
+      .getOrCreate(parsedRoomId.data)
+      .then((executor) => {
+        if (executor === undefined) {
+          next(socketError("room-not-found"));
+          return;
+        }
+        if (executor.viewFor(account.accountId) === undefined) {
+          next(socketError("forbidden"));
+          return;
+        }
+        next();
+      })
+      .catch(() => next(socketError("internal-error")));
+  });
+
+  async function publishRoomViews(
+    roomId: string,
+    executor: Awaited<ReturnType<typeof roomExecutors.getOrCreate>>,
+  ): Promise<void> {
+    if (executor === undefined) {
+      return;
+    }
+    for (const connected of await io.in(roomId).fetchSockets()) {
+      const data = connected.data as SocketData;
+      const account = resolveSession(database, data.sessionToken);
+      if (account === undefined || account.accountId !== data.accountId) {
+        connected.disconnect(true);
+        continue;
+      }
+      const view = executor.viewFor(account.accountId);
+      if (view === undefined) {
+        continue;
+      }
+      connected.emit(
+        SOCKET_ROOM_VIEW_EVENT,
+        RoomViewSyncEnvelopeSchema.parse({
+          protocolVersion: PROTOCOL_VERSION,
+          type: SOCKET_ROOM_VIEW_EVENT,
+          data: view,
+        }),
+      );
+    }
+  }
+
+  io.on("connection", (socket) => {
+    const data = socket.data as SocketData;
+    const initialRoomId = data.initialRoomId;
+    if (initialRoomId !== undefined) {
+      void (async () => {
+        const account = resolveSession(database, data.sessionToken);
+        if (account === undefined || account.accountId !== data.accountId) {
+          socket.disconnect(true);
+          return;
+        }
+        await Promise.resolve(socket.join(initialRoomId));
+        const executor = await roomExecutors.getOrCreate(initialRoomId);
+        if (executor === undefined) {
+          return;
+        }
+        socket.emit(
+          SOCKET_ROOM_VIEW_EVENT,
+          RoomViewSyncEnvelopeSchema.parse({
+            protocolVersion: PROTOCOL_VERSION,
+            type: SOCKET_ROOM_VIEW_EVENT,
+            data: executor.viewFor(account.accountId),
+          }),
+        );
+      })().catch((error: unknown) => {
+        app.log.error(
+          { err: error, roomId: initialRoomId },
+          "room sync failed",
+        );
+      });
+    }
+
+    socket.on(
+      SOCKET_ROOM_COMMAND_EVENT,
+      (raw: unknown, acknowledge?: (value: RoomCommandAck) => void) => {
+        const respond =
+          typeof acknowledge === "function" ? acknowledge : () => undefined;
+        const commandId = commandIdFromUnknown(raw);
+        const token = data.sessionToken;
+        const account = resolveSession(database, token);
+        if (account === undefined) {
+          respond(commandErrorAck(commandId, "unauthorized"));
+          return;
+        }
+        const parsed = RoomCommandEnvelopeSchema.safeParse(raw);
+        if (!parsed.success) {
+          const version =
+            typeof raw === "object" && raw !== null && "protocolVersion" in raw
+              ? (raw as { protocolVersion?: unknown }).protocolVersion
+              : undefined;
+          const incompatible =
+            typeof version === "number" && version !== PROTOCOL_VERSION;
+          respond(
+            commandErrorAck(
+              commandId,
+              incompatible ? "reload-required" : "malformed-input",
+            ),
+          );
+          return;
+        }
+
+        void roomExecutors
+          .getOrCreate(parsed.data.roomId)
+          .then(async (executor) => {
+            if (executor === undefined) {
+              respond(commandErrorAck(commandId, "room-not-found"));
+              return;
+            }
+            const result = await executor.execute(
+              account.accountId,
+              parsed.data,
+            );
+            respond(result);
+            if (result.ok) {
+              try {
+                await Promise.resolve(socket.join(parsed.data.roomId));
+                await publishRoomViews(parsed.data.roomId, executor);
+              } catch (error) {
+                app.log.error(
+                  { err: error, roomId: parsed.data.roomId },
+                  "room view publication failed",
+                );
+              }
+            }
+          })
+          .catch(() => respond(commandErrorAck(commandId, "internal-error")));
+      },
+    );
+  });
+
+  app.addHook("preClose", async () => {
+    io.disconnectSockets(true);
+    await io.close();
+  });
   app.addHook("onClose", (_instance, done) => {
     database.close();
     done();

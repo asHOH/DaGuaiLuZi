@@ -23,6 +23,7 @@
     "better-sqlite3": "13.0.3",
     "drizzle-orm": "0.45.2",
     "fastify": "5.12.3",
+    "socket.io": "4.8.3",
     "zod": "4.5.4"
   },
   "scripts": {
@@ -31,5 +32,8 @@
     "provision-account": "node dist/provision-account.js",
     "test": "vitest run test",
     "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "devDependencies": {
+    "socket.io-client": "4.8.3"
   }
 }
