@@ -1,14 +1,16 @@
-# `game-core` Establishment Plan
+# `game-core` Implementation Record
+
+Status: Complete as of 2026-09-06. This document records the seven implemented phases; it is not an active roadmap.
 
 ## Module seam
 
-Stabilize these operation shapes in Phase 1:
+The completed external interface uses these operation shapes:
 
 ```ts
-decide(state, command): Decision
+decide(state | undefined, command): Decision
 evolve(state | undefined, event): State
 derivePlayerView(state, playerId): PlayerView
-deriveStartRequirements(state): StartRequirements
+deriveStartRequirements(state): StartRequirements | undefined
 ```
 
 State is opaque. Command, event, rejection, and view unions may gain variants through later phases. Tests use this seam, not internal handlers.
