@@ -127,10 +127,18 @@ Presence never enters `game-core`. Private Hand-start events contain the Hand Se
 
 ### 6. Tie-choice protocol
 
-- Implement private simultaneous ballots, give-up, collisions, partial commitments, three-round limits, and deterministic fallback.
-- Cover tied Tribute-recipient pairing and tied highest-Tribute leader selection.
-- Reveal ballots only when a round resolves; unresolved ballots remain absent from other player views.
-- Gate: protocol examples, `2–1–0` partial resolution, all-give-up, and seeded fallback reproduction pass.
+- Add one `SubmitTieChoiceBallot` command for the active tie. Its author chooses one current candidate or `give-up`; reject non-members, non-voters, wrong stages, duplicate submissions in a round, and stale/ineligible candidates without events.
+- Record each accepted private submission as `TieChoiceBallotSubmitted`. The final submission in a round atomically adds the applicable public round-resolution fact and any resulting `TributeTransferred` or `HandLeaderChosen` facts. No clock, presence, or automatic disconnect ballot enters `game-core`.
+- Keep internal tie state on the active Hand: tie kind, 1-based round, voters, current candidates, current private ballots, and resolved public rounds. Recipient-pairing voters/candidates shrink after commitments; leader voters remain the original tied givers while candidates may shrink.
+- For recipient pairing, process tied Tribute-rank groups highest first. In each round, commit every recipient selected by exactly one unresolved giver; collisions and `give-up` stay unresolved. Preserve prior and singleton pairs, automatically pair a sole remainder, then continue into the next rank group or Return Cards.
+- After an unresolved recipient-pairing round three, apply the existing Adjacent-first Automatic rule only to its remaining givers and recipients. Record the revealed round and exact fallback pairs before emitting their card transfers.
+- For leader selection, exclude `give-up`, choose a unique plurality, or retain only candidates tied for the highest nonzero count. All-give-up retains the candidate set. Every inconclusive round keeps all original voters and advances the round.
+- After an inconclusive leader round three, choose uniformly from the remaining candidates using the current private Hand Seed, existing random version, and domain `tie-choice/leader-fallback`; record the revealed ballots and selected fallback leader.
+- Public resolution facts include ordered revealed ballots, newly committed outcomes, remaining candidates, round number, and whether fallback ran. `evolve` applies those facts without re-running ballot or random decisions; full event replay reaches the same setup state.
+- Player views expose tie kind, round, voters, candidates, submitted voter IDs, the requesting voter's own current ballot, and previously resolved rounds. Before resolution, no other voter's choice appears; after resolution, that round's ballots and outcomes are public. `pendingPlayerIds` contains only voters who have not submitted in the current round.
+- Preserve card conservation and setup ordering across chained ties: no Return Card begins before every recipient pair transfers, and no first play begins before Returns and leader resolution finish.
+- Tests cover invalid/duplicate ballots, private partial commitments, collisions, give-up, `2–1–0` partial pairing, sole-remainder pairing, multiple rank groups, unique plurality, candidate narrowing, all-give-up, both three-round fallbacks, event order/replay, immutable/player-specific views, and generated seeded-fallback determinism.
+- Gate: protocol examples pass under the `自主` preset without regressing `省心`, 4p2d, or Phase 5 card-conservation flows.
 
 ### 7. Challenge Hands and hardening
 

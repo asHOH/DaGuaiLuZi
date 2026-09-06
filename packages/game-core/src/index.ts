@@ -247,6 +247,49 @@ export type HandLeaderChosen = Readonly<{
   seatIndex: SeatIndex;
 }>;
 
+export type TieChoiceKind = "recipient-pairing" | "leader-selection";
+export type TieChoiceCandidate = PlayerAccountId | null;
+
+export type SubmitTieChoiceBallot = Readonly<{
+  type: "SubmitTieChoiceBallot";
+  playerId: PlayerAccountId;
+  tieKind: TieChoiceKind;
+  round: number;
+  candidateId: TieChoiceCandidate;
+}>;
+
+export type TieChoiceBallotSubmitted = Readonly<{
+  type: "TieChoiceBallotSubmitted";
+  tieKind: TieChoiceKind;
+  round: number;
+  voterId: PlayerAccountId;
+  candidateId: TieChoiceCandidate;
+}>;
+
+export type TieChoiceRecipientPair = Readonly<{
+  giverId: PlayerAccountId;
+  giverSeat: SeatIndex;
+  recipientId: PlayerAccountId;
+  recipientSeat: SeatIndex;
+}>;
+
+export type TieChoiceRevealedBallot = Readonly<{
+  voterId: PlayerAccountId;
+  candidateId: TieChoiceCandidate;
+}>;
+
+export type TieChoiceRoundResolved = Readonly<{
+  type: "TieChoiceRoundResolved";
+  tieKind: TieChoiceKind;
+  round: number;
+  ballots: readonly TieChoiceRevealedBallot[];
+  committedPairs: readonly TieChoiceRecipientPair[];
+  remainingVoterIds: readonly PlayerAccountId[];
+  remainingCandidateIds: readonly PlayerAccountId[];
+  fallback: boolean;
+  selectedLeaderId?: PlayerAccountId;
+}>;
+
 export type Event =
   | RoomCreated
   | MemberJoined
@@ -275,7 +318,9 @@ export type Event =
   | TributeTransferred
   | ReturnCandidatesOffered
   | ReturnTransferred
-  | HandLeaderChosen;
+  | HandLeaderChosen
+  | TieChoiceBallotSubmitted
+  | TieChoiceRoundResolved;
 
 export type JoinRoom = Readonly<{
   type: "JoinRoom";
@@ -387,7 +432,8 @@ export type Command =
   | StartNextHand
   | SelectTributeCard
   | OfferReturnCandidates
-  | SelectReturnCard;
+  | SelectReturnCard
+  | SubmitTieChoiceBallot;
 
 export type RejectionReason =
   | "room-not-created"
@@ -423,6 +469,9 @@ export type RejectionReason =
   | "return-card-not-eligible"
   | "recipient-pairing-tie"
   | "leader-selection-tie"
+  | "tie-choice-not-eligible"
+  | "tie-choice-duplicate"
+  | "tie-choice-stale"
   | "not-current-player"
   | "card-not-in-hand"
   | "pass-on-open-lead"
@@ -532,6 +581,13 @@ export type PlayerView = Readonly<{
   returnCandidates?: readonly PlayerViewReturnCandidates[];
   pendingPlayerIds?: readonly PlayerAccountId[];
   eligibleTributeCards?: readonly CardInstanceCode[];
+  tieKind?: TieChoiceKind;
+  tieRound?: number;
+  tieVoterIds?: readonly PlayerAccountId[];
+  tieCandidateIds?: readonly PlayerAccountId[];
+  tieSubmittedPlayerIds?: readonly PlayerAccountId[];
+  tieOwnBallot?: TieChoiceCandidate;
+  tieResolvedRounds?: readonly TieChoiceRoundResolved[];
 }>;
 
 declare const STATE_BRAND: unique symbol;
@@ -600,6 +656,14 @@ type ReturnTransferState = Readonly<{
   card: CardInstanceCode;
 }>;
 
+type TieChoiceState = Readonly<{
+  tieKind: TieChoiceKind;
+  round: number;
+  voters: readonly PlayerAccountId[];
+  candidates: readonly PlayerAccountId[];
+  ballots: readonly TieChoiceRevealedBallot[];
+}>;
+
 type HandSetup = Readonly<{
   stage: SetupStage;
   firstFinisherSeat: SeatIndex;
@@ -609,6 +673,8 @@ type HandSetup = Readonly<{
   tributeTransfers: readonly TributeTransferState[];
   returnOffers: readonly ReturnOfferState[];
   returnTransfers: readonly ReturnTransferState[];
+  tieChoice: TieChoiceState | undefined;
+  resolvedTieRounds: readonly TieChoiceRoundResolved[];
 }>;
 
 type ActiveHand = Readonly<{
@@ -702,6 +768,22 @@ function cloneHandSetup(setup: HandSetup): HandSetup {
     })),
     returnTransfers: setup.returnTransfers.map((transfer) => ({
       ...transfer,
+    })),
+    tieChoice:
+      setup.tieChoice === undefined
+        ? undefined
+        : {
+            ...setup.tieChoice,
+            voters: [...setup.tieChoice.voters],
+            candidates: [...setup.tieChoice.candidates],
+            ballots: setup.tieChoice.ballots.map((ballot) => ({ ...ballot })),
+          },
+    resolvedTieRounds: setup.resolvedTieRounds.map((round) => ({
+      ...round,
+      ballots: round.ballots.map((ballot) => ({ ...ballot })),
+      committedPairs: round.committedPairs.map((pair) => ({ ...pair })),
+      remainingVoterIds: [...round.remainingVoterIds],
+      remainingCandidateIds: [...round.remainingCandidateIds],
     })),
   };
 }
@@ -835,6 +917,16 @@ function cloneEvent(event: Event): Event {
 
   if (event.type === "ReturnCandidatesOffered") {
     return { ...event, candidateCards: [...event.candidateCards] };
+  }
+
+  if (event.type === "TieChoiceRoundResolved") {
+    return {
+      ...event,
+      ballots: event.ballots.map((ballot) => ({ ...ballot })),
+      committedPairs: event.committedPairs.map((pair) => ({ ...pair })),
+      remainingVoterIds: [...event.remainingVoterIds],
+      remainingCandidateIds: [...event.remainingCandidateIds],
+    };
   }
 
   if (event.type === "HandResultDetermined") {
@@ -1136,6 +1228,150 @@ function setupForNextHand(
     tributeTransfers: [],
     returnOffers: [],
     returnTransfers: [],
+    tieChoice: undefined,
+    resolvedTieRounds: [],
+  };
+}
+
+type TributeRankGroup = Readonly<{
+  givers: readonly SetupGiver[];
+  recipientSeats: readonly SeatIndex[];
+}>;
+
+function tributeRankGroups(
+  state: InternalState,
+  setup: HandSetup,
+): TributeRankGroup[] {
+  const activeMatch = state.activeMatch;
+  if (
+    activeMatch === undefined ||
+    setup.tributeSelections.length !== setup.givers.length
+  ) {
+    return [];
+  }
+
+  const ordered = [...setup.givers].sort((left, right) =>
+    tributeRankCompare(right.rank, left.rank, activeMatch.trumpRank),
+  );
+  const groups: TributeRankGroup[] = [];
+  let giverIndex = 0;
+  let recipientIndex = 0;
+  while (giverIndex < ordered.length) {
+    const rank = ordered[giverIndex]!.rank;
+    const givers: SetupGiver[] = [];
+    while (
+      giverIndex < ordered.length &&
+      tributeRankCompare(
+        ordered[giverIndex]!.rank,
+        rank,
+        activeMatch.trumpRank,
+      ) === 0
+    ) {
+      givers.push(ordered[giverIndex]!);
+      giverIndex += 1;
+    }
+    groups.push({
+      givers,
+      recipientSeats: setup.recipientSeats.slice(
+        recipientIndex,
+        recipientIndex + givers.length,
+      ),
+    });
+    recipientIndex += givers.length;
+  }
+  return groups;
+}
+
+function recipientTieGroup(
+  state: InternalState,
+  setup: HandSetup,
+): TributeRankGroup | undefined {
+  if (
+    state.rulesConfiguration.tributeRecipientPairing !==
+    "finish-position-by-tribute-rank"
+  ) {
+    return undefined;
+  }
+
+  for (const group of tributeRankGroups(state, setup)) {
+    const unresolvedGivers = group.givers.filter(
+      (giver) => !hasTributeTransfer(setup, giver.seatIndex),
+    );
+    const availableRecipients = group.recipientSeats.filter(
+      (seatIndex) =>
+        !setup.tributeTransfers.some(
+          (transfer) => transfer.recipientSeat === seatIndex,
+        ),
+    );
+    if (unresolvedGivers.length > 1 && availableRecipients.length > 1) {
+      return {
+        givers: unresolvedGivers,
+        recipientSeats: availableRecipients,
+      };
+    }
+  }
+  return undefined;
+}
+
+function recipientTieState(
+  state: InternalState,
+  setup: HandSetup,
+): TieChoiceState | undefined {
+  const group = recipientTieGroup(state, setup);
+  if (group === undefined) return undefined;
+  const activeMatch = state.activeMatch;
+  if (activeMatch === undefined) return undefined;
+  const candidates = group.recipientSeats
+    .map((seatIndex) => playerAtSeat(activeMatch, seatIndex))
+    .filter((playerId): playerId is PlayerAccountId => playerId !== undefined);
+  if (candidates.length !== group.givers.length) return undefined;
+  return {
+    tieKind: "recipient-pairing",
+    round: 1,
+    voters: group.givers.map((giver) => giver.playerId),
+    candidates,
+    ballots: [],
+  };
+}
+
+function highestTributeGivers(
+  activeMatch: ActiveMatch,
+  setup: HandSetup,
+): SetupGiver[] {
+  if (setup.givers.length === 0) return [];
+  const highest = setup.givers.reduce(
+    (best, giver) =>
+      tributeRankCompare(giver.rank, best.rank, activeMatch.trumpRank) > 0
+        ? giver
+        : best,
+    setup.givers[0]!,
+  );
+  return setup.givers.filter(
+    (giver) =>
+      tributeRankCompare(giver.rank, highest.rank, activeMatch.trumpRank) === 0,
+  );
+}
+
+function leaderTieState(
+  state: InternalState,
+  setup: HandSetup,
+): TieChoiceState | undefined {
+  if (
+    state.rulesConfiguration.nextHandLeader !== "highest-tribute" ||
+    setup.givers.length < 2
+  ) {
+    return undefined;
+  }
+  const activeMatch = state.activeMatch;
+  if (activeMatch === undefined) return undefined;
+  const tied = highestTributeGivers(activeMatch, setup);
+  if (tied.length < 2) return undefined;
+  return {
+    tieKind: "leader-selection",
+    round: 1,
+    voters: tied.map((giver) => giver.playerId),
+    candidates: tied.map((giver) => giver.playerId),
+    ballots: [],
   };
 }
 
@@ -1152,6 +1388,21 @@ function hasTributeTransfer(setup: HandSetup, giverSeat: SeatIndex): boolean {
   return setup.tributeTransfers.some(
     (transfer) => transfer.giverSeat === giverSeat,
   );
+}
+
+function pendingResolvedRecipientPairs(
+  setup: HandSetup,
+): TieChoiceRecipientPair[] {
+  return setup.resolvedTieRounds
+    .flatMap((round) => round.committedPairs)
+    .filter(
+      (pair) =>
+        !setup.tributeTransfers.some(
+          (transfer) =>
+            transfer.giverSeat === pair.giverSeat &&
+            transfer.recipientSeat === pair.recipientSeat,
+        ),
+    );
 }
 
 function tributeTransferEvents(state: InternalState): TributeTransferred[] {
@@ -1200,37 +1451,17 @@ function tributeTransferEvents(state: InternalState): TributeTransferred[] {
       });
     }
   } else {
-    const orderedGivers = setup.givers
-      .filter((giver) => !hasTributeTransfer(setup, giver.seatIndex))
-      .sort((left, right) =>
-        tributeRankCompare(left.rank, right.rank, activeMatch.trumpRank),
-      )
-      .reverse();
-    const recipients = [...availableRecipients];
-    let giverIndex = 0;
-    let recipientIndex = 0;
-    while (giverIndex < orderedGivers.length) {
-      const rank = orderedGivers[giverIndex]!.rank;
-      const group: SetupGiver[] = [];
-      while (
-        giverIndex < orderedGivers.length &&
-        tributeRankCompare(
-          orderedGivers[giverIndex]!.rank,
-          rank,
-          activeMatch.trumpRank,
-        ) === 0
-      ) {
-        group.push(orderedGivers[giverIndex]!);
-        giverIndex += 1;
+    for (const group of tributeRankGroups(state, setup)) {
+      const givers = group.givers.filter(
+        (giver) => !hasTributeTransfer(setup, giver.seatIndex),
+      );
+      const recipients = group.recipientSeats.filter((seatIndex) =>
+        availableRecipients.has(seatIndex),
+      );
+      if (givers.length === 1 && recipients.length === 1) {
+        pairs.push({ giver: givers[0]!, recipientSeat: recipients[0]! });
+        availableRecipients.delete(recipients[0]!);
       }
-      if (group.length !== 1) {
-        recipientIndex += group.length;
-        continue;
-      }
-      const recipientSeat = recipients[recipientIndex];
-      if (recipientSeat === undefined) break;
-      pairs.push({ giver: group[0]!, recipientSeat });
-      recipientIndex += 1;
     }
   }
 
@@ -1250,35 +1481,6 @@ function tributeTransferEvents(state: InternalState): TributeTransferred[] {
       },
     ];
   });
-}
-
-function recipientPairingTiePending(
-  state: InternalState,
-  setup: HandSetup,
-  transferCount: number,
-): boolean {
-  if (
-    state.rulesConfiguration.tributeRecipientPairing !==
-      "finish-position-by-tribute-rank" ||
-    setup.tributeSelections.length !== setup.givers.length ||
-    transferCount >= setup.givers.length
-  ) {
-    return false;
-  }
-  const ordered = setup.givers
-    .filter((giver) => !hasTributeTransfer(setup, giver.seatIndex))
-    .sort((left, right) =>
-      tributeRankCompare(left.rank, right.rank, state.activeMatch!.trumpRank),
-    )
-    .reverse();
-  if (ordered.length < 2) return false;
-  return (
-    tributeRankCompare(
-      ordered[0]!.rank,
-      ordered[1]!.rank,
-      state.activeMatch!.trumpRank,
-    ) === 0
-  );
 }
 
 function allTributesTransferred(setup: HandSetup): boolean {
@@ -1302,20 +1504,9 @@ function leaderEvent(state: InternalState): HandLeaderChosen | undefined {
     state.rulesConfiguration.nextHandLeader === "highest-tribute" &&
     setup.givers.length > 0
   ) {
-    const highest = setup.givers.reduce(
-      (best, giver) =>
-        tributeRankCompare(giver.rank, best.rank, activeMatch.trumpRank) > 0
-          ? giver
-          : best,
-      setup.givers[0]!,
-    );
-    const tied = setup.givers.filter(
-      (giver) =>
-        tributeRankCompare(giver.rank, highest.rank, activeMatch.trumpRank) ===
-        0,
-    );
+    const tied = highestTributeGivers(activeMatch, setup);
     if (tied.length > 1) return undefined;
-    leaderSeat = highest.seatIndex;
+    leaderSeat = tied[0]!.seatIndex;
   }
 
   const playerId = playerAtSeat(activeMatch, leaderSeat);
@@ -1623,6 +1814,357 @@ function decideSelectReturnCard(
   const candidate = foldAcceptedState(state, events);
   const leader = leaderEvent(candidate);
   if (leader !== undefined) events.push(leader);
+  return accepted(events);
+}
+
+function recipientPairForTransfer(
+  activeMatch: ActiveMatch,
+  setup: HandSetup,
+  pair: TieChoiceRecipientPair,
+): TributeTransferred | undefined {
+  const giver = setup.givers.find(
+    (candidate) => candidate.playerId === pair.giverId,
+  );
+  const selection =
+    giver === undefined ? undefined : selectedTribute(setup, giver.seatIndex);
+  const recipient = handAtSeat(activeMatch, pair.recipientSeat);
+  if (
+    giver === undefined ||
+    selection === undefined ||
+    recipient === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    type: "TributeTransferred",
+    giverId: giver.playerId,
+    giverSeat: giver.seatIndex,
+    recipientId: recipient.playerId,
+    recipientSeat: pair.recipientSeat,
+    card: selection.card,
+    rank: giver.rank,
+  };
+}
+
+function orderedTieBallots(
+  tieChoice: TieChoiceState,
+): TieChoiceRevealedBallot[] {
+  return tieChoice.voters.flatMap((voterId) => {
+    const ballot = tieChoice.ballots.find(
+      (candidate) => candidate.voterId === voterId,
+    );
+    return ballot === undefined ? [] : [{ ...ballot }];
+  });
+}
+
+function recipientPairingResolution(
+  state: InternalState,
+  tieChoice: TieChoiceState,
+): {
+  committedPairs: TieChoiceRecipientPair[];
+  remainingVoterIds: PlayerAccountId[];
+  remainingCandidateIds: PlayerAccountId[];
+  fallback: boolean;
+} {
+  const activeMatch = state.activeMatch;
+  if (activeMatch === undefined) {
+    return {
+      committedPairs: [],
+      remainingVoterIds: [...tieChoice.voters],
+      remainingCandidateIds: [...tieChoice.candidates],
+      fallback: false,
+    };
+  }
+
+  const ballotsByVoter = new Map(
+    tieChoice.ballots.map((ballot) => [ballot.voterId, ballot.candidateId]),
+  );
+  const candidateCounts = new Map<PlayerAccountId, number>();
+  for (const ballot of tieChoice.ballots) {
+    if (ballot.candidateId === null) continue;
+    candidateCounts.set(
+      ballot.candidateId,
+      (candidateCounts.get(ballot.candidateId) ?? 0) + 1,
+    );
+  }
+
+  const committedPairs: TieChoiceRecipientPair[] = [];
+  const committedVoters = new Set<PlayerAccountId>();
+  const committedCandidates = new Set<PlayerAccountId>();
+  for (const voterId of tieChoice.voters) {
+    const candidateId = ballotsByVoter.get(voterId);
+    if (
+      candidateId === undefined ||
+      candidateId === null ||
+      candidateCounts.get(candidateId) !== 1
+    ) {
+      continue;
+    }
+    const giver = state.activeMatch!.hand.setup.givers.find(
+      (entry) => entry.playerId === voterId,
+    );
+    const recipientSeat = activeMatch.hands.findIndex(
+      (hand) => hand.playerId === candidateId,
+    );
+    if (giver === undefined || recipientSeat < 0) continue;
+    committedPairs.push({
+      giverId: voterId,
+      giverSeat: giver.seatIndex,
+      recipientId: candidateId,
+      recipientSeat,
+    });
+    committedVoters.add(voterId);
+    committedCandidates.add(candidateId);
+  }
+
+  let remainingVoterIds = tieChoice.voters.filter(
+    (voterId) => !committedVoters.has(voterId),
+  );
+  let remainingCandidateIds = tieChoice.candidates.filter(
+    (candidateId) => !committedCandidates.has(candidateId),
+  );
+  let fallback = false;
+
+  const pairRemaining = (
+    voterId: PlayerAccountId,
+    candidateId: PlayerAccountId,
+  ) => {
+    const giver = state.activeMatch!.hand.setup.givers.find(
+      (entry) => entry.playerId === voterId,
+    );
+    const recipientSeat = state.activeMatch!.hands.findIndex(
+      (hand) => hand.playerId === candidateId,
+    );
+    if (giver === undefined || recipientSeat < 0) return;
+    committedPairs.push({
+      giverId: voterId,
+      giverSeat: giver.seatIndex,
+      recipientId: candidateId,
+      recipientSeat,
+    });
+    remainingVoterIds = remainingVoterIds.filter((id) => id !== voterId);
+    remainingCandidateIds = remainingCandidateIds.filter(
+      (id) => id !== candidateId,
+    );
+  };
+
+  if (remainingVoterIds.length === 1 && remainingCandidateIds.length === 1) {
+    pairRemaining(remainingVoterIds[0]!, remainingCandidateIds[0]!);
+  } else if (tieChoice.round >= 3 && remainingVoterIds.length > 0) {
+    fallback = true;
+    const candidateSet = new Set(remainingCandidateIds);
+    for (const voterId of [...remainingVoterIds]) {
+      const giver = state.activeMatch!.hand.setup.givers.find(
+        (entry) => entry.playerId === voterId,
+      );
+      if (giver === undefined) continue;
+      const precedingSeat =
+        (giver.seatIndex - 1 + activeMatch.hands.length) %
+        activeMatch.hands.length;
+      const candidateId = activeMatch.hands[precedingSeat]?.playerId;
+      if (candidateId !== undefined && candidateSet.has(candidateId)) {
+        pairRemaining(voterId, candidateId);
+        candidateSet.delete(candidateId);
+      }
+    }
+    while (
+      remainingVoterIds.length > 0 &&
+      remainingVoterIds.length === remainingCandidateIds.length
+    ) {
+      pairRemaining(remainingVoterIds[0]!, remainingCandidateIds[0]!);
+    }
+  }
+
+  return {
+    committedPairs,
+    remainingVoterIds,
+    remainingCandidateIds,
+    fallback,
+  };
+}
+
+function leaderSelectionResolution(
+  state: InternalState,
+  tieChoice: TieChoiceState,
+): {
+  remainingCandidateIds: PlayerAccountId[];
+  fallback: boolean;
+  selectedLeaderId: PlayerAccountId | undefined;
+} {
+  const counts = new Map<PlayerAccountId, number>();
+  for (const ballot of tieChoice.ballots) {
+    if (ballot.candidateId === null) continue;
+    counts.set(ballot.candidateId, (counts.get(ballot.candidateId) ?? 0) + 1);
+  }
+  const highestCount = Math.max(
+    0,
+    ...tieChoice.candidates.map((candidateId) => counts.get(candidateId) ?? 0),
+  );
+  const highest = tieChoice.candidates.filter(
+    (candidateId) => (counts.get(candidateId) ?? 0) === highestCount,
+  );
+  const nonGiveUpHighest = highestCount > 0 ? highest : [];
+  if (nonGiveUpHighest.length === 1) {
+    return {
+      remainingCandidateIds: nonGiveUpHighest,
+      fallback: false,
+      selectedLeaderId: nonGiveUpHighest[0],
+    };
+  }
+
+  if (tieChoice.round >= 3) {
+    const activeMatch = state.activeMatch;
+    const fallbackCandidates =
+      nonGiveUpHighest.length === 0 ? tieChoice.candidates : nonGiveUpHighest;
+    if (activeMatch === undefined || fallbackCandidates.length === 0) {
+      return {
+        remainingCandidateIds: [...fallbackCandidates],
+        fallback: true,
+        selectedLeaderId: undefined,
+      };
+    }
+    const index = boundedChoice(
+      makeRandomStream(
+        activeMatch.hand.handSeed,
+        state.rulesConfiguration.rulesetId,
+        "tie-choice/leader-fallback",
+      ),
+      fallbackCandidates.length,
+    );
+    return {
+      remainingCandidateIds: [...fallbackCandidates],
+      fallback: true,
+      selectedLeaderId: fallbackCandidates[index],
+    };
+  }
+
+  return {
+    remainingCandidateIds:
+      nonGiveUpHighest.length === 0
+        ? [...tieChoice.candidates]
+        : nonGiveUpHighest,
+    fallback: false,
+    selectedLeaderId: undefined,
+  };
+}
+
+function decideSubmitTieChoiceBallot(
+  state: InternalState,
+  command: SubmitTieChoiceBallot,
+): Decision {
+  const activeMatch = activeSetup(state);
+  if (activeMatch === undefined) return rejected("room-not-active");
+  if (findMember(state, command.playerId) === undefined) {
+    return rejected("not-a-member");
+  }
+  const setup = activeMatch.hand.setup;
+  const tieChoice = setup.tieChoice;
+  if (tieChoice === undefined) {
+    return rejected("hand-setup-incomplete");
+  }
+  const expectedStage =
+    tieChoice.tieKind === "recipient-pairing"
+      ? "recipient-pairing-tie"
+      : "leader-selection-tie";
+  if (setup.stage !== expectedStage) {
+    return rejected("hand-setup-incomplete");
+  }
+  if (
+    command.tieKind !== tieChoice.tieKind ||
+    command.round !== tieChoice.round
+  ) {
+    return rejected("tie-choice-stale");
+  }
+  if (!tieChoice.voters.includes(command.playerId)) {
+    return rejected("not-pending-setup-actor");
+  }
+  if (tieChoice.ballots.some((ballot) => ballot.voterId === command.playerId)) {
+    return rejected("tie-choice-duplicate");
+  }
+  if (
+    command.candidateId !== null &&
+    !tieChoice.candidates.includes(command.candidateId)
+  ) {
+    return rejected("tie-choice-not-eligible");
+  }
+
+  const ballot: TieChoiceBallotSubmitted = {
+    type: "TieChoiceBallotSubmitted",
+    tieKind: tieChoice.tieKind,
+    round: tieChoice.round,
+    voterId: command.playerId,
+    candidateId: command.candidateId,
+  };
+  const events: Event[] = [ballot];
+  let candidate = foldAcceptedState(state, events);
+  const committed = candidate.activeMatch!.hand.setup.tieChoice!;
+  if (committed.ballots.length < committed.voters.length) {
+    return accepted(events);
+  }
+
+  let resolution: {
+    committedPairs: TieChoiceRecipientPair[];
+    remainingVoterIds: PlayerAccountId[];
+    remainingCandidateIds: PlayerAccountId[];
+    fallback: boolean;
+    selectedLeaderId: PlayerAccountId | undefined;
+  };
+  if (committed.tieKind === "recipient-pairing") {
+    resolution = {
+      ...recipientPairingResolution(candidate, committed),
+      selectedLeaderId: undefined,
+    };
+  } else {
+    const leader = leaderSelectionResolution(candidate, committed);
+    resolution = {
+      ...leader,
+      committedPairs: [],
+      remainingVoterIds:
+        leader.selectedLeaderId === undefined ? [...committed.voters] : [],
+    };
+  }
+  const resolved: TieChoiceRoundResolved = {
+    type: "TieChoiceRoundResolved",
+    tieKind: committed.tieKind,
+    round: committed.round,
+    ballots: orderedTieBallots(committed),
+    committedPairs: resolution.committedPairs,
+    remainingVoterIds: resolution.remainingVoterIds,
+    remainingCandidateIds: resolution.remainingCandidateIds,
+    fallback: resolution.fallback,
+    ...(resolution.selectedLeaderId === undefined
+      ? {}
+      : { selectedLeaderId: resolution.selectedLeaderId }),
+  };
+  events.push(resolved);
+  candidate = foldAcceptedState(candidate, [resolved]);
+
+  if (committed.tieKind === "recipient-pairing") {
+    const transfers = resolution.committedPairs.flatMap((pair) => {
+      const transfer = recipientPairForTransfer(
+        candidate.activeMatch!,
+        candidate.activeMatch!.hand.setup,
+        pair,
+      );
+      return transfer === undefined ? [] : [transfer];
+    });
+    events.push(...transfers);
+    candidate = foldAcceptedState(candidate, transfers);
+    const automaticTransfers = tributeTransferEvents(candidate);
+    events.push(...automaticTransfers);
+  } else if (resolution.selectedLeaderId !== undefined) {
+    const seatIndex = candidate.activeMatch!.hands.findIndex(
+      (hand) => hand.playerId === resolution.selectedLeaderId,
+    );
+    if (seatIndex >= 0) {
+      events.push({
+        type: "HandLeaderChosen",
+        playerId: resolution.selectedLeaderId,
+        seatIndex,
+      });
+    }
+  }
+
   return accepted(events);
 }
 
@@ -2148,6 +2690,13 @@ export function decide(state: State | undefined, command: Command): Decision {
     return decideSelectReturnCard(readState(state), command);
   }
 
+  if (command.type === "SubmitTieChoiceBallot") {
+    if (state === undefined) {
+      return rejected("room-not-created");
+    }
+    return decideSubmitTieChoiceBallot(readState(state), command);
+  }
+
   const membershipRejection = requireLobbyMember(
     state === undefined ? undefined : readState(state),
     command.playerId,
@@ -2449,6 +2998,8 @@ export function evolve(state: State | undefined, event: Event): State {
               tributeTransfers: [],
               returnOffers: [],
               returnTransfers: [],
+              tieChoice: undefined,
+              resolvedTieRounds: [],
             },
           },
           summary: undefined,
@@ -2646,6 +3197,7 @@ export function evolve(state: State | undefined, event: Event): State {
           },
         ],
       };
+      const selectedTieChoice = recipientTieState(current, nextSetup);
       return makeState({
         ...current,
         activeMatch: {
@@ -2654,13 +3206,11 @@ export function evolve(state: State | undefined, event: Event): State {
             ...current.activeMatch.hand,
             setup: {
               ...nextSetup,
-              stage: recipientPairingTiePending(
-                current,
-                nextSetup,
-                nextSetup.tributeTransfers.length,
-              )
-                ? "recipient-pairing-tie"
-                : nextSetup.stage,
+              stage:
+                selectedTieChoice === undefined
+                  ? nextSetup.stage
+                  : "recipient-pairing-tie",
+              tieChoice: selectedTieChoice,
             },
           },
         },
@@ -2685,6 +3235,21 @@ export function evolve(state: State | undefined, event: Event): State {
         ...current.activeMatch.hand.setup,
         tributeTransfers: nextTransfers,
       };
+      const pendingRecipientPairs =
+        pendingResolvedRecipientPairs(transferSetup);
+      const transferredTieChoice =
+        transferSetup.tieChoice ??
+        (pendingRecipientPairs.length === 0
+          ? recipientTieState(current, transferSetup)
+          : undefined);
+      const nextStage =
+        nextTransfers.length >= transferSetup.givers.length
+          ? "return-card-selection"
+          : transferredTieChoice !== undefined
+            ? "recipient-pairing-tie"
+            : current.activeMatch.hand.setup.stage === "recipient-pairing-tie"
+              ? "tribute-selection"
+              : current.activeMatch.hand.setup.stage;
       return makeState({
         ...current,
         activeMatch: {
@@ -2710,16 +3275,8 @@ export function evolve(state: State | undefined, event: Event): State {
             ...current.activeMatch.hand,
             setup: {
               ...transferSetup,
-              stage:
-                nextTransfers.length >= transferSetup.givers.length
-                  ? "return-card-selection"
-                  : recipientPairingTiePending(
-                        current,
-                        transferSetup,
-                        nextTransfers.length,
-                      )
-                    ? "recipient-pairing-tie"
-                    : current.activeMatch.hand.setup.stage,
+              stage: nextStage,
+              tieChoice: transferredTieChoice,
             },
           },
         },
@@ -2757,6 +3314,31 @@ export function evolve(state: State | undefined, event: Event): State {
       if (current.activeMatch === undefined) {
         return makeState(current);
       }
+      const nextReturnTransfers = [
+        ...current.activeMatch.hand.setup.returnTransfers,
+        {
+          giverSeat: event.giverSeat,
+          recipientSeat: event.recipientSeat,
+          tributeCard: event.tributeCard,
+          card: event.card,
+        },
+      ];
+      const nextReturnSetup: HandSetup = {
+        ...current.activeMatch.hand.setup,
+        returnTransfers: nextReturnTransfers,
+      };
+      const nextLeaderTieChoice =
+        nextReturnTransfers.length >=
+        current.activeMatch.hand.setup.tributeTransfers.length
+          ? leaderTieState(current, nextReturnSetup)
+          : undefined;
+      const nextReturnStage =
+        nextReturnTransfers.length <
+        current.activeMatch.hand.setup.tributeTransfers.length
+          ? current.activeMatch.hand.setup.stage
+          : nextLeaderTieChoice === undefined
+            ? "return-card-selection"
+            : "leader-selection-tie";
       return makeState({
         ...current,
         activeMatch: {
@@ -2781,60 +3363,97 @@ export function evolve(state: State | undefined, event: Event): State {
           hand: {
             ...current.activeMatch.hand,
             setup: {
-              ...current.activeMatch.hand.setup,
-              stage: (() => {
-                const nextReturnCount =
-                  current.activeMatch!.hand.setup.returnTransfers.length + 1;
-                if (
-                  nextReturnCount <
-                  current.activeMatch!.hand.setup.tributeTransfers.length
-                ) {
-                  return current.activeMatch!.hand.setup.stage;
-                }
-                if (
-                  current.rulesConfiguration.nextHandLeader ===
-                    "highest-tribute" &&
-                  current.activeMatch!.hand.setup.givers.length > 1
-                ) {
-                  const highest = current.activeMatch!.hand.setup.givers.reduce(
-                    (best, giver) =>
-                      tributeRankCompare(
-                        giver.rank,
-                        best.rank,
-                        current.activeMatch!.trumpRank,
-                      ) > 0
-                        ? giver
-                        : best,
-                    current.activeMatch!.hand.setup.givers[0]!,
-                  );
-                  if (
-                    current.activeMatch!.hand.setup.givers.filter(
-                      (giver) =>
-                        tributeRankCompare(
-                          giver.rank,
-                          highest.rank,
-                          current.activeMatch!.trumpRank,
-                        ) === 0,
-                    ).length > 1
-                  ) {
-                    return "leader-selection-tie";
-                  }
-                }
-                return "return-card-selection";
-              })(),
-              returnTransfers: [
-                ...current.activeMatch.hand.setup.returnTransfers,
-                {
-                  giverSeat: event.giverSeat,
-                  recipientSeat: event.recipientSeat,
-                  tributeCard: event.tributeCard,
-                  card: event.card,
-                },
-              ],
+              ...nextReturnSetup,
+              stage: nextReturnStage,
+              tieChoice: nextLeaderTieChoice,
             },
           },
         },
       });
+
+    case "TieChoiceBallotSubmitted":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      if (
+        current.activeMatch.hand.setup.tieChoice === undefined ||
+        current.activeMatch.hand.setup.tieChoice.tieKind !== event.tieKind ||
+        current.activeMatch.hand.setup.tieChoice.round !== event.round ||
+        current.activeMatch.hand.setup.tieChoice.ballots.some(
+          (ballot) => ballot.voterId === event.voterId,
+        )
+      ) {
+        return makeState(current);
+      }
+      return makeState({
+        ...current,
+        activeMatch: {
+          ...current.activeMatch,
+          hand: {
+            ...current.activeMatch.hand,
+            setup: {
+              ...current.activeMatch.hand.setup,
+              tieChoice: {
+                ...current.activeMatch.hand.setup.tieChoice,
+                ballots: [
+                  ...current.activeMatch.hand.setup.tieChoice.ballots,
+                  {
+                    voterId: event.voterId,
+                    candidateId: event.candidateId,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+
+    case "TieChoiceRoundResolved":
+      if (current.activeMatch === undefined) {
+        return makeState(current);
+      }
+      {
+        const setup = current.activeMatch.hand.setup;
+        const tieChoice = setup.tieChoice;
+        const nextTieChoice =
+          event.tieKind === "recipient-pairing"
+            ? event.remainingVoterIds.length > 1
+              ? {
+                  tieKind: event.tieKind,
+                  round: event.round + 1,
+                  voters: [...event.remainingVoterIds],
+                  candidates: [...event.remainingCandidateIds],
+                  ballots: [],
+                }
+              : undefined
+            : event.selectedLeaderId === undefined
+              ? {
+                  tieKind: event.tieKind,
+                  round: event.round + 1,
+                  voters: [...(tieChoice?.voters ?? event.remainingVoterIds)],
+                  candidates: [...event.remainingCandidateIds],
+                  ballots: [],
+                }
+              : undefined;
+        return makeState({
+          ...current,
+          activeMatch: {
+            ...current.activeMatch,
+            hand: {
+              ...current.activeMatch.hand,
+              setup: {
+                ...setup,
+                tieChoice: nextTieChoice,
+                resolvedTieRounds: [...setup.resolvedTieRounds, event],
+                stage:
+                  event.tieKind === "recipient-pairing"
+                    ? "recipient-pairing-tie"
+                    : "leader-selection-tie",
+              },
+            },
+          },
+        });
+      }
 
     case "HandLeaderChosen":
       if (current.activeMatch === undefined) {
@@ -2847,7 +3466,11 @@ export function evolve(state: State | undefined, event: Event): State {
           hand: {
             ...current.activeMatch.hand,
             currentActorSeat: event.seatIndex,
-            setup: { ...current.activeMatch.hand.setup, stage: "play" },
+            setup: {
+              ...current.activeMatch.hand.setup,
+              stage: "play",
+              tieChoice: undefined,
+            },
           },
         },
       });
@@ -2978,21 +3601,28 @@ export function derivePlayerView(
     const unbeatenPlay = activeHand.unbeatenPlay;
     const pendingReturnChoice = pendingReturn(current.activeMatch);
     const pendingPlayerIds =
-      activeHand.setup.stage === "tribute-selection"
-        ? activeHand.setup.givers
-            .filter(
-              (giver) =>
-                selectedTribute(activeHand.setup, giver.seatIndex) ===
-                undefined,
-            )
-            .map((giver) => giver.playerId)
-        : activeHand.setup.stage === "return-card-selection" &&
-            pendingReturnChoice !== undefined
-          ? [
-              pendingReturnChoice.offer?.giverId ??
-                pendingReturnChoice.transfer.recipientId,
-            ]
-          : [];
+      activeHand.setup.tieChoice !== undefined
+        ? activeHand.setup.tieChoice.voters.filter(
+            (voterId) =>
+              !activeHand.setup.tieChoice!.ballots.some(
+                (ballot) => ballot.voterId === voterId,
+              ),
+          )
+        : activeHand.setup.stage === "tribute-selection"
+          ? activeHand.setup.givers
+              .filter(
+                (giver) =>
+                  selectedTribute(activeHand.setup, giver.seatIndex) ===
+                  undefined,
+              )
+              .map((giver) => giver.playerId)
+          : activeHand.setup.stage === "return-card-selection" &&
+              pendingReturnChoice !== undefined
+            ? [
+                pendingReturnChoice.offer?.giverId ??
+                  pendingReturnChoice.transfer.recipientId,
+              ]
+            : [];
     const ownGiver = activeHand.setup.givers.find(
       (giver) => giver.playerId === playerId,
     );
@@ -3054,6 +3684,41 @@ export function derivePlayerView(
       })),
       pendingPlayerIds,
       eligibleTributeCards,
+      ...(activeHand.setup.tieChoice === undefined
+        ? {}
+        : {
+            tieKind: activeHand.setup.tieChoice.tieKind,
+            tieRound: activeHand.setup.tieChoice.round,
+            tieVoterIds: [...activeHand.setup.tieChoice.voters],
+            tieCandidateIds: [...activeHand.setup.tieChoice.candidates],
+            tieSubmittedPlayerIds: activeHand.setup.tieChoice.ballots.map(
+              (ballot) => ballot.voterId,
+            ),
+            ...(activeHand.setup.tieChoice.ballots.some(
+              (ballot) => ballot.voterId === playerId,
+            )
+              ? {
+                  tieOwnBallot: activeHand.setup.tieChoice.ballots.find(
+                    (ballot) => ballot.voterId === playerId,
+                  )!.candidateId,
+                }
+              : {}),
+          }),
+      ...(activeHand.setup.resolvedTieRounds.length === 0
+        ? {}
+        : {
+            tieResolvedRounds: activeHand.setup.resolvedTieRounds.map(
+              (round) => ({
+                ...round,
+                ballots: round.ballots.map((ballot) => ({ ...ballot })),
+                committedPairs: round.committedPairs.map((pair) => ({
+                  ...pair,
+                })),
+                remainingVoterIds: [...round.remainingVoterIds],
+                remainingCandidateIds: [...round.remainingCandidateIds],
+              }),
+            ),
+          }),
       ...(activeHand.result === undefined
         ? {}
         : {
