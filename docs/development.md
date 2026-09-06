@@ -17,7 +17,7 @@ Prettier owns code/config formatting; Markdown is excluded to keep tables compac
 
 Pin exact tool versions and upgrade them deliberately.
 
-## Phase 1 server
+## Server
 
 Build before using either command:
 
@@ -30,3 +30,7 @@ pnpm --filter @dglz/server start
 `provision-account` requires `DGLZ_PASSWORD`; `DGLZ_USERNAME`, `DGLZ_EMAIL`, and `DGLZ_DB_PATH` are optional. Clear the password variable afterwards.
 
 `start` requires `DGLZ_ALLOWED_ORIGIN`. `DGLZ_DB_PATH`, `DGLZ_HOST`, and `DGLZ_PORT` are optional. Cookies are secure by default; set `DGLZ_SECURE_COOKIES=false` only for local HTTP development.
+
+Run the server tests with `pnpm --filter @dglz/server test`; they use temporary SQLite databases and real Socket.IO clients.
+
+Implemented seam: login, Room creation and joining, Match selection, seats and readiness, authenticated connected auto-start, private initial-Hand views, command deduplication, and restart/reconnect resynchronization. Gameplay, abort, Challenge Hand, and history transport remain later slices.

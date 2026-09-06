@@ -1,7 +1,7 @@
 # Preferred Architecture
 
 Status: Initial stack selected; engineering guidance, not product requirements
-Updated: 2026-08-28
+Updated: 2026-09-07
 
 ## Decision summary
 
@@ -126,7 +126,7 @@ This shared module defines and validates serialized browser/server messages. It 
 
 ### Room executor
 
-Once a room exists, one executor owns every durable mutation of that room: membership and seats, ownership, readiness, rules selection, starting and dealing, gameplay, Match and Challenge Hand abortion, interruption, and Room archival. Connection state is not gameplay state. Account operations, initial Room creation, socket connection tracking, and read-only queries remain outside this seam. Its interface is essentially `execute(authenticatedCommand) -> acknowledgedResult`. Internally it:
+Once a room exists, one executor owns every durable mutation of that room: membership and seats, ownership, readiness, rules selection, starting and dealing, gameplay, Match and Challenge Hand abortion, interruption, and Room archival. Connection state is not gameplay state. Account operations, initial Room creation, socket connection tracking, and read-only queries remain outside this seam. Its main interface is `execute(authenticatedCommand) -> acknowledgedResult`; the only additional entry point is `autoStart(authenticatedPresence)`, used on connection or reconnection and serialized through the same queue. A start folded into a client command shares that command's atomic commit; a connection-triggered start has no causation command ID. Internally it:
 
 1. queues commands serially;
 2. rejects stale or unauthorized commands;
