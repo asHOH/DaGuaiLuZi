@@ -5,7 +5,10 @@ import {
 } from "@dglz/protocol";
 
 export class ApiError extends Error {
-  constructor(public readonly code: string) {
+  constructor(
+    public readonly code: string,
+    public readonly reason?: string,
+  ) {
     super(code);
   }
 }
@@ -20,8 +23,27 @@ export function incompatibleVersion(value: unknown): boolean {
   );
 }
 
-export const errorMessage = (code: string): string =>
-  ({
+const playErrors: Record<string, string> = {
+  "not-current-player": "还没轮到你，请等待当前玩家行动。",
+  "card-not-in-hand": "所选牌不在你的手牌中，请重新选择。",
+  "invalid-card-instance-code": "牌面数据有误，请同步后重试。",
+  "duplicate-card-instance": "同一张牌不能重复选择。",
+  "card-not-in-ruleset": "这张牌不属于当前规则组。",
+  "unsupported-card-count": "请选择 1、2、3 或 5 张牌。",
+  "cards-do-not-form-legal-play": "所选牌不能组成合法牌型。",
+  "response-card-count-mismatch": "跟牌张数必须与当前出牌相同。",
+  "response-not-stronger": "所选牌必须大于当前出牌。",
+  "pass-on-open-lead": "你是领牌玩家，必须出牌。",
+  "hand-result-determined": "本局已结束。",
+  "hand-setup-incomplete": "请先完成开局选牌。",
+  "room-not-active": "当前没有正在进行的牌局。",
+};
+
+export const errorMessage = (code: string, reason?: string): string =>
+  (code === "domain-rejected" && reason !== undefined
+    ? playErrors[reason]
+    : undefined) ??
+  {
     unauthorized: "登录已失效，请重新登录。",
     "invalid-credentials": "用户名或密码不正确。",
     "reload-required": "版本已更新，请刷新页面。",
@@ -30,10 +52,11 @@ export const errorMessage = (code: string): string =>
     "malformed-input": "输入格式不正确，请检查后重试。",
     "rate-limited": "操作太频繁，请稍后再试。",
     "stale-revision": "牌局已更新，请查看最新状态后再操作。",
-    "domain-rejected": "当前无法完成此操作，请检查座位和准备状态。",
+    "domain-rejected": "当前无法完成此操作，请查看最新牌局状态。",
     "unsupported-persisted-event": "此房间暂时无法恢复，请联系管理员。",
     "origin-forbidden": "连接地址不受支持，请从正确的网址进入。",
-  })[code] ?? "连接暂时失败，请重试。";
+  }[code] ??
+  "连接暂时失败，请重试。";
 
 export async function api<T>(
   path: string,

@@ -13,6 +13,8 @@ import {
   RoomCommandAckSchema,
   RoomViewSyncEnvelopeSchema,
   RoomViewDataSchema,
+  PassPayloadSchema,
+  PlayPayloadSchema,
   errorEnvelope,
   parseProtocolVersion,
 } from "../src/index.js";
@@ -106,6 +108,37 @@ describe("protocol schemas", () => {
         RoomCommandEnvelopeSchema.safeParse({ ...command, payload }).success,
       ).toBe(true);
     }
+    expect(
+      RoomCommandEnvelopeSchema.safeParse({
+        ...command,
+        payload: { type: "Play", cards: ["AS#1"] },
+      }).success,
+    ).toBe(true);
+    expect(
+      RoomCommandEnvelopeSchema.safeParse({
+        ...command,
+        payload: { type: "Pass" },
+      }).success,
+    ).toBe(true);
+    expect(
+      PlayPayloadSchema.safeParse({
+        type: "Play",
+        cards: ["AS#1", "AS#1"],
+      }).success,
+    ).toBe(false);
+    expect(
+      PlayPayloadSchema.safeParse({
+        type: "Play",
+        cards: ["invalid#1"],
+      }).success,
+    ).toBe(false);
+    expect(PassPayloadSchema.safeParse({ type: "Pass" }).success).toBe(true);
+    expect(
+      RoomCommandEnvelopeSchema.safeParse({
+        ...command,
+        protocolVersion: 1,
+      }).success,
+    ).toBe(false);
     expect(
       JoinRoomCommandEnvelopeSchema.safeParse({
         ...command,

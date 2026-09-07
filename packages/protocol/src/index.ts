@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 2 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
@@ -83,11 +83,60 @@ export const SetReadinessPayloadSchema = z
   .strict();
 export type SetReadinessPayload = z.infer<typeof SetReadinessPayloadSchema>;
 
+export type CardFaceCode =
+  | `${
+      | "2"
+      | "3"
+      | "4"
+      | "5"
+      | "6"
+      | "7"
+      | "8"
+      | "9"
+      | "10"
+      | "J"
+      | "Q"
+      | "K"
+      | "A"}${"S" | "H" | "D" | "C"}`
+  | "SMALL"
+  | "BIG";
+export type CardInstanceCode = `${CardFaceCode}#${1 | 2 | 3}`;
+export const CardInstanceCodeSchema = z
+  .string()
+  .regex(
+    /^(?:(?:10|[2-9JQKA])[SHDC]|(?:SMALL|BIG))#[1-3]$/,
+  ) as z.ZodType<CardInstanceCode>;
+const CardInstanceCodesSchema = z
+  .array(CardInstanceCodeSchema)
+  .min(1)
+  .max(5)
+  .superRefine((cards, context) => {
+    if (new Set(cards).size !== cards.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "duplicate-card-instance",
+      });
+    }
+  });
+
+export const PlayPayloadSchema = z
+  .object({
+    type: z.literal("Play"),
+    cards: CardInstanceCodesSchema,
+  })
+  .strict();
+export type PlayPayload = z.infer<typeof PlayPayloadSchema>;
+
+export const PassPayloadSchema = z.object({ type: z.literal("Pass") }).strict();
+export type PassPayload = z.infer<typeof PassPayloadSchema>;
+
 export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
   JoinRoomPayloadSchema,
   SelectMatchPayloadSchema,
   AssignSeatPayloadSchema,
   SetReadinessPayloadSchema,
+  PlayPayloadSchema,
+  PassPayloadSchema,
 ]);
 export type RoomCommandPayload = z.infer<typeof RoomCommandPayloadSchema>;
 
@@ -248,7 +297,88 @@ const FailureCountersSchema = z.tuple([
   z.number().int().nonnegative(),
 ]);
 const TrumpRankSchema = z.enum(["2", "3", "4", "5"]);
-const CardInstanceCodeSchema = z.string().min(1).max(32);
+export const PlayRankSchema = z.enum([
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K",
+  "A",
+  "SMALL",
+  "BIG",
+]);
+export const PlayFormSchema = z.enum([
+  "single",
+  "pair",
+  "triple",
+  "mixed-suit-straight",
+  "flush",
+  "full-house",
+  "four-plus-one",
+  "straight-flush",
+  "five-of-a-kind",
+]);
+export const CardFaceCodeSchema = z
+  .string()
+  .regex(
+    /^(?:(?:10|[2-9JQKA])[SHDC]|(?:SMALL|BIG))$/,
+  ) as z.ZodType<CardFaceCode>;
+const BoundedCardInstanceCodesSchema = z
+  .array(CardInstanceCodeSchema)
+  .max(5)
+  .refine(
+    (cards) =>
+      cards.length === 1 ||
+      cards.length === 2 ||
+      cards.length === 3 ||
+      cards.length === 5,
+    "invalid-card-count",
+  );
+const PlayerViewHandResultSchema = z
+  .object({
+    outcome: z.enum(["win", "draw"]),
+    firstFinisherTeam: TeamIndexSchema,
+    winningTeam: TeamIndexSchema.optional(),
+    nextDealerTeam: TeamIndexSchema,
+    caughtPlayerIds: z.array(identifier).max(6),
+  })
+  .strict();
+const PlayerViewMatchSummarySchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("completed"),
+      winningTeam: TeamIndexSchema,
+      endingReason: z.enum(["team-level-6", "three-failure-limit-at-5"]),
+      teamLevels: TeamLevelsSchema,
+      completedHandCount: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("aborted"),
+      teamLevels: TeamLevelsSchema,
+      completedHandCount: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+const PlayerViewPlaySchema = z
+  .object({
+    playerId: identifier,
+    seatIndex: z.number().int().nonnegative(),
+    cards: BoundedCardInstanceCodesSchema,
+    form: PlayFormSchema,
+    rank: PlayRankSchema,
+    representedFaces: z.array(CardFaceCodeSchema).max(5),
+    comparisonRanks: z.array(PlayRankSchema).max(5),
+  })
+  .strict();
 const SetupStageSchema = z.enum([
   "tribute-selection",
   "recipient-pairing-tie",
@@ -295,6 +425,9 @@ const lobbyPlayerViewSchema = z
     ...playerViewBaseShape,
     lifecycle: z.literal("LOBBY"),
     selectedActivity: SelectedActivitySchema.optional(),
+    teamLevels: TeamLevelsSchema.optional(),
+    completedHandCount: z.number().int().nonnegative().optional(),
+    matchSummary: PlayerViewMatchSummarySchema.optional(),
   })
   .strict();
 
@@ -309,10 +442,14 @@ const activePlayerViewSchema = z
     trumpRank: TrumpRankSchema,
     failureCounters: FailureCountersSchema,
     completedHandCount: z.number().int().nonnegative(),
+    handNumber: z.number().int().positive().optional(),
     handSizes: z.array(z.number().int().nonnegative()),
     hand: z.array(CardInstanceCodeSchema),
-    currentActor: identifier,
-    currentActorSeat: z.number().int().nonnegative(),
+    currentActor: identifier.optional(),
+    currentActorSeat: z.number().int().nonnegative().optional(),
+    unbeatenPlay: PlayerViewPlaySchema.optional(),
+    handResult: PlayerViewHandResultSchema.optional(),
+    matchSummary: PlayerViewMatchSummarySchema.optional(),
     passedPlayerIds: z.array(identifier),
     finishPositions: z.array(z.number().int().nonnegative().nullable()),
     setupStage: SetupStageSchema,

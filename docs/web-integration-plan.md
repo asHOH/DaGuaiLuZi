@@ -34,4 +34,4 @@ Follow [architecture](architecture.md), [ADR 0001](decisions/0001-initial-applic
 
 Add `自主` preset selection after this slice passes, before Tribute/Return Card UI. Reuse core configuration replacement and persist complete configurations; no database migration is expected, and existing Rooms retain their settings.
 
-Play/pass and subsequent Hand phases, abort, Challenge Hands, history/Replay, public registration, deployment, elaborate artwork, and additional routing/state frameworks. Follow this slice with authoritative gameplay commands and their UI.
+Play/pass and subsequent Hand phases, abort, Challenge Hands, history/Replay, public registration, deployment, elaborate artwork, and additional routing/state frameworks. The next three phases are defined in [Gameplay integration](gameplay-integration-plan.md).

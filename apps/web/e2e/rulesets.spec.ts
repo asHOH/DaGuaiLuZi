@@ -8,6 +8,7 @@ import {
   expect,
   test as base,
   type Browser,
+  type BrowserContext,
   type Page,
 } from "@playwright/test";
 import { io, type Socket } from "socket.io-client";
@@ -17,7 +18,9 @@ import {
   PROTOCOL_VERSION_HEADER,
   RoomCommandAckSchema,
   RoomResponseEnvelopeSchema,
+  RoomViewSyncEnvelopeSchema,
   SOCKET_ROOM_COMMAND_EVENT,
+  SOCKET_ROOM_VIEW_EVENT,
   type RoomCommandAck,
   type RoomCommandPayload,
   type RoomViewData,
@@ -158,16 +161,31 @@ async function readRoom(
 class ProtocolClient {
   public staleJoinRetries = 0;
   private readonly socket: Socket;
+  private latest: RoomViewData | undefined;
 
   public constructor(
     private readonly url: string,
     private readonly cookie: string,
+    roomId?: string,
   ) {
     this.socket = io(url, {
       autoConnect: false,
-      auth: { protocolVersion: PROTOCOL_VERSION },
+      auth: {
+        protocolVersion: PROTOCOL_VERSION,
+        ...(roomId === undefined ? {} : { roomId }),
+      },
       extraHeaders: { cookie },
       transports: ["websocket"],
+    });
+    this.socket.on(SOCKET_ROOM_VIEW_EVENT, (raw: unknown) => {
+      const parsed = RoomViewSyncEnvelopeSchema.safeParse(raw);
+      if (
+        parsed.success &&
+        (this.latest === undefined ||
+          parsed.data.data.revision >= this.latest.revision)
+      ) {
+        this.latest = parsed.data.data;
+      }
     });
   }
 
@@ -224,7 +242,10 @@ class ProtocolClient {
       const result = await this.emit(roomId, expectedRevision, {
         type: "JoinRoom",
       });
-      if (result.ok) return result.data;
+      if (result.ok) {
+        this.latest = result.data;
+        return result.data;
+      }
       if (
         result.error.code === "stale-revision" &&
         result.error.currentRevision !== undefined
@@ -244,13 +265,26 @@ class ProtocolClient {
     payload: RoomCommandPayload,
   ): Promise<RoomViewData> {
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      const current = await readRoom(url, roomId, this.cookie);
+      const current =
+        this.latest?.view.roomId === roomId
+          ? this.latest
+          : await readRoom(url, roomId, this.cookie);
       const result = await this.emit(roomId, current.revision, payload);
-      if (result.ok) return result.data;
-      if (result.error.code === "stale-revision") continue;
+      if (result.ok) {
+        this.latest = result.data;
+        return result.data;
+      }
+      if (result.error.code === "stale-revision") {
+        this.latest = undefined;
+        continue;
+      }
       throw new Error(`command-failed:${result.error.code}`);
     }
     throw new Error("command-retry-limit");
+  }
+
+  public snapshot(roomId: string): RoomViewData | undefined {
+    return this.latest?.view.roomId === roomId ? this.latest : undefined;
   }
 
   public close(): void {
@@ -306,6 +340,203 @@ async function assertNoHorizontalOverflow(page: Page): Promise<void> {
   ).toBe(true);
 }
 
+type ActiveRoomView = Extract<RoomViewData["view"], { lifecycle: "ACTIVE" }>;
+
+function activeView(room: RoomViewData): ActiveRoomView {
+  if (room.view.lifecycle !== "ACTIVE") throw new Error("room-not-active");
+  return room.view;
+}
+
+async function contextCookie(context: BrowserContext): Promise<string> {
+  const cookies = await context.cookies();
+  const cookie = cookies
+    .map(({ name, value }) => `${name}=${value}`)
+    .join("; ");
+  if (cookie === "") throw new Error("missing-browser-cookie");
+  return cookie;
+}
+
+async function playAndSettle(
+  ownerPage: Page,
+  joinerPage: Page,
+  ownerContext: BrowserContext,
+  url: string,
+  roomId: string,
+  owner: Account,
+  joiner: Account,
+  protocolClients: Map<string, ProtocolClient>,
+  protocolCookies: Map<string, string>,
+  protocolSockets: ProtocolClient[],
+  screenshotPrefix: string,
+): Promise<void> {
+  const ownerCookie = await contextCookie(ownerContext);
+  let latestRoom = await readRoom(url, roomId, ownerCookie);
+  let browserPlayed = false;
+  let browserPassed = false;
+  let browserPlayCount = 0;
+  let keyboardUsed = false;
+  let touchUsed = false;
+  let browserSocketsReady = false;
+  let browserProtocolReady = false;
+  let playScreenshotCaptured = false;
+
+  async function connectBrowserPlayers(): Promise<void> {
+    if (browserSocketsReady) return;
+    for (const [account, page] of [
+      [owner, ownerPage],
+      [joiner, joinerPage],
+    ] as const) {
+      const cookie = await contextCookie(page.context());
+      const client = new ProtocolClient(url, cookie, roomId);
+      await client.connect();
+      protocolClients.set(account.accountId, client);
+      protocolCookies.set(account.accountId, cookie);
+      protocolSockets.push(client);
+    }
+    browserSocketsReady = true;
+  }
+
+  async function promoteBrowserPlayers(): Promise<void> {
+    if (
+      browserProtocolReady ||
+      !browserSocketsReady ||
+      !browserPlayed ||
+      !browserPassed ||
+      browserPlayCount < 2 ||
+      !keyboardUsed ||
+      !touchUsed
+    )
+      return;
+    browserProtocolReady = true;
+  }
+
+  for (let move = 0; move < 2_000; move += 1) {
+    const room = latestRoom;
+    const view = activeView(room);
+    if (view.handResult !== undefined) {
+      expect(browserPlayed).toBe(true);
+      expect(browserPassed).toBe(true);
+      expect(keyboardUsed).toBe(true);
+      expect(touchUsed).toBe(true);
+      expect(view.completedHandCount).toBe(1);
+      for (const [page, account] of [
+        [ownerPage, owner],
+        [joinerPage, joiner],
+      ] as const) {
+        const seat = view.seats.find(
+          (candidate) => candidate.playerId === account.accountId,
+        )?.seatIndex;
+        if (seat === undefined) throw new Error("missing-browser-seat");
+        await expect(
+          page.locator('section[aria-label="本局结果"]'),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("heading", { name: "本局结束", exact: true }),
+        ).toBeVisible();
+        await expect(page.getByTestId("hand-card")).toHaveCount(
+          view.handSizes[seat] ?? 0,
+        );
+        await assertNoHorizontalOverflow(page);
+      }
+      await mkdir("output/playwright", { recursive: true });
+      await ownerPage.screenshot({
+        path: `output/playwright/${screenshotPrefix}-settled.png`,
+        fullPage: true,
+      });
+      return;
+    }
+
+    const actor = view.currentActor;
+    if (actor === undefined) throw new Error("missing-current-actor");
+    const isBrowserActor =
+      actor === owner.accountId || actor === joiner.accountId;
+    const routePassToProtocol =
+      isBrowserActor && browserSocketsReady && view.unbeatenPlay !== undefined;
+    const browserPage = browserProtocolReady
+      ? undefined
+      : routePassToProtocol
+        ? undefined
+        : actor === owner.accountId
+          ? ownerPage
+          : actor === joiner.accountId
+            ? joinerPage
+            : undefined;
+
+    if (browserPage !== undefined) {
+      const cards = browserPage.getByTestId("hand-card");
+      await expect(cards).not.toHaveCount(0);
+      if (view.unbeatenPlay !== undefined) {
+        const pass = browserPage.getByRole("button", {
+          exact: true,
+          name: "不出",
+        });
+        await expect(pass).toBeEnabled();
+        await pass.click();
+        browserPassed = true;
+      } else {
+        const card = cards.first();
+        const before = await cards.count();
+        await card.focus();
+        if (!keyboardUsed) {
+          await card.press("Enter");
+          keyboardUsed = true;
+        } else if (!touchUsed) {
+          await card.tap();
+          touchUsed = true;
+        } else {
+          await card.click();
+        }
+        await expect(card).toHaveAttribute("aria-pressed", "true");
+        await expect(cards).toHaveCount(before);
+        if (!playScreenshotCaptured) {
+          await mkdir("output/playwright", { recursive: true });
+          await browserPage.screenshot({
+            path: `output/playwright/${screenshotPrefix}-active-play.png`,
+            fullPage: true,
+          });
+          playScreenshotCaptured = true;
+        }
+        const play = browserPage.getByRole("button", {
+          exact: true,
+          name: "出牌",
+        });
+        await expect(play).toBeEnabled();
+        await play.click();
+        browserPlayed = true;
+        browserPlayCount += 1;
+        await expect(cards).toHaveCount(before - 1);
+      }
+      await expect
+        .poll(async () => (await readRoom(url, roomId, ownerCookie)).revision)
+        .toBeGreaterThan(room.revision);
+      latestRoom = await readRoom(url, roomId, ownerCookie);
+      if (browserPassed) await connectBrowserPlayers();
+      await promoteBrowserPlayers();
+      continue;
+    }
+
+    const client = protocolClients.get(actor);
+    const cookie = protocolCookies.get(actor);
+    if (client === undefined || cookie === undefined) {
+      throw new Error(`missing-protocol-client:${actor}`);
+    }
+    if (view.unbeatenPlay !== undefined) {
+      latestRoom = await client.command(url, roomId, { type: "Pass" });
+    } else {
+      const actorView = activeView(
+        client.snapshot(roomId) ?? (await readRoom(url, roomId, cookie)),
+      );
+      const card = actorView.hand[0];
+      if (card === undefined) throw new Error(`empty-actor-hand:${actor}`);
+      latestRoom = await client.command(url, roomId, {
+        type: "Play",
+        cards: [card],
+      });
+    }
+  }
+  throw new Error("hand-settlement-timeout");
+}
+
 async function runHappyPath(
   browser: Browser,
   server: TestServer,
@@ -313,14 +544,18 @@ async function runHappyPath(
   playerCount: 4 | 6,
 ): Promise<void> {
   const ownerContext = await browser.newContext({
+    hasTouch: true,
     viewport: { height: 900, width: 1280 },
   });
   const joinerContext = await browser.newContext({
+    hasTouch: true,
     viewport: { height: 900, width: 1280 },
   });
   const ownerPage = await ownerContext.newPage();
   const joinerPage = await joinerContext.newPage();
   const clients: ProtocolClient[] = [];
+  const protocolClients = new Map<string, ProtocolClient>();
+  const protocolCookies = new Map<string, string>();
   try {
     const owner = server.accounts[0];
     const joiner = server.accounts[1];
@@ -359,6 +594,8 @@ async function runHappyPath(
       const client = new ProtocolClient(server.url, session.cookie);
       await client.connect();
       clients.push(client);
+      protocolClients.set(session.accountId, client);
+      protocolCookies.set(session.accountId, session.cookie);
     }
     await Promise.all(clients.map((client) => client.join(roomId)));
     expect(clients.some((client) => client.staleJoinRetries > 0)).toBe(true);
@@ -475,6 +712,30 @@ async function runHappyPath(
           cards.map((card) => card.getAttribute("data-card")),
         ),
     ).toEqual(joinerCards);
+
+    await ownerPage.getByRole("button", { name: "退出登录" }).click();
+    await expect(
+      ownerPage.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await loginUi(ownerPage, server.url, owner, inviteUrl);
+    await expect(ownerPage.getByTestId("room-lifecycle")).toHaveText(
+      "牌局进行中",
+    );
+    await expect(ownerPage.getByTestId("hand-card")).toHaveCount(27);
+    await ownerPage.setViewportSize({ width: 390, height: 844 });
+    await playAndSettle(
+      ownerPage,
+      joinerPage,
+      ownerContext,
+      server.url,
+      roomId,
+      owner,
+      joiner,
+      protocolClients,
+      protocolCookies,
+      clients,
+      rulesetId,
+    );
   } finally {
     for (const client of clients) client.close();
     await Promise.all([ownerContext.close(), joinerContext.close()]);

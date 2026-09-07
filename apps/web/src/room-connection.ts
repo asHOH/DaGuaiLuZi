@@ -57,7 +57,12 @@ export function createRoomConnection(
   const current = (generation: number) => !closed && epoch === generation;
   const failure = (error: unknown) => {
     const code = error instanceof ApiError ? error.code : "internal-error";
-    patch({ error: errorMessage(code) });
+    patch({
+      error: errorMessage(
+        code,
+        error instanceof ApiError ? error.reason : undefined,
+      ),
+    });
     if (code === "unauthorized" || code === "reload-required") {
       close();
       authFailure(code);
@@ -153,7 +158,7 @@ export function createRoomConnection(
                 error: "房间状态变化较快，请重试加入。",
               });
           } else {
-            failure(new ApiError(ack.error.code));
+            failure(new ApiError(ack.error.code, ack.error.reason));
             if (joined && ack.error.code === "stale-revision") {
               patch({ synced: false });
               void refresh(generation);

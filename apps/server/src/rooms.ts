@@ -12,6 +12,11 @@ import {
 } from "@dglz/game-core";
 import {
   CommandIdSchema,
+  CardInstanceCodeSchema,
+  CardFaceCodeSchema,
+  PlayFormSchema,
+  PlayRankSchema,
+  PROTOCOL_VERSION,
   RoomCommandAckSchema,
   type RoomCommandAck,
   RoomIdSchema,
@@ -146,6 +151,120 @@ const MatchStartedPayloadSchema = z
     }
   });
 
+const EventCardCodesSchema = z
+  .array(CardInstanceCodeSchema)
+  .min(1)
+  .max(5)
+  .refine(
+    (cards) =>
+      cards.length === 1 ||
+      cards.length === 2 ||
+      cards.length === 3 ||
+      cards.length === 5,
+    "invalid-card-count",
+  )
+  .superRefine((cards, context) => {
+    if (new Set(cards).size !== cards.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "duplicate-card-instance",
+      });
+    }
+  });
+const CardsPlayedPayloadSchema = z
+  .object({
+    type: z.literal("CardsPlayed"),
+    playerId: PlayerIdSchema,
+    seatIndex: z.number().int().nonnegative(),
+    cards: EventCardCodesSchema,
+    form: PlayFormSchema,
+    rank: PlayRankSchema,
+    representedFaces: z.array(CardFaceCodeSchema).min(1).max(5),
+    comparisonRanks: z.array(PlayRankSchema).min(1).max(5),
+  })
+  .strict();
+
+const PlayerPassedPayloadSchema = z
+  .object({
+    type: z.literal("PlayerPassed"),
+    playerId: PlayerIdSchema,
+    seatIndex: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const PlayerFinishedPayloadSchema = z
+  .object({
+    type: z.literal("PlayerFinished"),
+    playerId: PlayerIdSchema,
+    seatIndex: z.number().int().nonnegative(),
+    finishPosition: z.number().int().positive(),
+  })
+  .strict();
+
+const TurnAdvancedPayloadSchema = z
+  .object({
+    type: z.literal("TurnAdvanced"),
+    seatIndex: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const LeadResetPayloadSchema = z
+  .object({
+    type: z.literal("LeadReset"),
+    seatIndex: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const HandResultDeterminedPayloadSchema = z
+  .object({
+    type: z.literal("HandResultDetermined"),
+    outcome: z.enum(["win", "draw"]),
+    firstFinisherTeam: TeamIndexSchema,
+    winningTeam: TeamIndexSchema.optional(),
+    nextDealerTeam: TeamIndexSchema,
+    caughtPlayerIds: z.array(PlayerIdSchema).max(6),
+  })
+  .strict()
+  .transform((event): Extract<Event, { type: "HandResultDetermined" }> => {
+    if (event.winningTeam === undefined) {
+      return {
+        type: event.type,
+        outcome: event.outcome,
+        firstFinisherTeam: event.firstFinisherTeam,
+        nextDealerTeam: event.nextDealerTeam,
+        caughtPlayerIds: event.caughtPlayerIds,
+      };
+    }
+    return {
+      type: event.type,
+      outcome: event.outcome,
+      firstFinisherTeam: event.firstFinisherTeam,
+      winningTeam: event.winningTeam,
+      nextDealerTeam: event.nextDealerTeam,
+      caughtPlayerIds: event.caughtPlayerIds,
+    };
+  });
+
+const HandSettledPayloadSchema = z
+  .object({
+    type: z.literal("HandSettled"),
+    handNumber: z.number().int().positive(),
+    dealerTeam: TeamIndexSchema,
+    teamLevels: TeamLevelsSchema,
+    failureCounters: FailureCountersSchema,
+  })
+  .strict();
+
+const MatchCompletedPayloadSchema = z
+  .object({
+    type: z.literal("MatchCompleted"),
+    winningTeam: TeamIndexSchema,
+    endingReason: z.enum(["team-level-6", "three-failure-limit-at-5"]),
+    teamLevels: TeamLevelsSchema,
+    completedHandCount: z.number().int().positive(),
+  })
+  .strict();
+
 const PersistedRoomEventRowSchema = z
   .object({
     roomId: z.string().min(1).max(128),
@@ -159,6 +278,14 @@ const PersistedRoomEventRowSchema = z
       "ReadinessCleared",
       "SeatAssignmentsCleared",
       "MatchStarted",
+      "CardsPlayed",
+      "PlayerPassed",
+      "PlayerFinished",
+      "TurnAdvanced",
+      "LeadReset",
+      "HandResultDetermined",
+      "HandSettled",
+      "MatchCompleted",
     ]),
     eventSchemaVersion: z.number().int().positive(),
     causationCommandId: CommandIdSchema.nullable(),
@@ -231,6 +358,28 @@ const AcceptedCommandRowSchema = z.object({
   acknowledgement: z.string().min(1),
 });
 
+/** Decode stored acknowledgements across the protocol output-version bump. */
+export function decodePersistedRoomCommandAck(value: unknown): RoomCommandAck {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new UnsupportedPersistedEventError();
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.protocolVersion !== 1 &&
+    record.protocolVersion !== PROTOCOL_VERSION
+  ) {
+    throw new UnsupportedPersistedEventError();
+  }
+  try {
+    return RoomCommandAckSchema.parse({
+      ...record,
+      protocolVersion: PROTOCOL_VERSION,
+    });
+  } catch {
+    throw new UnsupportedPersistedEventError();
+  }
+}
+
 export function findAcceptedCommand(
   database: AppDatabase,
   commandId: string,
@@ -256,18 +405,20 @@ export function findAcceptedCommand(
   } catch {
     throw new UnsupportedPersistedEventError();
   }
-  const parsedAcknowledgement = RoomCommandAckSchema.safeParse(acknowledgement);
-  if (
-    !parsedAcknowledgement.success ||
-    parsedAcknowledgement.data.commandId !== parsedRow.commandId
-  ) {
+  let parsedAcknowledgement: RoomCommandAck;
+  try {
+    parsedAcknowledgement = decodePersistedRoomCommandAck(acknowledgement);
+  } catch {
+    throw new UnsupportedPersistedEventError();
+  }
+  if (parsedAcknowledgement.commandId !== parsedRow.commandId) {
     throw new UnsupportedPersistedEventError();
   }
   return {
     accountId: parsedRow.accountId,
     roomId: parsedRow.roomId,
     requestFingerprint: parsedRow.requestFingerprint,
-    acknowledgement: parsedAcknowledgement.data,
+    acknowledgement: parsedAcknowledgement,
   };
 }
 
@@ -305,6 +456,30 @@ function eventPayload(event: Event): string {
   }
   if (event.type === "MatchStarted") {
     return JSON.stringify(MatchStartedPayloadSchema.parse(event));
+  }
+  if (event.type === "CardsPlayed") {
+    return JSON.stringify(CardsPlayedPayloadSchema.parse(event));
+  }
+  if (event.type === "PlayerPassed") {
+    return JSON.stringify(PlayerPassedPayloadSchema.parse(event));
+  }
+  if (event.type === "PlayerFinished") {
+    return JSON.stringify(PlayerFinishedPayloadSchema.parse(event));
+  }
+  if (event.type === "TurnAdvanced") {
+    return JSON.stringify(TurnAdvancedPayloadSchema.parse(event));
+  }
+  if (event.type === "LeadReset") {
+    return JSON.stringify(LeadResetPayloadSchema.parse(event));
+  }
+  if (event.type === "HandResultDetermined") {
+    return JSON.stringify(HandResultDeterminedPayloadSchema.parse(event));
+  }
+  if (event.type === "HandSettled") {
+    return JSON.stringify(HandSettledPayloadSchema.parse(event));
+  }
+  if (event.type === "MatchCompleted") {
+    return JSON.stringify(MatchCompletedPayloadSchema.parse(event));
   }
   throw new UnsupportedPersistedEventError();
 }
@@ -434,6 +609,22 @@ export function loadRoom(
           return SeatAssignmentsClearedPayloadSchema.safeParse(decoded);
         case "MatchStarted":
           return MatchStartedPayloadSchema.safeParse(decoded);
+        case "CardsPlayed":
+          return CardsPlayedPayloadSchema.safeParse(decoded);
+        case "PlayerPassed":
+          return PlayerPassedPayloadSchema.safeParse(decoded);
+        case "PlayerFinished":
+          return PlayerFinishedPayloadSchema.safeParse(decoded);
+        case "TurnAdvanced":
+          return TurnAdvancedPayloadSchema.safeParse(decoded);
+        case "LeadReset":
+          return LeadResetPayloadSchema.safeParse(decoded);
+        case "HandResultDetermined":
+          return HandResultDeterminedPayloadSchema.safeParse(decoded);
+        case "HandSettled":
+          return HandSettledPayloadSchema.safeParse(decoded);
+        case "MatchCompleted":
+          return MatchCompletedPayloadSchema.safeParse(decoded);
       }
     })();
     if (!parsedEvent.success) {
@@ -487,6 +678,15 @@ export function deriveRoomView(
       ...(view.selectedActivity === undefined
         ? {}
         : { selectedActivity: view.selectedActivity }),
+      ...(view.teamLevels === undefined
+        ? {}
+        : {
+            teamLevels: view.teamLevels,
+            completedHandCount: view.completedHandCount,
+            ...(view.matchSummary === undefined
+              ? {}
+              : { matchSummary: view.matchSummary }),
+          }),
       ...(view.lifecycle !== "ACTIVE"
         ? {}
         : {
@@ -496,6 +696,9 @@ export function deriveRoomView(
             trumpRank: view.trumpRank,
             failureCounters: view.failureCounters,
             completedHandCount: view.completedHandCount,
+            handNumber:
+              (view.completedHandCount ?? 0) +
+              (view.handResult === undefined ? 1 : 0),
             handSizes: view.handSizes,
             hand: view.hand,
             ...(view.currentActor === undefined
@@ -504,6 +707,12 @@ export function deriveRoomView(
                   currentActor: view.currentActor,
                   currentActorSeat: view.currentActorSeat,
                 }),
+            ...(view.unbeatenPlay === undefined
+              ? {}
+              : { unbeatenPlay: view.unbeatenPlay }),
+            ...(view.handResult === undefined
+              ? {}
+              : { handResult: view.handResult }),
             passedPlayerIds: view.passedPlayerIds,
             finishPositions: view.finishPositions?.map(
               (position) => position ?? null,

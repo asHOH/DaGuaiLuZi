@@ -33,7 +33,7 @@ pnpm --filter @dglz/server start
 
 Run the server tests with `pnpm --filter @dglz/server test`; they use temporary SQLite databases and real Socket.IO clients.
 
-Implemented seam: login, Room creation and joining, Match selection, seats and readiness, authenticated connected auto-start, private initial-Hand views, command deduplication, and restart/reconnect resynchronization. Gameplay, abort, Challenge Hand, and history transport remain later slices.
+Implemented seam: login, Room creation and joining, Match selection, seats and readiness, authenticated connected auto-start, private Hand views, Play/Pass through atomic Hand settlement, natural Match-completion serialization, command deduplication, and restart/reconnect resynchronization. Phase 1 stops at settlement; next-Hand setup, abort, Challenge Hand, and history transport remain later slices. Protocol v2 requires older browsers to reload; v1 stored acknowledgements remain readable.
 
 ## Web
 
@@ -42,3 +42,5 @@ Implemented seam: login, Room creation and joining, Match selection, seats and r
 For UI development, use `DGLZ_ALLOWED_ORIGIN=http://127.0.0.1:5173` on the server and run `pnpm --filter @dglz/web dev` in another terminal. Vite proxies `/api` and `/socket.io` to port 3000. Use the same hostname as the configured origin.
 
 Browser checks: run `pnpm --filter @dglz/web exec playwright install chromium` once, then `pnpm build` and `pnpm --filter @dglz/web test:browser`. Tests provision disposable accounts and SQLite databases and serve built assets through Fastify. Unit/server checks remain in `pnpm check`; browser checks run separately. Visual direction: [web-visual-direction](web-visual-direction.md).
+
+Gameplay UI: keyboard/touch selection, advisory Chinese play feedback from `game-rules`, authoritative Play/Pass, unbeaten play, Finish Positions, and Hand results. Both Ruleset browser journeys continue through settlement.

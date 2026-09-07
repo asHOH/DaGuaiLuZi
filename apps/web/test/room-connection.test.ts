@@ -454,6 +454,55 @@ describe("createRoomConnection", () => {
     expect(updates).toHaveLength(0);
   });
 
+  it("renders a gameplay rejection reason without replacing the authoritative view", async () => {
+    const data: RoomViewData = {
+      revision: 10,
+      view: {
+        ...roomView(1).view,
+        lifecycle: "ACTIVE",
+        selectedActivity: "match",
+        dealerSeat: 0,
+        dealerTeam: 0,
+        teamLevels: ["2", "2"],
+        trumpRank: "2",
+        failureCounters: [0, 0],
+        completedHandCount: 0,
+        handNumber: 1,
+        hand: ["AS#1"],
+        handSizes: [1, 27, 27, 27],
+        currentActor: ACCOUNT_ID,
+        currentActorSeat: 0,
+        passedPlayerIds: [],
+        finishPositions: [null, null, null, null],
+        setupStage: "play",
+        tributeTransfers: [],
+        returnCandidates: [],
+        pendingPlayerIds: [],
+        eligibleTributeCards: [],
+      },
+    };
+    const socket = makeSocketHarness();
+    socketModule.io.mockReturnValue(socket.socket);
+    fetchMock.mockResolvedValue(response(successEnvelope(data)));
+    const updates: RoomState[] = [];
+    const connection = openConnection(updates, () => undefined);
+    await settle();
+    socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(data));
+    connection.send({ type: "Play", cards: ["AS#1"] });
+    const attempt = socket.commands[0]!;
+    attempt.acknowledge(null, {
+      protocolVersion: PROTOCOL_VERSION,
+      ok: false,
+      commandId: attempt.payload.commandId,
+      error: { code: "domain-rejected", reason: "not-current-player" },
+    });
+    expect(latest(updates)).toMatchObject({
+      room: data,
+      pending: false,
+      error: "还没轮到你，请等待当前玩家行动。",
+    });
+  });
+
   it("can retry a rejected join while its socket is still connected", async () => {
     const socket = makeSocketHarness();
     socketModule.io.mockReturnValue(socket.socket);

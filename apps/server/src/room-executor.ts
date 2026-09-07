@@ -12,6 +12,7 @@ import {
   type State,
 } from "@dglz/game-core";
 import {
+  PROTOCOL_VERSION,
   RoomCommandAckSchema,
   type RoomCommandAck,
   type RoomCommandEnvelope,
@@ -41,7 +42,7 @@ function commandError(
   details: Readonly<{ reason?: string; currentRevision?: number }> = {},
 ): RoomCommandAck {
   return RoomCommandAckSchema.parse({
-    protocolVersion: 1,
+    protocolVersion: PROTOCOL_VERSION,
     ok: false,
     commandId,
     error: { code, ...details },
@@ -83,6 +84,14 @@ function toDomainCommand(
         playerId: accountId,
         ready: envelope.payload.ready,
       };
+    case "Play":
+      return {
+        type: "Play",
+        playerId: accountId,
+        cards: envelope.payload.cards,
+      };
+    case "Pass":
+      return { type: "Pass", playerId: accountId };
   }
 }
 
@@ -233,7 +242,7 @@ export class RoomExecutor {
       return commandError(envelope.commandId, "internal-error");
     }
     const acknowledgement = RoomCommandAckSchema.parse({
-      protocolVersion: 1,
+      protocolVersion: PROTOCOL_VERSION,
       ok: true,
       commandId: envelope.commandId,
       data: view,

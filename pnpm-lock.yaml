@@ -84,6 +84,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@dglz/game-rules':
+        specifier: workspace:*
+        version: link:../../packages/game-rules
       '@dglz/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

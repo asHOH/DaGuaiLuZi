@@ -388,7 +388,7 @@ function App() {
         )}
       </main>
       <footer className={styles.footer}>
-        好友相聚，慢慢打。<span>当前支持入座、开局与重连</span>
+        好友相聚，慢慢打。<span>支持出牌、不出与本局结算</span>
       </footer>
     </div>
   );
