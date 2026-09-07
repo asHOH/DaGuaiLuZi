@@ -34,6 +34,7 @@ export const initialRoomState: RoomState = {
 // One lifetime per account/Room. Epochs also invalidate work from earlier connections.
 export function createRoomConnection(
   roomId: string,
+  accountId: string,
   update: (state: RoomState) => void,
   authFailure: (code: string) => void,
 ) {
@@ -46,7 +47,7 @@ export function createRoomConnection(
   let syncTimer: ReturnType<typeof setTimeout> | undefined;
   const socket = io({
     autoConnect: false,
-    auth: { protocolVersion: PROTOCOL_VERSION },
+    auth: { protocolVersion: PROTOCOL_VERSION, accountId },
   });
   const patch = (value: Partial<RoomState>) => {
     if (closed) return;
@@ -70,7 +71,7 @@ export function createRoomConnection(
       return;
     clearTimeout(syncTimer);
     joined = true;
-    socket.auth = { protocolVersion: PROTOCOL_VERSION, roomId };
+    socket.auth = { protocolVersion: PROTOCOL_VERSION, accountId, roomId };
     patch({ room: view, synced: true });
   };
   async function refresh(generation: number) {
@@ -217,7 +218,7 @@ export function createRoomConnection(
       await api(`/rooms/${roomId}`, RoomResponseEnvelopeSchema);
       if (!current(generation)) return;
       joined = true;
-      socket.auth = { protocolVersion: PROTOCOL_VERSION, roomId };
+      socket.auth = { protocolVersion: PROTOCOL_VERSION, accountId, roomId };
     } catch (error) {
       if (!current(generation)) return;
       if (!(error instanceof ApiError) || error.code !== "forbidden") {

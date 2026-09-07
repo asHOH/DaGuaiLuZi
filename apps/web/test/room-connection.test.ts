@@ -199,6 +199,7 @@ function openConnection(
 ): ReturnType<typeof createRoomConnection> {
   const connection = createRoomConnection(
     ROOM_ID,
+    ACCOUNT_ID,
     (state) => updates.push(state),
     authFailure,
   );
@@ -229,6 +230,7 @@ describe("createRoomConnection", () => {
 
     await settle();
     expect(socket.socket.connected).toBe(true);
+    expect(socket.socket.auth).toMatchObject({ accountId: ACCOUNT_ID });
     expect(latest(updates)).toMatchObject({
       room: null,
       connected: true,
@@ -238,6 +240,7 @@ describe("createRoomConnection", () => {
     expect(socket.commands).toHaveLength(0);
 
     socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(current));
+    expect(socket.socket.auth).toMatchObject({ accountId: ACCOUNT_ID });
     expect(latest(updates)).toMatchObject({ room: current, synced: true });
     socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(roomView(2)));
     expect(latest(updates)).toMatchObject({ room: current, synced: true });

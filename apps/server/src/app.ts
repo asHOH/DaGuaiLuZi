@@ -260,6 +260,14 @@ export async function createApp(
       next(socketError("unauthorized"));
       return;
     }
+    const expectedAccountId: unknown = socket.handshake.auth.accountId;
+    if (
+      expectedAccountId !== undefined &&
+      expectedAccountId !== account.accountId
+    ) {
+      next(socketError("unauthorized"));
+      return;
+    }
 
     const requestedRoom = socketRequestedRoomId(socket);
     const data = socket.data as SocketData;

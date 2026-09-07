@@ -84,8 +84,11 @@ function App() {
       !RoomIdSchema.safeParse(roomId).success
     )
       return;
-    const next = createRoomConnection(roomId, setRoomState, (code) =>
-      fail(new ApiError(code)),
+    const next = createRoomConnection(
+      roomId,
+      account.accountId,
+      setRoomState,
+      (code) => fail(new ApiError(code)),
     );
     connection.current = next;
     return () => {

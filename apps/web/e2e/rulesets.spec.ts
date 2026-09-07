@@ -488,3 +488,40 @@ test("四人规则集可从创建走到首手并重连", async ({ browser, testS
 test("六人规则集可从创建走到首手并重连", async ({ browser, testServer }) => {
   await runHappyPath(browser, testServer, "dglz-6p-3d-v1", 6);
 });
+
+test("另一标签页切换账号后，重连清除原账号状态", async ({
+  browser,
+  testServer,
+}) => {
+  const context = await browser.newContext();
+  try {
+    const first = await context.newPage();
+    const second = await context.newPage();
+    await loginUi(first, testServer.url, testServer.accounts[0]!);
+    const invite = await createRoom(first, testServer.url, "dglz-4p-2d-v1");
+    await second.goto(invite);
+    await expect(second.getByTestId("room-lifecycle")).toHaveText("大厅");
+    await second.getByRole("button", { name: "退出登录" }).click();
+    await second.getByLabel("用户名").fill("bob");
+    await second.getByLabel("密码").fill(PASSWORD);
+    await second.getByRole("button", { name: "登录", exact: true }).click();
+    await expect(second.getByTestId("room-lifecycle")).toHaveText("大厅");
+    await context.setOffline(true);
+    await context.setOffline(false);
+    await expect(
+      first.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(first.getByTestId("room-lifecycle")).toHaveCount(0);
+    await expect(first.getByRole("button", { name: "选择此座" })).toHaveCount(
+      0,
+    );
+    expect(first.url()).toBe(invite);
+    await first.getByRole("button", { name: "重试恢复登录" }).click();
+    await expect(first.getByTestId("room-lifecycle")).toHaveText("大厅");
+    await expect(first.locator("header").first()).toContainText("bob");
+    await chooseFirstSeat(first);
+    await expect(second.getByText("你的座位")).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
