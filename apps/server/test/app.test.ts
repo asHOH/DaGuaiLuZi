@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { OutgoingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ afterEach(async () => {
   await Promise.all([...apps].map((app) => app.close()));
   apps.clear();
   for (const path of databasePaths.splice(0)) {
-    await rm(path, { recursive: true, force: true });
+    await rm(path, { recursive: true, force: true, maxRetries: 3 });
   }
 });
 
@@ -78,6 +78,41 @@ async function closeApp(app: FastifyInstance): Promise<void> {
 }
 
 describe("phase 1 HTTP slice", () => {
+  it("serves the browser shell and hashed assets without swallowing API or asset errors", async () => {
+    const dbPath = await makeDatabase();
+    const webRoot = join(dbPath, "..", "web");
+    await mkdir(join(webRoot, "assets"), { recursive: true });
+    await writeFile(
+      join(webRoot, "index.html"),
+      "<!doctype html><title>大怪路子</title>",
+    );
+    await writeFile(join(webRoot, "assets", "index-abcd.js"), "export {};");
+    const app = await makeApp({ dbPath, webRoot, secureCookies: false });
+    for (const url of ["/", "/rooms/11111111-1111-4111-8111-111111111111"]) {
+      const shell = await app.inject({ url });
+      expect(shell.statusCode).toBe(200);
+      expect(shell.body).toContain("大怪路子");
+      expect(shell.headers["cache-control"]).toBe("no-cache");
+      expect(shell.headers["content-security-policy"]).not.toContain(
+        "upgrade-insecure-requests",
+      );
+    }
+    const asset = await app.inject({ url: "/assets/index-abcd.js" });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.headers["cache-control"]).toContain("immutable");
+    expect((await app.inject({ url: "/assets/missing.js" })).statusCode).toBe(
+      404,
+    );
+    const apiMissing = await app.inject({
+      url: "/api/missing",
+      headers: protocolHeaders(),
+    });
+    expect(apiMissing.statusCode).toBe(404);
+    expect(apiMissing.json()).toMatchObject({
+      ok: false,
+      error: { code: "not-found" },
+    });
+  });
   it("provisions, authenticates, creates, reads, and reconstructs a room", async () => {
     const dbPath = await makeDatabase();
     const database = openDatabase(dbPath);
@@ -489,6 +524,87 @@ describe("phase 1 HTTP slice", () => {
       payload: { rulesetId: "dglz-4p-2d-v1", seatingPolicy: "fixed" },
     });
     expect(expired.statusCode).toBe(401);
+  });
+
+  it("restores the session identity without caching stale auth state", async () => {
+    const dbPath = await makeDatabase();
+    const database = openDatabase(dbPath);
+    await provisionAccount(database, { username: "alice", password: "secret" });
+    database.close();
+
+    const app = await makeApp({ dbPath, secureCookies: false });
+    const noSession = await app.inject({
+      method: "GET",
+      url: "/api/session",
+      headers: protocolHeaders(),
+    });
+    expect(noSession.statusCode).toBe(401);
+    expect(noSession.headers["cache-control"]).toBe("no-store");
+    expect(noSession.json()).toMatchObject({
+      ok: false,
+      error: { code: "unauthorized" },
+    });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/login",
+      headers: protocolHeaders(),
+      payload: { username: "alice", password: "secret" },
+    });
+    const cookie = sessionCookie(login);
+    const loginData = LoginResponseEnvelopeSchema.parse(login.json()).data;
+    const session = await app.inject({
+      method: "GET",
+      url: "/api/session",
+      headers: { ...protocolHeaders(), cookie },
+    });
+    expect(session.statusCode).toBe(200);
+    expect(session.headers["cache-control"]).toBe("no-store");
+    expect(session.json()).toEqual({
+      protocolVersion: PROTOCOL_VERSION,
+      ok: true,
+      data: loginData,
+    });
+    expect(LoginResponseEnvelopeSchema.parse(session.json())).toEqual(
+      session.json(),
+    );
+
+    const logout = await app.inject({
+      method: "POST",
+      url: "/api/logout",
+      headers: { ...protocolHeaders(), cookie },
+    });
+    expect(logout.statusCode).toBe(200);
+    const revoked = await app.inject({
+      method: "GET",
+      url: "/api/session",
+      headers: { ...protocolHeaders(), cookie },
+    });
+    expect(revoked.statusCode).toBe(401);
+    expect(revoked.headers["cache-control"]).toBe("no-store");
+
+    const secondLogin = await app.inject({
+      method: "POST",
+      url: "/api/login",
+      headers: protocolHeaders(),
+      payload: { username: "alice", password: "secret" },
+    });
+    const secondToken = sessionToken(secondLogin);
+    const persisted = openDatabase(dbPath);
+    persisted.sqlite
+      .prepare("UPDATE sessions SET expires_at = 0 WHERE token_hash = ?")
+      .run(hashSessionToken(secondToken));
+    persisted.close();
+    const expired = await app.inject({
+      method: "GET",
+      url: "/api/session",
+      headers: {
+        ...protocolHeaders(),
+        cookie: sessionCookie(secondLogin),
+      },
+    });
+    expect(expired.statusCode).toBe(401);
+    expect(expired.headers["cache-control"]).toBe("no-store");
   });
 
   it("reports an unsupported persisted event after restart", async () => {

@@ -30,7 +30,7 @@ afterEach(async () => {
     await app.close();
   }
   for (const path of paths.splice(0)) {
-    await rm(path, { recursive: true, force: true });
+    await rm(path, { recursive: true, force: true, maxRetries: 3 });
   }
 });
 

@@ -3,3 +3,5 @@ node_modules/
 coverage/
 *.md
 pnpm-lock.yaml
+**/output/playwright/
+**/test-results/

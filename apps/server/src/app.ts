@@ -7,6 +7,7 @@ import Fastify, {
 import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
 import { Server as SocketIOServer, type Socket } from "socket.io";
 import { evolve } from "@dglz/game-core";
 import {
@@ -49,6 +50,7 @@ import {
 import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
 
 export type ServerOptions = Readonly<{
+  webRoot?: string;
   dbPath?: string;
   allowedOrigin?: string;
   secureCookies?: boolean;
@@ -215,7 +217,11 @@ export async function createApp(
   const app = Fastify({ logger: options.logger ?? false });
 
   await app.register(cookie);
-  await app.register(helmet);
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: { upgradeInsecureRequests: secureCookies ? [] : null },
+    },
+  });
   await app.register(rateLimit, { global: false, hook: "preHandler" });
   const roomExecutors = new RoomExecutorRegistry(database);
   const io = new SocketIOServer(app.server, {
@@ -431,6 +437,7 @@ export async function createApp(
       return;
     }
     reply.header(PROTOCOL_VERSION_HEADER, String(PROTOCOL_VERSION));
+    reply.header("Cache-Control", "no-store");
     if (
       parseProtocolVersion(request.headers[PROTOCOL_VERSION_HEADER]) !==
       PROTOCOL_VERSION
@@ -480,6 +487,14 @@ export async function createApp(
     if (request.url.startsWith("/api/")) {
       return sendError(reply, "not-found");
     }
+    const pathname = request.url.split("?", 1)[0] ?? "";
+    if (
+      options.webRoot !== undefined &&
+      (request.method === "GET" || request.method === "HEAD") &&
+      (pathname === "/" || pathname.startsWith("/rooms/"))
+    ) {
+      return reply.header("Cache-Control", "no-cache").sendFile("index.html");
+    }
     return reply.code(404).send();
   });
 
@@ -528,6 +543,15 @@ export async function createApp(
     revokeSession(database, requestCookieToken(request));
     reply.clearCookie(SESSION_COOKIE_NAME, cookieOptions(secureCookies));
     return reply.send(successEnvelope(LogoutResponseDataSchema.parse({})));
+  });
+
+  app.get("/api/session", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const account = requestAccount(database, request);
+    if (account === undefined) {
+      return sendError(reply, "unauthorized");
+    }
+    return reply.send(successEnvelope(LoginResponseDataSchema.parse(account)));
   });
 
   app.post("/api/rooms", async (request, reply) => {
@@ -590,5 +614,18 @@ export async function createApp(
     },
   );
 
+  if (options.webRoot !== undefined) {
+    await app.register(fastifyStatic, {
+      root: options.webRoot,
+      setHeaders: (response, path) => {
+        response.header(
+          "Cache-Control",
+          /[/\\]assets[/\\]/.test(path)
+            ? "public, max-age=31536000, immutable"
+            : "no-cache",
+        );
+      },
+    });
+  }
   return app;
 }

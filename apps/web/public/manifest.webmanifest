@@ -1,0 +1,9 @@
+{
+  "name": "大怪路子 · 好友牌局",
+  "short_name": "大怪路子",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#153e34",
+  "theme_color": "#153e34"
+}

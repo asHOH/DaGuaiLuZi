@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fileURLToPath } from "node:url";
 
 import { createApp } from "./app.js";
 
@@ -19,6 +20,7 @@ const RuntimeConfigurationSchema = z.object({
 async function start(): Promise<void> {
   const configuration = RuntimeConfigurationSchema.parse(process.env);
   const app = await createApp({
+    webRoot: fileURLToPath(new URL("../../web/dist/", import.meta.url)),
     allowedOrigin: configuration.DGLZ_ALLOWED_ORIGIN,
     dbPath: configuration.DGLZ_DB_PATH,
     logger: true,

@@ -3,7 +3,12 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["**/coverage/**", "**/dist/**"],
+  "ignorePatterns": [
+    "**/coverage/**",
+    "**/dist/**",
+    "**/output/playwright/**",
+    "**/test-results/**"
+  ],
   "options": {
     "typeAware": true
   },

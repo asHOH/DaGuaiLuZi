@@ -356,6 +356,14 @@ export const LoginResponseEnvelopeSchema = z
   })
   .strict();
 
+export const LogoutResponseEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    ok: z.literal(true),
+    data: LogoutResponseDataSchema,
+  })
+  .strict();
+
 export const RoomResponseEnvelopeSchema = z
   .object({
     protocolVersion: z.literal(PROTOCOL_VERSION),
