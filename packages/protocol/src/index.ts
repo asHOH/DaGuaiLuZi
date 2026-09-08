@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 2 as const;
+export const PROTOCOL_VERSION = 3 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
@@ -56,6 +56,40 @@ export const RulesConfigurationSchema = z.discriminatedUnion("rulesetId", [
 export type RulesConfiguration = z.infer<typeof RulesConfigurationSchema>;
 export type RulesetId = z.infer<typeof RulesetIdSchema>;
 export type SeatingPolicy = z.infer<typeof SeatingPolicySchema>;
+
+export type RulesConfigurationPreset = "省心" | "自主";
+
+export function rulesConfigurationPreset(
+  rulesetId: RulesetId,
+  preset: RulesConfigurationPreset,
+): RulesConfiguration {
+  const shared = {
+    wildcardRank: "strongest-rank" as const,
+    finishingWildcardInterpretation: "weakest-form-and-rank" as const,
+    flushTieBreaking: "descending-ranks" as const,
+    nextHandLeader:
+      preset === "自主"
+        ? ("highest-tribute" as const)
+        : ("first-finisher" as const),
+    tributeCardSelection:
+      preset === "自主" ? ("giver-choice" as const) : ("fair-random" as const),
+    tributeRecipientPairing:
+      preset === "自主"
+        ? ("finish-position-by-tribute-rank" as const)
+        : ("adjacent-first-automatic" as const),
+    matchEnding: "no-failure-limit-at-5" as const,
+  };
+  if (rulesetId === "dglz-6p-3d-v1") {
+    return {
+      rulesetId,
+      ...shared,
+      jokerPairComparison: "two-small-and-mixed-are-equal",
+      returnCardSelection:
+        preset === "自主" ? "giver-choice-from-candidates" : "recipient-choice",
+    };
+  }
+  return { rulesetId, ...shared };
+}
 
 export const JoinRoomPayloadSchema = z
   .object({ type: z.literal("JoinRoom") })
@@ -130,6 +164,71 @@ export type PlayPayload = z.infer<typeof PlayPayloadSchema>;
 export const PassPayloadSchema = z.object({ type: z.literal("Pass") }).strict();
 export type PassPayload = z.infer<typeof PassPayloadSchema>;
 
+export const ReplaceMatchRulesConfigurationPayloadSchema = z
+  .object({
+    type: z.literal("ReplaceMatchRulesConfiguration"),
+    rulesConfiguration: RulesConfigurationSchema,
+  })
+  .strict();
+export type ReplaceMatchRulesConfigurationPayload = z.infer<
+  typeof ReplaceMatchRulesConfigurationPayloadSchema
+>;
+
+export const SelectTributeCardPayloadSchema = z
+  .object({
+    type: z.literal("SelectTributeCard"),
+    card: CardInstanceCodeSchema,
+  })
+  .strict();
+export type SelectTributeCardPayload = z.infer<
+  typeof SelectTributeCardPayloadSchema
+>;
+
+const ReturnCandidateCardsSchema = z
+  .array(CardInstanceCodeSchema)
+  .min(2)
+  .max(3)
+  .superRefine((cards, context) => {
+    if (new Set(cards).size !== cards.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "duplicate-card-instance",
+      });
+    }
+  });
+export const OfferReturnCandidatesPayloadSchema = z
+  .object({
+    type: z.literal("OfferReturnCandidates"),
+    candidateCards: ReturnCandidateCardsSchema,
+  })
+  .strict();
+export type OfferReturnCandidatesPayload = z.infer<
+  typeof OfferReturnCandidatesPayloadSchema
+>;
+
+export const SelectReturnCardPayloadSchema = z
+  .object({
+    type: z.literal("SelectReturnCard"),
+    card: CardInstanceCodeSchema,
+  })
+  .strict();
+export type SelectReturnCardPayload = z.infer<
+  typeof SelectReturnCardPayloadSchema
+>;
+
+const TieChoiceKindSchema = z.enum(["recipient-pairing", "leader-selection"]);
+export const SubmitTieChoiceBallotPayloadSchema = z
+  .object({
+    type: z.literal("SubmitTieChoiceBallot"),
+    tieKind: TieChoiceKindSchema,
+    round: z.number().int().min(1).max(3),
+    candidateId: identifier.nullable(),
+  })
+  .strict();
+export type SubmitTieChoiceBallotPayload = z.infer<
+  typeof SubmitTieChoiceBallotPayloadSchema
+>;
+
 export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
   JoinRoomPayloadSchema,
   SelectMatchPayloadSchema,
@@ -137,6 +236,11 @@ export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
   SetReadinessPayloadSchema,
   PlayPayloadSchema,
   PassPayloadSchema,
+  ReplaceMatchRulesConfigurationPayloadSchema,
+  SelectTributeCardPayloadSchema,
+  OfferReturnCandidatesPayloadSchema,
+  SelectReturnCardPayloadSchema,
+  SubmitTieChoiceBallotPayloadSchema,
 ]);
 export type RoomCommandPayload = z.infer<typeof RoomCommandPayloadSchema>;
 
@@ -341,7 +445,7 @@ const BoundedCardInstanceCodesSchema = z
       cards.length === 5,
     "invalid-card-count",
   );
-const PlayerViewHandResultSchema = z
+export const PlayerViewHandResultSchema = z
   .object({
     outcome: z.enum(["win", "draw"]),
     firstFinisherTeam: TeamIndexSchema,
@@ -350,6 +454,45 @@ const PlayerViewHandResultSchema = z
     caughtPlayerIds: z.array(identifier).max(6),
   })
   .strict();
+const TieChoiceBallotSchema = z
+  .object({
+    voterId: identifier,
+    candidateId: identifier.nullable(),
+  })
+  .strict();
+const TieChoiceRecipientPairSchema = z
+  .object({
+    giverId: identifier,
+    giverSeat: z.number().int().nonnegative(),
+    recipientId: identifier,
+    recipientSeat: z.number().int().nonnegative(),
+  })
+  .strict();
+const TieChoiceRoundResolvedSchema = z
+  .object({
+    type: z.literal("TieChoiceRoundResolved"),
+    tieKind: TieChoiceKindSchema,
+    round: z.number().int().min(1).max(3),
+    ballots: z.array(TieChoiceBallotSchema),
+    committedPairs: z.array(TieChoiceRecipientPairSchema),
+    remainingVoterIds: z.array(identifier),
+    remainingCandidateIds: z.array(identifier),
+    fallback: z.boolean(),
+    selectedLeaderId: identifier.optional(),
+  })
+  .strict();
+export const PlayerViewLastHandResultSchema = z
+  .object({
+    handNumber: z.number().int().positive(),
+    result: PlayerViewHandResultSchema,
+    finishPositions: z.array(z.number().int().nonnegative().nullable()),
+    teamLevels: TeamLevelsSchema,
+    seats: z.array(PlayerViewSeatSchema),
+  })
+  .strict();
+export type PlayerViewLastHandResult = z.infer<
+  typeof PlayerViewLastHandResultSchema
+>;
 const PlayerViewMatchSummarySchema = z.discriminatedUnion("outcome", [
   z
     .object({
@@ -428,6 +571,7 @@ const lobbyPlayerViewSchema = z
     teamLevels: TeamLevelsSchema.optional(),
     completedHandCount: z.number().int().nonnegative().optional(),
     matchSummary: PlayerViewMatchSummarySchema.optional(),
+    lastHandResult: PlayerViewLastHandResultSchema.optional(),
   })
   .strict();
 
@@ -449,6 +593,7 @@ const activePlayerViewSchema = z
     currentActorSeat: z.number().int().nonnegative().optional(),
     unbeatenPlay: PlayerViewPlaySchema.optional(),
     handResult: PlayerViewHandResultSchema.optional(),
+    lastHandResult: PlayerViewLastHandResultSchema.optional(),
     matchSummary: PlayerViewMatchSummarySchema.optional(),
     passedPlayerIds: z.array(identifier),
     finishPositions: z.array(z.number().int().nonnegative().nullable()),
@@ -457,6 +602,13 @@ const activePlayerViewSchema = z
     returnCandidates: z.array(PlayerViewReturnCandidatesSchema),
     pendingPlayerIds: z.array(identifier),
     eligibleTributeCards: z.array(CardInstanceCodeSchema),
+    tieKind: TieChoiceKindSchema.optional(),
+    tieRound: z.number().int().min(1).max(3).optional(),
+    tieVoterIds: z.array(identifier).optional(),
+    tieCandidateIds: z.array(identifier).optional(),
+    tieSubmittedPlayerIds: z.array(identifier).optional(),
+    tieOwnBallot: identifier.nullable().optional(),
+    tieResolvedRounds: z.array(TieChoiceRoundResolvedSchema).optional(),
   })
   .strict();
 

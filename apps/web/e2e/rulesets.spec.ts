@@ -11,11 +11,13 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
+import { decodeCardInstance } from "@dglz/game-rules";
 import { io, type Socket } from "socket.io-client";
 import {
   LoginResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
+  rulesConfigurationPreset,
   RoomCommandAckSchema,
   RoomResponseEnvelopeSchema,
   RoomViewSyncEnvelopeSchema,
@@ -368,6 +370,7 @@ async function playAndSettle(
   protocolCookies: Map<string, string>,
   protocolSockets: ProtocolClient[],
   screenshotPrefix: string,
+  accounts: Account[],
 ): Promise<void> {
   const ownerCookie = await contextCookie(ownerContext);
   let latestRoom = await readRoom(url, roomId, ownerCookie);
@@ -382,11 +385,8 @@ async function playAndSettle(
 
   async function connectBrowserPlayers(): Promise<void> {
     if (browserSocketsReady) return;
-    for (const [account, page] of [
-      [owner, ownerPage],
-      [joiner, joinerPage],
-    ] as const) {
-      const cookie = await contextCookie(page.context());
+    for (const account of [owner, joiner]) {
+      const { cookie } = await loginProtocol(url, account);
       const client = new ProtocolClient(url, cookie, roomId);
       await client.connect();
       protocolClients.set(account.accountId, client);
@@ -413,36 +413,29 @@ async function playAndSettle(
   for (let move = 0; move < 2_000; move += 1) {
     const room = latestRoom;
     const view = activeView(room);
-    if (view.handResult !== undefined) {
+    if (view.completedHandCount === 1) {
       expect(browserPlayed).toBe(true);
       expect(browserPassed).toBe(true);
       expect(keyboardUsed).toBe(true);
       expect(touchUsed).toBe(true);
-      expect(view.completedHandCount).toBe(1);
-      for (const [page, account] of [
-        [ownerPage, owner],
-        [joinerPage, joiner],
-      ] as const) {
-        const seat = view.seats.find(
-          (candidate) => candidate.playerId === account.accountId,
-        )?.seatIndex;
-        if (seat === undefined) throw new Error("missing-browser-seat");
+      expect(view.handNumber).toBe(2);
+      expect(view.lastHandResult?.handNumber).toBe(1);
+      for (const page of [ownerPage, joinerPage]) {
         await expect(
-          page.locator('section[aria-label="本局结果"]'),
+          page.getByRole("region", { name: "上一局结果" }),
         ).toBeVisible();
-        await expect(
-          page.getByRole("heading", { name: "本局结束", exact: true }),
-        ).toBeVisible();
-        await expect(page.getByTestId("hand-card")).toHaveCount(
-          view.handSizes[seat] ?? 0,
-        );
         await assertNoHorizontalOverflow(page);
       }
-      await mkdir("output/playwright", { recursive: true });
-      await ownerPage.screenshot({
-        path: `output/playwright/${screenshotPrefix}-settled.png`,
-        fullPage: true,
-      });
+      await completeSetup(
+        ownerPage,
+        url,
+        roomId,
+        latestRoom,
+        accounts,
+        protocolClients,
+        protocolCookies,
+        screenshotPrefix,
+      );
       return;
     }
 
@@ -537,6 +530,179 @@ async function playAndSettle(
   throw new Error("hand-settlement-timeout");
 }
 
+async function completeSetup(
+  page: Page,
+  url: string,
+  roomId: string,
+  settled: RoomViewData,
+  accounts: Account[],
+  clients: Map<string, ProtocolClient>,
+  cookies: Map<string, string>,
+  screenshotPrefix: string,
+): Promise<void> {
+  let current = settled;
+  let browserSubmitted = false;
+  for (let choice = 0; choice < 40; choice += 1) {
+    const view = activeView(current);
+    const actor =
+      view.setupStage === "play" ? view.currentActor : view.pendingPlayerIds[0];
+    if (actor === undefined) throw new Error("missing-setup-actor");
+    const client = clients.get(actor);
+    const cookie = cookies.get(actor);
+    if (client === undefined || cookie === undefined)
+      throw new Error("missing-setup-client");
+    const own = activeView(await readRoom(url, roomId, cookie));
+    if (own.setupStage === "play") {
+      expect(browserSubmitted).toBe(true);
+      const card = own.hand.find((code) => {
+        const decoded = decodeCardInstance(code);
+        return decoded.ok && decoded.card.face.rank !== "BIG";
+      });
+      if (card === undefined) throw new Error("missing-next-hand-card");
+      const played = activeView(
+        await client.command(url, roomId, { type: "Play", cards: [card] }),
+      );
+      expect(played.handNumber).toBe(2);
+      expect(played.unbeatenPlay?.playerId).toBe(actor);
+      expect(played.lastHandResult).toEqual(view.lastHandResult);
+      await expect(page.getByRole("region", { name: "开局选择" })).toHaveCount(
+        0,
+      );
+      await expect(
+        page.getByRole("region", { name: "上一局结果" }),
+      ).toBeVisible();
+      return;
+    }
+
+    let payload: RoomCommandPayload;
+    let button: string;
+    let selectedCards: typeof own.hand = [];
+    let candidateCards = false;
+    if (own.tieKind !== undefined && own.tieRound !== undefined) {
+      payload = {
+        type: "SubmitTieChoiceBallot",
+        tieKind: own.tieKind,
+        round: own.tieRound,
+        candidateId: null,
+      };
+      button = "提交选择";
+    } else if (own.setupStage === "tribute-selection") {
+      const card = own.eligibleTributeCards[0];
+      if (card === undefined) throw new Error("missing-eligible-tribute");
+      selectedCards = [card];
+      payload = { type: "SelectTributeCard", card };
+      button = "确认进贡";
+    } else {
+      const offer = own.returnCandidates.find(
+        (entry) => entry.giverId === actor,
+      );
+      const transfer = own.tributeTransfers.find(
+        (entry) => entry.recipientId === actor,
+      );
+      const tribute =
+        transfer === undefined ? undefined : decodeCardInstance(transfer.card);
+      if (offer !== undefined) {
+        const card = offer.candidateCards[0];
+        if (card === undefined) throw new Error("missing-return-candidate");
+        payload = { type: "SelectReturnCard", card };
+        selectedCards = [card];
+        candidateCards = true;
+        button = "确认还牌";
+      } else if (
+        own.rulesConfiguration.rulesetId === "dglz-6p-3d-v1" &&
+        own.rulesConfiguration.returnCardSelection ===
+          "giver-choice-from-candidates" &&
+        tribute?.ok &&
+        tribute.card.face.kind === "joker"
+      ) {
+        const count = tribute.card.face.rank === "SMALL" ? 2 : 3;
+        const ranks = new Set<string>();
+        selectedCards = own.hand
+          .filter((code) => {
+            const decoded = decodeCardInstance(code);
+            if (!decoded.ok || ranks.has(decoded.card.face.rank)) return false;
+            ranks.add(decoded.card.face.rank);
+            return true;
+          })
+          .slice(0, count);
+        expect(selectedCards).toHaveLength(count);
+        payload = {
+          type: "OfferReturnCandidates",
+          candidateCards: selectedCards,
+        };
+        button = "提交还牌候选";
+      } else {
+        const card = own.hand[0];
+        if (card === undefined) throw new Error("missing-return-card");
+        selectedCards = [card];
+        payload = { type: "SelectReturnCard", card };
+        button = "确认还牌";
+      }
+    }
+
+    if (!browserSubmitted) {
+      const account = accounts.find((entry) => entry.accountId === actor);
+      if (account === undefined) throw new Error("missing-setup-account");
+      await page.getByRole("button", { name: "退出登录" }).click();
+      await expect(
+        page.getByRole("button", { name: "登录", exact: true }),
+      ).toBeVisible();
+      await loginUi(page, url, account, `${url}/rooms/${roomId}`);
+      await expect(
+        page.getByRole("region", { name: "开局选择" }),
+      ).toBeVisible();
+      const summary = page.getByRole("region", { name: "上一局结果" });
+      await expect(summary.getByRole("heading")).toContainText("第 1 局");
+      const summaryText = await summary.innerText();
+      await page.reload();
+      await expect(
+        page.getByRole("region", { name: "开局选择" }),
+      ).toBeVisible();
+      await expect(summary).toHaveText(summaryText, { useInnerText: true });
+      const reloaded = activeView(
+        await readRoom(url, roomId, await contextCookie(page.context())),
+      );
+      expect(reloaded.setupStage).toBe(own.setupStage);
+      expect(reloaded.pendingPlayerIds).toEqual(own.pendingPlayerIds);
+      expect(reloaded.hand).toEqual(own.hand);
+      expect(reloaded.lastHandResult).toEqual(own.lastHandResult);
+      await page.getByRole("button", { name: "收起上一局结果" }).click();
+      await expect(summary.getByRole("heading")).toHaveCount(0);
+      for (const card of selectedCards) {
+        await page
+          .locator(
+            `[data-testid="${candidateCards ? "return-candidate" : "hand-card"}"][data-card="${card}"]`,
+          )
+          .click();
+      }
+      if (own.tieKind !== undefined) {
+        await page
+          .getByLabel(
+            own.tieKind === "recipient-pairing" ? "配对选择" : "首家选择",
+          )
+          .selectOption("");
+      }
+      await expect(
+        page.getByRole("button", { name: button, exact: true }),
+      ).toBeEnabled();
+      await assertNoHorizontalOverflow(page);
+      await page.screenshot({
+        path: `output/playwright/${screenshotPrefix}-setup.png`,
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: button, exact: true }).click();
+      await expect
+        .poll(async () => (await readRoom(url, roomId, cookie)).revision)
+        .toBeGreaterThan(current.revision);
+      current = await readRoom(url, roomId, cookie);
+      browserSubmitted = true;
+    } else {
+      current = await client.command(url, roomId, payload);
+    }
+  }
+  throw new Error("next-hand-setup-timeout");
+}
+
 async function runHappyPath(
   browser: Browser,
   server: TestServer,
@@ -566,6 +732,28 @@ async function runHappyPath(
     const inviteUrl = await createRoom(ownerPage, server.url, rulesetId);
     await chooseFirstSeat(ownerPage);
     const roomId = new URL(inviteUrl).pathname.slice("/rooms/".length);
+    const preset = playerCount === 4 ? "省心" : "自主";
+    await ownerPage.getByText("牌局规则", { exact: true }).click();
+    await expect(
+      ownerPage.getByRole("button", { name: "省心", exact: true }),
+    ).toBeDisabled();
+    if (preset === "省心") {
+      await ownerPage
+        .getByRole("button", { name: "自主", exact: true })
+        .click();
+      await expect(
+        ownerPage.getByRole("button", { name: "自主", exact: true }),
+      ).toBeDisabled();
+    }
+    await ownerPage.getByRole("button", { name: preset, exact: true }).click();
+    const ownerCookie = await contextCookie(ownerContext);
+    await expect
+      .poll(
+        async () =>
+          (await readRoom(server.url, roomId, ownerCookie)).view
+            .rulesConfiguration,
+      )
+      .toEqual(rulesConfigurationPreset(rulesetId, preset));
 
     await ownerPage.reload();
     await expect(ownerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
@@ -735,6 +923,7 @@ async function runHappyPath(
       protocolCookies,
       clients,
       rulesetId,
+      server.accounts,
     );
   } finally {
     for (const client of clients) client.close();
@@ -742,11 +931,11 @@ async function runHappyPath(
   }
 }
 
-test("四人规则集可从创建走到首手并重连", async ({ browser, testServer }) => {
+test("四人省心规则可完成一局并开始下一局", async ({ browser, testServer }) => {
   await runHappyPath(browser, testServer, "dglz-4p-2d-v1", 4);
 });
 
-test("六人规则集可从创建走到首手并重连", async ({ browser, testServer }) => {
+test("六人自主规则可完成一局并开始下一局", async ({ browser, testServer }) => {
   await runHappyPath(browser, testServer, "dglz-6p-3d-v1", 6);
 });
 

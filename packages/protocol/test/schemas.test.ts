@@ -15,9 +15,27 @@ import {
   RoomViewDataSchema,
   PassPayloadSchema,
   PlayPayloadSchema,
+  ReplaceMatchRulesConfigurationPayloadSchema,
+  SelectTributeCardPayloadSchema,
+  OfferReturnCandidatesPayloadSchema,
+  SelectReturnCardPayloadSchema,
+  SubmitTieChoiceBallotPayloadSchema,
+  PlayerViewLastHandResultSchema,
+  rulesConfigurationPreset,
   errorEnvelope,
   parseProtocolVersion,
 } from "../src/index.js";
+
+const fourPlayerConfiguration = {
+  rulesetId: "dglz-4p-2d-v1",
+  wildcardRank: "strongest-rank",
+  finishingWildcardInterpretation: "weakest-form-and-rank",
+  flushTieBreaking: "descending-ranks",
+  nextHandLeader: "first-finisher",
+  tributeCardSelection: "fair-random",
+  tributeRecipientPairing: "adjacent-first-automatic",
+  matchEnding: "no-failure-limit-at-5",
+} as const;
 
 describe("protocol schemas", () => {
   it("accepts the supported commands and rejects unknown fields", () => {
@@ -41,16 +59,6 @@ describe("protocol schemas", () => {
   });
 
   it("validates a complete default configuration", () => {
-    const fourPlayerConfiguration = {
-      rulesetId: "dglz-4p-2d-v1",
-      wildcardRank: "strongest-rank",
-      finishingWildcardInterpretation: "weakest-form-and-rank",
-      flushTieBreaking: "descending-ranks",
-      nextHandLeader: "first-finisher",
-      tributeCardSelection: "fair-random",
-      tributeRecipientPairing: "adjacent-first-automatic",
-      matchEnding: "no-failure-limit-at-5",
-    } as const;
     expect(
       RulesConfigurationSchema.safeParse(fourPlayerConfiguration).success,
     ).toBe(true);
@@ -134,6 +142,52 @@ describe("protocol schemas", () => {
     ).toBe(false);
     expect(PassPayloadSchema.safeParse({ type: "Pass" }).success).toBe(true);
     expect(
+      ReplaceMatchRulesConfigurationPayloadSchema.safeParse({
+        type: "ReplaceMatchRulesConfiguration",
+        rulesConfiguration: fourPlayerConfiguration,
+      }).success,
+    ).toBe(true);
+    expect(
+      SelectTributeCardPayloadSchema.safeParse({
+        type: "SelectTributeCard",
+        card: "AS#1",
+      }).success,
+    ).toBe(true);
+    expect(
+      OfferReturnCandidatesPayloadSchema.safeParse({
+        type: "OfferReturnCandidates",
+        candidateCards: ["AS#1", "KH#1"],
+      }).success,
+    ).toBe(true);
+    expect(
+      OfferReturnCandidatesPayloadSchema.safeParse({
+        type: "OfferReturnCandidates",
+        candidateCards: ["AS#1", "AS#1"],
+      }).success,
+    ).toBe(false);
+    expect(
+      SelectReturnCardPayloadSchema.safeParse({
+        type: "SelectReturnCard",
+        card: "AS#1",
+      }).success,
+    ).toBe(true);
+    expect(
+      SubmitTieChoiceBallotPayloadSchema.safeParse({
+        type: "SubmitTieChoiceBallot",
+        tieKind: "leader-selection",
+        round: 3,
+        candidateId: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      SubmitTieChoiceBallotPayloadSchema.safeParse({
+        type: "SubmitTieChoiceBallot",
+        tieKind: "leader-selection",
+        round: 4,
+        candidateId: null,
+      }).success,
+    ).toBe(false);
+    expect(
       RoomCommandEnvelopeSchema.safeParse({
         ...command,
         protocolVersion: 1,
@@ -216,6 +270,20 @@ describe("protocol schemas", () => {
     };
     expect(RoomViewDataSchema.safeParse(data).success).toBe(true);
     expect(
+      PlayerViewLastHandResultSchema.safeParse({
+        handNumber: 1,
+        result: {
+          outcome: "draw",
+          firstFinisherTeam: 0,
+          nextDealerTeam: 0,
+          caughtPlayerIds: [],
+        },
+        finishPositions: [1, 2, null, null],
+        teamLevels: ["2", "2"],
+        seats: [{ seatIndex: 0, playerId: "alice" }],
+      }).success,
+    ).toBe(true);
+    expect(
       RoomViewDataSchema.safeParse({
         ...data,
         view: {
@@ -264,5 +332,19 @@ describe("protocol schemas", () => {
         data: { accountId: "alice", username: "alice" },
       }).success,
     ).toBe(true);
+  });
+
+  it("provides complete app-local rules presets", () => {
+    expect(rulesConfigurationPreset("dglz-4p-2d-v1", "省心")).toMatchObject({
+      nextHandLeader: "first-finisher",
+      tributeCardSelection: "fair-random",
+      tributeRecipientPairing: "adjacent-first-automatic",
+    });
+    expect(rulesConfigurationPreset("dglz-6p-3d-v1", "自主")).toMatchObject({
+      nextHandLeader: "highest-tribute",
+      tributeCardSelection: "giver-choice",
+      tributeRecipientPairing: "finish-position-by-tribute-rank",
+      returnCardSelection: "giver-choice-from-candidates",
+    });
   });
 });

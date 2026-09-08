@@ -37,6 +37,14 @@ const playErrors: Record<string, string> = {
   "hand-result-determined": "本局已结束。",
   "hand-setup-incomplete": "请先完成开局选牌。",
   "room-not-active": "当前没有正在进行的牌局。",
+  "match-rules-configuration-locked": "比赛规则已锁定，无法修改。",
+  "tribute-card-not-eligible": "请选择可进贡的最高牌。",
+  "not-pending-setup-actor": "当前无需你选择，请等待其他玩家。",
+  "return-candidates-invalid": "小王需提供两张、大王需提供三张不同点数的手牌。",
+  "return-card-not-eligible": "请选择当前允许归还的牌。",
+  "tie-choice-not-eligible": "请选择本轮允许的对象，或选择放弃。",
+  "tie-choice-duplicate": "你已提交本轮选择，请等待其他玩家。",
+  "tie-choice-stale": "选择轮次已更新，请查看本轮选项。",
 };
 
 export const errorMessage = (code: string, reason?: string): string =>

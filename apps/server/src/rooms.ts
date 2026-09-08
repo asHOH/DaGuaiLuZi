@@ -22,8 +22,10 @@ import {
   RoomIdSchema,
   RulesConfigurationSchema,
   RoomViewDataSchema,
+  rulesConfigurationPreset,
   SeatingPolicySchema,
   type RulesetId,
+  type PlayerViewLastHandResult,
   type RoomViewData,
 } from "@dglz/protocol";
 import { z } from "zod";
@@ -62,6 +64,13 @@ const MemberJoinedPayloadSchema = z
 
 const MatchSelectedPayloadSchema = z
   .object({ type: z.literal("MatchSelected") })
+  .strict();
+
+const MatchRulesConfigurationReplacedPayloadSchema = z
+  .object({
+    type: z.literal("MatchRulesConfigurationReplaced"),
+    rulesConfiguration: RulesConfigurationSchema,
+  })
   .strict();
 
 const SeatAssignedPayloadSchema = z
@@ -265,6 +274,173 @@ const MatchCompletedPayloadSchema = z
   })
   .strict();
 
+const HandStartedPayloadSchema = z
+  .object({
+    type: z.literal("HandStarted"),
+    handNumber: z.number().int().positive(),
+    rulesetId: z.enum(["dglz-6p-3d-v1", "dglz-4p-2d-v1"]),
+    rulesConfiguration: RulesConfigurationSchema,
+    seatingPolicy: SeatingPolicySchema,
+    playerIds: z.array(PlayerIdSchema).min(1).max(6),
+    dealerTeam: TeamIndexSchema,
+    teamLevels: TeamLevelsSchema,
+    failureCounters: FailureCountersSchema,
+    trumpRank: TrumpRankSchema,
+    handSeed: z.string().min(1).max(256),
+    randomnessVersion: z.literal(RANDOMNESS_VERSION),
+    shuffleVersion: z.literal(SHUFFLE_VERSION),
+  })
+  .strict()
+  .superRefine((event, context) => {
+    const playerCount = event.rulesetId === "dglz-6p-3d-v1" ? 6 : 4;
+    if (event.rulesConfiguration.rulesetId !== event.rulesetId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "ruleset-mismatch",
+        path: ["rulesConfiguration", "rulesetId"],
+      });
+    }
+    if (event.playerIds.length !== playerCount) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "invalid-player-count",
+        path: ["playerIds"],
+      });
+    }
+    if (new Set(event.playerIds).size !== event.playerIds.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "duplicate-player",
+        path: ["playerIds"],
+      });
+    }
+    if (event.trumpRank !== event.teamLevels[event.dealerTeam]) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "trump-rank-mismatch",
+        path: ["trumpRank"],
+      });
+    }
+  });
+
+const TributeCardSelectedPayloadSchema = z
+  .object({
+    type: z.literal("TributeCardSelected"),
+    giverId: PlayerIdSchema,
+    giverSeat: z.number().int().nonnegative(),
+    card: CardInstanceCodeSchema,
+    rank: PlayRankSchema,
+  })
+  .strict();
+
+const TributeTransferredPayloadSchema = z
+  .object({
+    type: z.literal("TributeTransferred"),
+    giverId: PlayerIdSchema,
+    giverSeat: z.number().int().nonnegative(),
+    recipientId: PlayerIdSchema,
+    recipientSeat: z.number().int().nonnegative(),
+    card: CardInstanceCodeSchema,
+    rank: PlayRankSchema,
+  })
+  .strict();
+
+const ReturnCandidatesOfferedPayloadSchema = z
+  .object({
+    type: z.literal("ReturnCandidatesOffered"),
+    giverId: PlayerIdSchema,
+    giverSeat: z.number().int().nonnegative(),
+    recipientId: PlayerIdSchema,
+    recipientSeat: z.number().int().nonnegative(),
+    tributeCard: CardInstanceCodeSchema,
+    candidateCards: z
+      .array(CardInstanceCodeSchema)
+      .min(2)
+      .max(3)
+      .superRefine((cards, context) => {
+        if (new Set(cards).size !== cards.length) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "duplicate-card-instance",
+          });
+        }
+      }),
+  })
+  .strict();
+
+const ReturnTransferredPayloadSchema = z
+  .object({
+    type: z.literal("ReturnTransferred"),
+    giverId: PlayerIdSchema,
+    giverSeat: z.number().int().nonnegative(),
+    recipientId: PlayerIdSchema,
+    recipientSeat: z.number().int().nonnegative(),
+    tributeCard: CardInstanceCodeSchema,
+    card: CardInstanceCodeSchema,
+  })
+  .strict();
+
+const HandLeaderChosenPayloadSchema = z
+  .object({
+    type: z.literal("HandLeaderChosen"),
+    playerId: PlayerIdSchema,
+    seatIndex: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const TieChoiceKindSchema = z.enum(["recipient-pairing", "leader-selection"]);
+const TieChoiceBallotSubmittedPayloadSchema = z
+  .object({
+    type: z.literal("TieChoiceBallotSubmitted"),
+    tieKind: TieChoiceKindSchema,
+    round: z.number().int().min(1).max(3),
+    voterId: PlayerIdSchema,
+    candidateId: PlayerIdSchema.nullable(),
+  })
+  .strict();
+const TieChoiceRoundResolvedPayloadSchema = z
+  .object({
+    type: z.literal("TieChoiceRoundResolved"),
+    tieKind: TieChoiceKindSchema,
+    round: z.number().int().min(1).max(3),
+    ballots: z.array(
+      z
+        .object({
+          voterId: PlayerIdSchema,
+          candidateId: PlayerIdSchema.nullable(),
+        })
+        .strict(),
+    ),
+    committedPairs: z.array(
+      z
+        .object({
+          giverId: PlayerIdSchema,
+          giverSeat: z.number().int().nonnegative(),
+          recipientId: PlayerIdSchema,
+          recipientSeat: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+    remainingVoterIds: z.array(PlayerIdSchema),
+    remainingCandidateIds: z.array(PlayerIdSchema),
+    fallback: z.boolean(),
+    selectedLeaderId: PlayerIdSchema.optional(),
+  })
+  .strict()
+  .transform((event): Extract<Event, { type: "TieChoiceRoundResolved" }> => ({
+    type: event.type,
+    tieKind: event.tieKind,
+    round: event.round,
+    ballots: event.ballots,
+    committedPairs: event.committedPairs,
+    remainingVoterIds: event.remainingVoterIds,
+    remainingCandidateIds: event.remainingCandidateIds,
+    fallback: event.fallback,
+    ...(event.selectedLeaderId === undefined
+      ? {}
+      : { selectedLeaderId: event.selectedLeaderId }),
+  }));
+
 const PersistedRoomEventRowSchema = z
   .object({
     roomId: z.string().min(1).max(128),
@@ -277,6 +453,7 @@ const PersistedRoomEventRowSchema = z
       "ReadinessChanged",
       "ReadinessCleared",
       "SeatAssignmentsCleared",
+      "MatchRulesConfigurationReplaced",
       "MatchStarted",
       "CardsPlayed",
       "PlayerPassed",
@@ -286,6 +463,14 @@ const PersistedRoomEventRowSchema = z
       "HandResultDetermined",
       "HandSettled",
       "MatchCompleted",
+      "HandStarted",
+      "TributeCardSelected",
+      "TributeTransferred",
+      "ReturnCandidatesOffered",
+      "ReturnTransferred",
+      "HandLeaderChosen",
+      "TieChoiceBallotSubmitted",
+      "TieChoiceRoundResolved",
     ]),
     eventSchemaVersion: z.number().int().positive(),
     causationCommandId: CommandIdSchema.nullable(),
@@ -304,24 +489,7 @@ export class UnsupportedPersistedEventError extends Error {
 export function defaultRoomRulesConfiguration(
   rulesetId: RulesetId,
 ): RoomCreated["rulesConfiguration"] {
-  const shared = {
-    wildcardRank: "strongest-rank" as const,
-    finishingWildcardInterpretation: "weakest-form-and-rank" as const,
-    flushTieBreaking: "descending-ranks" as const,
-    nextHandLeader: "first-finisher" as const,
-    tributeCardSelection: "fair-random" as const,
-    tributeRecipientPairing: "adjacent-first-automatic" as const,
-    matchEnding: "no-failure-limit-at-5" as const,
-  };
-  if (rulesetId === "dglz-6p-3d-v1") {
-    return {
-      rulesetId,
-      ...shared,
-      jokerPairComparison: "two-small-and-mixed-are-equal",
-      returnCardSelection: "recipient-choice",
-    };
-  }
-  return { rulesetId, ...shared };
+  return rulesConfigurationPreset(rulesetId, "省心");
 }
 
 export function appendRoomCreated(
@@ -366,6 +534,7 @@ export function decodePersistedRoomCommandAck(value: unknown): RoomCommandAck {
   const record = value as Record<string, unknown>;
   if (
     record.protocolVersion !== 1 &&
+    record.protocolVersion !== 2 &&
     record.protocolVersion !== PROTOCOL_VERSION
   ) {
     throw new UnsupportedPersistedEventError();
@@ -442,6 +611,11 @@ function eventPayload(event: Event): string {
   if (event.type === "MatchSelected") {
     return JSON.stringify(MatchSelectedPayloadSchema.parse(event));
   }
+  if (event.type === "MatchRulesConfigurationReplaced") {
+    return JSON.stringify(
+      MatchRulesConfigurationReplacedPayloadSchema.parse(event),
+    );
+  }
   if (event.type === "SeatAssigned") {
     return JSON.stringify(SeatAssignedPayloadSchema.parse(event));
   }
@@ -480,6 +654,30 @@ function eventPayload(event: Event): string {
   }
   if (event.type === "MatchCompleted") {
     return JSON.stringify(MatchCompletedPayloadSchema.parse(event));
+  }
+  if (event.type === "HandStarted") {
+    return JSON.stringify(HandStartedPayloadSchema.parse(event));
+  }
+  if (event.type === "TributeCardSelected") {
+    return JSON.stringify(TributeCardSelectedPayloadSchema.parse(event));
+  }
+  if (event.type === "TributeTransferred") {
+    return JSON.stringify(TributeTransferredPayloadSchema.parse(event));
+  }
+  if (event.type === "ReturnCandidatesOffered") {
+    return JSON.stringify(ReturnCandidatesOfferedPayloadSchema.parse(event));
+  }
+  if (event.type === "ReturnTransferred") {
+    return JSON.stringify(ReturnTransferredPayloadSchema.parse(event));
+  }
+  if (event.type === "HandLeaderChosen") {
+    return JSON.stringify(HandLeaderChosenPayloadSchema.parse(event));
+  }
+  if (event.type === "TieChoiceBallotSubmitted") {
+    return JSON.stringify(TieChoiceBallotSubmittedPayloadSchema.parse(event));
+  }
+  if (event.type === "TieChoiceRoundResolved") {
+    return JSON.stringify(TieChoiceRoundResolvedPayloadSchema.parse(event));
   }
   throw new UnsupportedPersistedEventError();
 }
@@ -559,7 +757,131 @@ export type LoadedRoom = Readonly<{
   roomId: string;
   state: State;
   revision: number;
+  lastHandResult?: PlayerViewLastHandResult;
 }>;
+
+function captureLastHandResult(
+  state: State,
+  handNumber: number,
+): PlayerViewLastHandResult {
+  const view = derivePlayerView(state, "__room_projection__");
+  if (
+    view.handResult === undefined ||
+    view.finishPositions === undefined ||
+    view.teamLevels === undefined
+  ) {
+    throw new UnsupportedPersistedEventError();
+  }
+  return {
+    handNumber,
+    result: {
+      outcome: view.handResult.outcome,
+      firstFinisherTeam: view.handResult.firstFinisherTeam,
+      ...(view.handResult.winningTeam === undefined
+        ? {}
+        : { winningTeam: view.handResult.winningTeam }),
+      nextDealerTeam: view.handResult.nextDealerTeam,
+      caughtPlayerIds: [...view.handResult.caughtPlayerIds],
+    },
+    finishPositions: view.finishPositions.map((position) => position ?? null),
+    teamLevels: [...view.teamLevels] as [
+      "2" | "3" | "4" | "5" | "6",
+      "2" | "3" | "4" | "5" | "6",
+    ],
+    seats: view.seats.map((seat) => ({
+      seatIndex: seat.seatIndex,
+      ...(seat.playerId === undefined ? {} : { playerId: seat.playerId }),
+    })),
+  };
+}
+
+/** Fold committed events once, retaining the latest public Hand settlement. */
+export function foldRoomEvents(
+  loadedRoom: LoadedRoom,
+  events: readonly Event[],
+): LoadedRoom {
+  let state = loadedRoom.state;
+  let lastHandResult = loadedRoom.lastHandResult;
+  let revision = loadedRoom.revision;
+  for (const event of events) {
+    state = evolve(state, event);
+    revision += 1;
+    if (event.type === "MatchStarted") {
+      lastHandResult = undefined;
+    } else if (event.type === "HandSettled") {
+      lastHandResult = captureLastHandResult(state, event.handNumber);
+    }
+  }
+  return {
+    roomId: loadedRoom.roomId,
+    state,
+    revision,
+    ...(lastHandResult === undefined ? {} : { lastHandResult }),
+  };
+}
+
+function parsePersistedRoomEvent(
+  eventType: string,
+  decoded: unknown,
+): Event | undefined {
+  const parsed = (() => {
+    switch (eventType) {
+      case "RoomCreated":
+        return RoomCreatedPayloadSchema.safeParse(decoded);
+      case "MemberJoined":
+        return MemberJoinedPayloadSchema.safeParse(decoded);
+      case "MatchSelected":
+        return MatchSelectedPayloadSchema.safeParse(decoded);
+      case "MatchRulesConfigurationReplaced":
+        return MatchRulesConfigurationReplacedPayloadSchema.safeParse(decoded);
+      case "SeatAssigned":
+        return SeatAssignedPayloadSchema.safeParse(decoded);
+      case "ReadinessChanged":
+        return ReadinessChangedPayloadSchema.safeParse(decoded);
+      case "ReadinessCleared":
+        return ReadinessClearedPayloadSchema.safeParse(decoded);
+      case "SeatAssignmentsCleared":
+        return SeatAssignmentsClearedPayloadSchema.safeParse(decoded);
+      case "MatchStarted":
+        return MatchStartedPayloadSchema.safeParse(decoded);
+      case "CardsPlayed":
+        return CardsPlayedPayloadSchema.safeParse(decoded);
+      case "PlayerPassed":
+        return PlayerPassedPayloadSchema.safeParse(decoded);
+      case "PlayerFinished":
+        return PlayerFinishedPayloadSchema.safeParse(decoded);
+      case "TurnAdvanced":
+        return TurnAdvancedPayloadSchema.safeParse(decoded);
+      case "LeadReset":
+        return LeadResetPayloadSchema.safeParse(decoded);
+      case "HandResultDetermined":
+        return HandResultDeterminedPayloadSchema.safeParse(decoded);
+      case "HandSettled":
+        return HandSettledPayloadSchema.safeParse(decoded);
+      case "MatchCompleted":
+        return MatchCompletedPayloadSchema.safeParse(decoded);
+      case "HandStarted":
+        return HandStartedPayloadSchema.safeParse(decoded);
+      case "TributeCardSelected":
+        return TributeCardSelectedPayloadSchema.safeParse(decoded);
+      case "TributeTransferred":
+        return TributeTransferredPayloadSchema.safeParse(decoded);
+      case "ReturnCandidatesOffered":
+        return ReturnCandidatesOfferedPayloadSchema.safeParse(decoded);
+      case "ReturnTransferred":
+        return ReturnTransferredPayloadSchema.safeParse(decoded);
+      case "HandLeaderChosen":
+        return HandLeaderChosenPayloadSchema.safeParse(decoded);
+      case "TieChoiceBallotSubmitted":
+        return TieChoiceBallotSubmittedPayloadSchema.safeParse(decoded);
+      case "TieChoiceRoundResolved":
+        return TieChoiceRoundResolvedPayloadSchema.safeParse(decoded);
+      default:
+        return undefined;
+    }
+  })();
+  return parsed === undefined || !parsed.success ? undefined : parsed.data;
+}
 
 export function loadRoom(
   database: AppDatabase,
@@ -575,11 +897,10 @@ export function loadRoom(
     return undefined;
   }
 
-  let state: State | undefined;
-  let revision = 0;
+  let loaded: LoadedRoom | undefined;
   for (const unvalidatedRow of rows) {
     const row = PersistedRoomEventRowSchema.safeParse(unvalidatedRow);
-    if (!row.success || row.data.sequence !== revision + 1) {
+    if (!row.success || row.data.sequence !== (loaded?.revision ?? 0) + 1) {
       throw new UnsupportedPersistedEventError();
     }
     if (row.data.eventSchemaVersion !== ROOM_EVENT_SCHEMA_VERSION) {
@@ -591,68 +912,34 @@ export function loadRoom(
     } catch {
       throw new UnsupportedPersistedEventError();
     }
-    const parsedEvent = (() => {
-      switch (row.data.eventType) {
-        case "RoomCreated":
-          return RoomCreatedPayloadSchema.safeParse(decoded);
-        case "MemberJoined":
-          return MemberJoinedPayloadSchema.safeParse(decoded);
-        case "MatchSelected":
-          return MatchSelectedPayloadSchema.safeParse(decoded);
-        case "SeatAssigned":
-          return SeatAssignedPayloadSchema.safeParse(decoded);
-        case "ReadinessChanged":
-          return ReadinessChangedPayloadSchema.safeParse(decoded);
-        case "ReadinessCleared":
-          return ReadinessClearedPayloadSchema.safeParse(decoded);
-        case "SeatAssignmentsCleared":
-          return SeatAssignmentsClearedPayloadSchema.safeParse(decoded);
-        case "MatchStarted":
-          return MatchStartedPayloadSchema.safeParse(decoded);
-        case "CardsPlayed":
-          return CardsPlayedPayloadSchema.safeParse(decoded);
-        case "PlayerPassed":
-          return PlayerPassedPayloadSchema.safeParse(decoded);
-        case "PlayerFinished":
-          return PlayerFinishedPayloadSchema.safeParse(decoded);
-        case "TurnAdvanced":
-          return TurnAdvancedPayloadSchema.safeParse(decoded);
-        case "LeadReset":
-          return LeadResetPayloadSchema.safeParse(decoded);
-        case "HandResultDetermined":
-          return HandResultDeterminedPayloadSchema.safeParse(decoded);
-        case "HandSettled":
-          return HandSettledPayloadSchema.safeParse(decoded);
-        case "MatchCompleted":
-          return MatchCompletedPayloadSchema.safeParse(decoded);
-      }
-    })();
-    if (!parsedEvent.success) {
+    const parsedEvent = parsePersistedRoomEvent(row.data.eventType, decoded);
+    if (parsedEvent === undefined) {
       throw new UnsupportedPersistedEventError();
     }
-    if (state === undefined && parsedEvent.data.type !== "RoomCreated") {
+    if (loaded === undefined && parsedEvent.type !== "RoomCreated") {
       throw new UnsupportedPersistedEventError();
     }
-    if (state !== undefined && parsedEvent.data.type === "RoomCreated") {
+    if (loaded !== undefined && parsedEvent.type === "RoomCreated") {
       throw new UnsupportedPersistedEventError();
     }
-    if (
-      parsedEvent.data.type === "RoomCreated" &&
-      parsedEvent.data.roomId !== roomId
-    ) {
+    if (parsedEvent.type === "RoomCreated" && parsedEvent.roomId !== roomId) {
       throw new UnsupportedPersistedEventError();
     }
     try {
-      state = evolve(state, parsedEvent.data);
+      if (loaded === undefined) {
+        const state = evolve(undefined, parsedEvent);
+        loaded = { roomId, state, revision: row.data.sequence };
+      } else {
+        loaded = foldRoomEvents(loaded, [parsedEvent]);
+      }
     } catch {
       throw new UnsupportedPersistedEventError();
     }
-    revision = row.data.sequence;
   }
-  if (state === undefined) {
+  if (loaded === undefined) {
     throw new UnsupportedPersistedEventError();
   }
-  return { roomId, state, revision };
+  return loaded;
 }
 
 export function deriveRoomView(
@@ -686,6 +973,9 @@ export function deriveRoomView(
             ...(view.matchSummary === undefined
               ? {}
               : { matchSummary: view.matchSummary }),
+            ...(loadedRoom.lastHandResult === undefined
+              ? {}
+              : { lastHandResult: loadedRoom.lastHandResult }),
           }),
       ...(view.lifecycle !== "ACTIVE"
         ? {}
@@ -713,6 +1003,9 @@ export function deriveRoomView(
             ...(view.handResult === undefined
               ? {}
               : { handResult: view.handResult }),
+            ...(loadedRoom.lastHandResult === undefined
+              ? {}
+              : { lastHandResult: loadedRoom.lastHandResult }),
             passedPlayerIds: view.passedPlayerIds,
             finishPositions: view.finishPositions?.map(
               (position) => position ?? null,
@@ -722,6 +1015,27 @@ export function deriveRoomView(
             returnCandidates: view.returnCandidates,
             pendingPlayerIds: view.pendingPlayerIds,
             eligibleTributeCards: view.eligibleTributeCards,
+            ...(view.tieKind === undefined
+              ? {}
+              : {
+                  tieKind: view.tieKind,
+                  tieRound: view.tieRound,
+                  tieVoterIds: view.tieVoterIds,
+                  tieCandidateIds: view.tieCandidateIds,
+                  tieSubmittedPlayerIds: view.tieSubmittedPlayerIds,
+                }),
+            ...(view.tieOwnBallot === undefined
+              ? {}
+              : { tieOwnBallot: view.tieOwnBallot }),
+            tieResolvedRounds: (view.tieResolvedRounds ?? []).map((round) => ({
+              ...round,
+              ballots: round.ballots.map((ballot) => ({ ...ballot })),
+              committedPairs: round.committedPairs.map((pair) => ({
+                ...pair,
+              })),
+              remainingVoterIds: [...round.remainingVoterIds],
+              remainingCandidateIds: [...round.remainingCandidateIds],
+            })),
           }),
     },
   });

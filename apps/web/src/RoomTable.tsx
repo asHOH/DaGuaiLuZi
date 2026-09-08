@@ -1,5 +1,10 @@
 import { useState } from "react";
-import type { RoomCommandPayload, RoomViewData } from "@dglz/protocol";
+import {
+  RulesConfigurationSchema,
+  rulesConfigurationPreset,
+  type RoomCommandPayload,
+  type RoomViewData,
+} from "@dglz/protocol";
 
 import { errorMessage } from "./api";
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
@@ -57,6 +62,24 @@ const RULE_VALUES: Record<string, string> = {
   "adjacent-first-automatic": "相邻优先自动配对",
   "no-failure-limit-at-5": "到 5 级不设失败上限",
   "three-failure-limit-at-5": "到 5 级三次失败结束",
+};
+
+const RULE_OPTIONS: Record<string, string[]> = {
+  jokerPairComparison: [
+    "two-small-and-mixed-are-equal",
+    "two-small-jokers-win",
+  ],
+  wildcardRank: ["weakest-rank", "strongest-rank"],
+  finishingWildcardInterpretation: ["normal", "weakest-form-and-rank"],
+  flushTieBreaking: ["highest-card-only", "descending-ranks"],
+  nextHandLeader: ["first-finisher", "highest-tribute"],
+  tributeCardSelection: ["fair-random", "giver-choice"],
+  returnCardSelection: ["recipient-choice", "giver-choice-from-candidates"],
+  tributeRecipientPairing: [
+    "finish-position-by-tribute-rank",
+    "adjacent-first-automatic",
+  ],
+  matchEnding: ["no-failure-limit-at-5", "three-failure-limit-at-5"],
 };
 
 function positionLabel(seatIndex: number): string {
@@ -184,7 +207,15 @@ function SeatCard({
   );
 }
 
-function RulesDetails({ view }: { view: RoomViewData["view"] }) {
+function RulesDetails({
+  view,
+  disabled,
+  onCommand,
+}: {
+  view: RoomViewData["view"];
+  disabled: boolean;
+  onCommand?: RoomTableProps["onCommand"];
+}) {
   return (
     <details className={styles.rulesDetails}>
       <summary>
@@ -204,7 +235,68 @@ function RulesDetails({ view }: { view: RoomViewData["view"] }) {
             <span className={styles.lockPill}>已锁定</span>
           )}
         </div>
-        <dl className={styles.ruleList}>{rulesConfiguration(view)}</dl>
+        {onCommand === undefined ? (
+          <dl className={styles.ruleList}>{rulesConfiguration(view)}</dl>
+        ) : (
+          <fieldset className={styles.ruleEditor} disabled={disabled}>
+            <legend>设置牌局规则</legend>
+            <div className={styles.playActions}>
+              {(["省心", "自主"] as const).map((preset) => {
+                const configuration = rulesConfigurationPreset(
+                  view.rulesConfiguration.rulesetId,
+                  preset,
+                );
+                return (
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    key={preset}
+                    disabled={Object.entries(configuration).every(
+                      ([key, value]) =>
+                        value ===
+                        view.rulesConfiguration[
+                          key as keyof typeof view.rulesConfiguration
+                        ],
+                    )}
+                    onClick={() =>
+                      onCommand({
+                        type: "ReplaceMatchRulesConfiguration",
+                        rulesConfiguration: configuration,
+                      })
+                    }
+                  >
+                    {preset}
+                  </button>
+                );
+              })}
+            </div>
+            {Object.entries(view.rulesConfiguration)
+              .filter(([key]) => key !== "rulesetId")
+              .map(([key, value]) => (
+                <label className={styles.ruleField} key={key}>
+                  {RULE_LABELS[key]}
+                  <select
+                    value={value}
+                    onChange={(event) =>
+                      onCommand({
+                        type: "ReplaceMatchRulesConfiguration",
+                        rulesConfiguration: RulesConfigurationSchema.parse({
+                          ...view.rulesConfiguration,
+                          [key]: event.target.value,
+                        }),
+                      })
+                    }
+                  >
+                    {RULE_OPTIONS[key]?.map((option) => (
+                      <option key={option} value={option}>
+                        {RULE_VALUES[option]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+          </fieldset>
+        )}
       </div>
     </details>
   );
@@ -354,9 +446,130 @@ function LobbyView({
               })}
           </ul>
         </section>
-        <RulesDetails view={view} />
+        <RulesDetails
+          view={view}
+          disabled={actionsDisabled}
+          {...(view.ownerId === accountId && !view.matchRulesConfigurationLocked
+            ? { onCommand }
+            : {})}
+        />
       </aside>
     </div>
+  );
+}
+
+function PreviousHand({
+  summary,
+}: {
+  summary: NonNullable<RoomViewData["view"]["lastHandResult"]>;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section
+      className={`${styles.result} ${styles.previousHand}`}
+      aria-label="上一局结果"
+    >
+      <button
+        type="button"
+        className={styles.secondaryButton}
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        {open ? "收起上一局结果" : "上一局结果"}
+      </button>
+      {open && (
+        <>
+          <h3>上一局结果 · 第 {summary.handNumber} 局</h3>
+          <p>
+            {summary.result.outcome === "draw"
+              ? "本局平局"
+              : `${summary.result.winningTeam === 0 ? "一队" : "二队"}获胜`}{" "}
+            · 一队等级 {summary.teamLevels[0]} · 二队等级{" "}
+            {summary.teamLevels[1]}
+          </p>
+          <p>
+            {summary.seats
+              .map(
+                (seat) =>
+                  `${positionLabel(seat.seatIndex)}：${summary.finishPositions[seat.seatIndex] == null ? (seat.playerId !== undefined && summary.result.caughtPlayerIds.includes(seat.playerId) ? "被捉" : "未完牌") : `第${summary.finishPositions[seat.seatIndex]}名`}`,
+              )
+              .join(" · ")}
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+type ActivePlayerView = Extract<RoomViewData["view"], { lifecycle: "ACTIVE" }>;
+
+function TieChoice({
+  view,
+  accountId,
+  disabled,
+  onCommand,
+}: {
+  view: ActivePlayerView;
+  accountId: string;
+  disabled: boolean;
+  onCommand: RoomTableProps["onCommand"];
+}) {
+  const [candidate, setCandidate] = useState("");
+  const submitted = view.tieSubmittedPlayerIds?.includes(accountId);
+  const canVote = view.pendingPlayerIds.includes(accountId);
+  return (
+    <>
+      <h3>
+        {view.tieKind === "recipient-pairing" ? "选择接贡方" : "选择首家"} · 第{" "}
+        {view.tieRound} 轮
+      </h3>
+      {submitted ? (
+        <p role="status">
+          已提交，等待其他玩家（你的选择：
+          {view.tieOwnBallot == null
+            ? "放弃"
+            : positionLabel(memberSeatIndex(view, view.tieOwnBallot)!)}
+          ）
+        </p>
+      ) : canVote ? (
+        <div className={styles.playActions}>
+          <label>
+            {view.tieKind === "recipient-pairing" ? "配对选择" : "首家选择"}
+            <select
+              disabled={disabled}
+              value={candidate}
+              onChange={(event) => setCandidate(event.target.value)}
+            >
+              <option value="">放弃</option>
+              {view.tieCandidateIds?.map((id) => (
+                <option key={id} value={id}>
+                  {positionLabel(memberSeatIndex(view, id)!)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            disabled={disabled}
+            onClick={() => {
+              if (view.tieKind !== undefined && view.tieRound !== undefined)
+                onCommand({
+                  type: "SubmitTieChoiceBallot",
+                  tieKind: view.tieKind,
+                  round: view.tieRound,
+                  candidateId: candidate || null,
+                });
+            }}
+          >
+            提交选择
+          </button>
+          <p>本轮提交后不可更改；所有人提交后公开。最多三轮。</p>
+        </div>
+      ) : (
+        <p>等待其他玩家选择</p>
+      )}
+    </>
   );
 }
 
@@ -373,7 +586,38 @@ function ActiveView({
   pending: boolean;
   onCommand: (payload: RoomCommandPayload) => void;
 }) {
-  const handKey = view.hand.join(",");
+  const pendingActor = view.pendingPlayerIds[0];
+  const ownSetupTurn = view.pendingPlayerIds.includes(accountId);
+  const offer =
+    view.setupStage === "return-card-selection"
+      ? view.returnCandidates.find(
+          (candidate) => candidate.giverId === pendingActor,
+        )
+      : undefined;
+  const transfer =
+    view.setupStage === "return-card-selection"
+      ? view.tributeTransfers.find(
+          (candidate) => candidate.recipientId === pendingActor,
+        )
+      : undefined;
+  const candidateCount =
+    transfer !== undefined &&
+    view.rulesConfiguration.rulesetId === "dglz-6p-3d-v1" &&
+    view.rulesConfiguration.returnCardSelection ===
+      "giver-choice-from-candidates"
+      ? transfer.rank === "BIG"
+        ? 3
+        : transfer.rank === "SMALL"
+          ? 2
+          : 0
+      : 0;
+  const tributeSelection =
+    view.setupStage === "tribute-selection" && ownSetupTurn;
+  const returnSelection =
+    view.setupStage === "return-card-selection" &&
+    ownSetupTurn &&
+    offer === undefined;
+  const handKey = `${view.hand.join(",")}:${view.setupStage}:${view.pendingPlayerIds.includes(accountId)}:${offer?.tributeCard ?? transfer?.card ?? ""}`;
   const [selection, setSelection] = useState({
     handKey,
     cards: [] as typeof view.hand,
@@ -387,17 +631,20 @@ function ActiveView({
     !locked &&
     !pending &&
     view.handResult === undefined &&
-    view.setupStage === "play";
-  const canAct = canSelect && view.currentActor === accountId;
+    (view.setupStage === "play" || tributeSelection || returnSelection);
+  const canAct =
+    canSelect && view.setupStage === "play" && view.currentActor === accountId;
   const feedback =
-    selected.length === 0 ? undefined : selectionFeedback(view, selected);
+    selected.length === 0 || view.setupStage !== "play"
+      ? undefined
+      : selectionFeedback(view, selected);
   const currentActorSeat = view.seats.find(
     (seat) => seat.playerId === view.currentActor,
   )?.seatIndex;
 
   return (
     <div className={styles.activeLayout}>
-      <section className={styles.tableStage} aria-labelledby="table-title">
+      <section className={styles.tableStage} aria-label="牌桌">
         <div className={styles.tableHeading}>
           <div>
             <p className={styles.eyebrow}>
@@ -408,7 +655,11 @@ function ActiveView({
               局
             </p>
             <h2 id="table-title">
-              {view.handResult === undefined ? "轮流出牌" : "本局已结算"}
+              {view.handResult !== undefined
+                ? "本局已结算"
+                : view.setupStage === "play"
+                  ? "轮流出牌"
+                  : "开局选择"}
             </h2>
           </div>
           <div className={styles.trumpBadge}>
@@ -447,7 +698,11 @@ function ActiveView({
         <div className={styles.currentPlay} aria-label="当前出牌">
           {view.unbeatenPlay === undefined ? (
             <p>
-              {view.handResult === undefined ? "新一轮领牌" : "本局出牌结束"}
+              {view.handResult !== undefined
+                ? "本局出牌结束"
+                : view.setupStage === "play"
+                  ? "新一轮领牌"
+                  : "完成进贡、还牌后开始出牌"}
             </p>
           ) : (
             <>
@@ -536,13 +791,19 @@ function ActiveView({
                   data-testid="hand-card"
                   aria-label={card.aria}
                   aria-pressed={selected.includes(code)}
-                  disabled={!canSelect}
+                  disabled={
+                    !canSelect ||
+                    (tributeSelection &&
+                      !view.eligibleTributeCards.includes(code))
+                  }
                   onClick={() =>
                     setSelection({
                       handKey,
                       cards: selected.includes(code)
                         ? selected.filter((card) => card !== code)
-                        : [...selected, code],
+                        : view.setupStage !== "play" && candidateCount === 0
+                          ? [code]
+                          : [...selected, code],
                     })
                   }
                 >
@@ -552,7 +813,168 @@ function ActiveView({
             );
           })}
         </ul>
-        {view.handResult === undefined && (
+        {view.setupStage !== "play" && view.handResult === undefined && (
+          <section className={styles.setupChoices} aria-label="开局选择">
+            {view.tieKind !== undefined ? (
+              <TieChoice
+                key={`${view.tieKind}:${view.tieRound}:${view.tieCandidateIds?.join(",")}`}
+                view={view}
+                accountId={accountId}
+                disabled={locked || pending}
+                onCommand={onCommand}
+              />
+            ) : tributeSelection ? (
+              <>
+                <h3>选择进贡牌</h3>
+                <p>请选择一张可进贡的最高牌。</p>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={!canSelect || selected.length !== 1}
+                  onClick={() =>
+                    onCommand({ type: "SelectTributeCard", card: selected[0]! })
+                  }
+                >
+                  确认进贡
+                </button>
+              </>
+            ) : returnSelection ? (
+              <>
+                <h3>{candidateCount > 0 ? "提供还牌候选" : "选择还牌"}</h3>
+                {transfer !== undefined && (
+                  <p>
+                    收到{positionLabel(transfer.giverSeat)}的贡牌：
+                    {cardLabel(transfer.card).display}
+                  </p>
+                )}
+                <p>
+                  {candidateCount > 0
+                    ? `请选择 ${candidateCount} 张不同点数的手牌，由进贡方选回一张。`
+                    : "请选择一张手牌还给进贡方，也可归还收到的贡牌。"}
+                </p>
+                <p>已选 {selected.length} 张</p>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={
+                    !canSelect ||
+                    (candidateCount > 0
+                      ? selected.length !== candidateCount ||
+                        new Set(
+                          selected.map((code) =>
+                            code.split("#")[0]!.replace(/[SHDC]$/, ""),
+                          ),
+                        ).size !== candidateCount
+                      : selected.length !== 1)
+                  }
+                  onClick={() =>
+                    onCommand(
+                      candidateCount > 0
+                        ? {
+                            type: "OfferReturnCandidates",
+                            candidateCards: selected,
+                          }
+                        : { type: "SelectReturnCard", card: selected[0]! },
+                    )
+                  }
+                >
+                  {candidateCount > 0 ? "提交还牌候选" : "确认还牌"}
+                </button>
+              </>
+            ) : ownSetupTurn && offer !== undefined ? (
+              <>
+                <h3>从候选中选择还牌</h3>
+                <p>
+                  {positionLabel(offer.recipientSeat)}
+                  已提供候选牌，点选一张并确认收回。
+                </p>
+                <ul className={styles.hand}>
+                  {offer.candidateCards.map((code) => {
+                    const card = cardLabel(code);
+                    return (
+                      <li key={code}>
+                        <button
+                          type="button"
+                          data-testid="return-candidate"
+                          data-card={code}
+                          aria-label={card.aria}
+                          aria-pressed={selected.includes(code)}
+                          className={`${styles.card} ${card.tone === "red" ? styles.cardRed : card.tone === "joker" ? styles.cardJoker : styles.cardBlack} ${selected.includes(code) ? styles.cardSelected : ""}`}
+                          disabled={locked || pending}
+                          onClick={() =>
+                            setSelection({ handKey, cards: [code] })
+                          }
+                        >
+                          {card.display}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={locked || pending || selected.length !== 1}
+                  onClick={() =>
+                    onCommand({ type: "SelectReturnCard", card: selected[0]! })
+                  }
+                >
+                  确认还牌
+                </button>
+              </>
+            ) : (
+              <p role="status">
+                {(view.setupStage === "tribute-selection" &&
+                  view.lastHandResult?.result.caughtPlayerIds.includes(
+                    accountId,
+                  )) ||
+                offer?.recipientId === accountId
+                  ? "已提交，等待其他玩家"
+                  : "等待其他玩家完成开局选择"}
+              </p>
+            )}
+          </section>
+        )}
+        {view.tieResolvedRounds !== undefined &&
+          view.tieResolvedRounds.length > 0 && (
+            <details>
+              <summary>已公开的选择结果</summary>
+              {view.tieResolvedRounds.map((round, index) => (
+                <div key={index}>
+                  <p>
+                    {round.tieKind === "recipient-pairing"
+                      ? "进贡配对"
+                      : "首家选择"}{" "}
+                    · 第 {round.round} 轮
+                    {round.fallback ? " · 已使用三轮后规则" : ""}
+                  </p>
+                  <p>
+                    {round.ballots
+                      .map(
+                        (ballot) =>
+                          `${positionLabel(memberSeatIndex(view, ballot.voterId)!)}：${ballot.candidateId === null ? "放弃" : positionLabel(memberSeatIndex(view, ballot.candidateId)!)}`,
+                      )
+                      .join(" · ")}
+                  </p>
+                  {round.committedPairs.map((pair) => (
+                    <p key={pair.giverId}>
+                      {positionLabel(pair.giverSeat)} →{" "}
+                      {positionLabel(pair.recipientSeat)}
+                    </p>
+                  ))}
+                  {round.selectedLeaderId !== undefined && (
+                    <p>
+                      首家：
+                      {positionLabel(
+                        memberSeatIndex(view, round.selectedLeaderId)!,
+                      )}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </details>
+          )}
+        {view.handResult === undefined && view.setupStage === "play" && (
           <>
             <p className={styles.handNote} aria-live="polite">
               {feedback === undefined
@@ -620,6 +1042,13 @@ export function RoomTable({
           {lifecycleLabel}
         </span>
       </header>
+
+      {room.view.lastHandResult !== undefined && (
+        <PreviousHand
+          key={`${room.view.roomId}:${accountId}:${room.view.lastHandResult.handNumber}:${room.view.lastHandResult.seats.map((seat) => seat.playerId).join(",")}`}
+          summary={room.view.lastHandResult}
+        />
+      )}
 
       {room.view.lifecycle === "LOBBY" ? (
         <LobbyView

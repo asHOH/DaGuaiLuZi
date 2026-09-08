@@ -44,7 +44,6 @@ import {
   appendRoomCreated,
   defaultRoomRulesConfiguration,
   deriveRoomView,
-  loadRoom,
   UnsupportedPersistedEventError,
 } from "./rooms.js";
 import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
@@ -360,6 +359,7 @@ export async function createApp(
         if (executor === undefined) {
           return;
         }
+        await executor.resumeSettledHand(account.accountId);
         await executor.autoStart(connectedRoomAccounts(initialRoomId));
         await publishRoomViews(initialRoomId, executor);
       })().catch((error: unknown) => {
@@ -604,7 +604,7 @@ export async function createApp(
       }
       let room;
       try {
-        room = loadRoom(database, roomId.data);
+        room = await roomExecutors.getOrCreate(roomId.data);
       } catch (error) {
         if (error instanceof UnsupportedPersistedEventError) {
           return sendError(reply, "unsupported-persisted-event");
@@ -614,11 +614,14 @@ export async function createApp(
       if (room === undefined) {
         return sendError(reply, "room-not-found");
       }
-      const data = deriveRoomView(room, account.accountId);
+      const data = room.viewFor(account.accountId);
       if (data === undefined) {
         return sendError(reply, "forbidden");
       }
-      return reply.send(successEnvelope(data));
+      const revision = room.revision;
+      await room.resumeSettledHand(account.accountId);
+      if (room.revision !== revision) await publishRoomViews(roomId.data, room);
+      return reply.send(successEnvelope(room.viewFor(account.accountId)!));
     },
   );
 

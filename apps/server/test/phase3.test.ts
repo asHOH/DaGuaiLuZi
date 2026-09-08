@@ -11,6 +11,7 @@ import {
   PROTOCOL_VERSION_HEADER,
   RoomViewSyncEnvelopeSchema,
   SOCKET_ROOM_COMMAND_EVENT,
+  rulesConfigurationPreset,
   type RoomCommandAck,
 } from "@dglz/protocol";
 
@@ -382,7 +383,7 @@ describe("phase 3 room lifecycle", () => {
     });
   });
 
-  it("keeps a ready lobby blocked by absence and starts on room reconnect", async () => {
+  it("authorizes rule changes before start, locks them afterwards, and starts on reconnect", async () => {
     const directory = await mkdtemp(join(tmpdir(), "dglz-phase3-presence-"));
     paths.push(directory);
     const dbPath = join(directory, "server.sqlite");
@@ -429,6 +430,33 @@ describe("phase 3 room lifecycle", () => {
       );
       revision += 1;
     }
+    const rulesConfiguration = rulesConfigurationPreset(
+      "dglz-4p-2d-v1",
+      "自主",
+    );
+    const replaceRules = {
+      type: "ReplaceMatchRulesConfiguration",
+      rulesConfiguration,
+    };
+    expect(
+      await sendCommand(
+        roomSockets[1]!,
+        command(roomId, revision, replaceRules),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "domain-rejected", reason: "owner-only" },
+    });
+    expect(
+      await sendCommand(
+        roomSockets[0]!,
+        command(roomId, revision, replaceRules),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { revision: revision + 1, view: { rulesConfiguration } },
+    });
+    revision += 1;
     await sendCommand(
       roomSockets[0]!,
       command(roomId, revision, { type: "SelectMatch" }),
@@ -462,7 +490,7 @@ describe("phase 3 room lifecycle", () => {
       });
       revision += 1;
     }
-    expect(revision).toBe(13);
+    expect(revision).toBe(14);
 
     const reconnected = await Promise.all([
       openSocket(port, cookies[3]!, roomId),
@@ -473,11 +501,31 @@ describe("phase 3 room lifecycle", () => {
         await connection.firstView,
       );
       expect(resync.data).toMatchObject({
-        revision: 14,
-        view: { lifecycle: "ACTIVE", hand: expect.any(Array) },
+        revision: 15,
+        view: {
+          lifecycle: "ACTIVE",
+          hand: expect.any(Array),
+          matchRulesConfigurationLocked: true,
+          rulesConfiguration,
+        },
       });
     }
 
+    expect(
+      await sendCommand(
+        roomSockets[0]!,
+        command(roomId, 15, {
+          type: "ReplaceMatchRulesConfiguration",
+          rulesConfiguration: rulesConfigurationPreset("dglz-4p-2d-v1", "省心"),
+        }),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "domain-rejected",
+        reason: "room-not-in-lobby",
+      },
+    });
     const persisted = openDatabase(dbPath);
     const rows = persisted.sqlite
       .prepare(

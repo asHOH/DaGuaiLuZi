@@ -522,6 +522,7 @@
 }
 
 .handPanel {
+  --muted: #6d6655;
   background: rgba(247, 240, 223, 0.98);
   color: var(--ink);
 }
@@ -596,6 +597,10 @@
   min-height: 2.75rem;
 }
 
+.hand .card:hover:not(:disabled) {
+  background: #fffcf4;
+}
+
 .hand .card:disabled {
   cursor: default;
   opacity: 1;
@@ -657,6 +662,59 @@
   margin-top: 1rem;
   padding-top: 0.75rem;
   color: var(--ivory);
+}
+
+.previousHand {
+  max-width: 76rem;
+  margin: 0 auto 1rem;
+  font-size: 0.85rem;
+}
+
+.ruleEditor {
+  border: 0;
+  padding: 0;
+  margin: 1rem 0 0;
+  min-width: 0;
+}
+
+.ruleField {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.8rem;
+  font-size: 0.8rem;
+}
+
+.roomTable select {
+  display: block;
+  max-width: 100%;
+  min-height: 2.75rem;
+  background: var(--ivory);
+  border: 1px solid var(--brass);
+  border-radius: 0.4rem;
+  color: var(--ink);
+  font: inherit;
+  padding: 0.4rem;
+}
+
+.roomTable select:focus-visible {
+  outline: 2px solid var(--brass-light);
+  outline-offset: 3px;
+}
+
+.setupChoices {
+  border-top: 1px solid #8b836f;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.setupChoices button {
+  min-height: 2.75rem;
+  margin-top: 0.5rem;
+}
+
+.setupChoices .hand {
+  max-width: 14rem;
 }
 
 @media (max-width: 760px) {

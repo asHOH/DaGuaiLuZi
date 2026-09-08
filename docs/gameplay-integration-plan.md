@@ -1,6 +1,6 @@
 # Gameplay integration
 
-Status: Phase 1 implemented and verified, 2026-09-08; phases 2–3 planned. Implement sequentially; each phase delivers a working browser/server slice.
+Status: Phases 1–2 implemented and verified, 2026-09-08; Phase 3 planned. Implement sequentially; each phase delivers a working browser/server slice.
 
 Follow [architecture](architecture.md), [Rulesets](ruleset.md), [presets](rules-configuration-presets.md), [tie choices](tie-choice-protocol.md), and the completed [web integration](web-integration-plan.md). Reuse the implemented `game-core`; this is transport, persistence, orchestration, and UI integration.
 

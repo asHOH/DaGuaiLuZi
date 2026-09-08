@@ -3,13 +3,10 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   decide,
   deriveStartRequirements,
-  evolve,
   RANDOMNESS_VERSION,
   SHUFFLE_VERSION,
   type Command,
-  type Event,
   type PlayerAccountId,
-  type State,
 } from "@dglz/game-core";
 import {
   PROTOCOL_VERSION,
@@ -25,6 +22,7 @@ import {
   commitRoomCommand,
   deriveRoomView,
   findAcceptedCommand,
+  foldRoomEvents,
   loadRoom,
   type LoadedRoom,
 } from "./rooms.js";
@@ -90,22 +88,26 @@ function toDomainCommand(
         playerId: accountId,
         cards: envelope.payload.cards,
       };
+    case "ReplaceMatchRulesConfiguration":
+    case "SelectTributeCard":
+    case "OfferReturnCandidates":
+    case "SelectReturnCard":
+    case "SubmitTieChoiceBallot":
+      return { ...envelope.payload, playerId: accountId };
     case "Pass":
       return { type: "Pass", playerId: accountId };
   }
 }
 
-function freshStartCommand(): Command {
+function freshStartCommand(
+  type: "StartMatch" | "StartNextHand" = "StartMatch",
+): Command {
   return {
-    type: "StartMatch",
+    type,
     handSeed: randomBytes(32).toString("base64url"),
     randomnessVersion: RANDOMNESS_VERSION,
     shuffleVersion: SHUFFLE_VERSION,
   };
-}
-
-function foldEvents(state: State, events: readonly Event[]): State {
-  return events.reduce((current, event) => evolve(current, event), state);
 }
 
 export class RoomExecutor {
@@ -144,6 +146,31 @@ export class RoomExecutor {
 
   public autoStart(presence: RoomPresence): Promise<void> {
     const result = this.queue.then(() => this.autoStartSerialized(presence));
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  public resumeSettledHand(accountId: PlayerAccountId): Promise<void> {
+    const result = this.queue.then(() => {
+      const view = this.viewFor(accountId)?.view;
+      if (view?.lifecycle !== "ACTIVE" || view.handResult === undefined) return;
+      const decision = decide(
+        this.current.state,
+        freshStartCommand("StartNextHand"),
+      );
+      if (!decision.ok) throw new Error(decision.rejection.reason);
+      const candidate = foldRoomEvents(this.current, decision.events);
+      appendRoomEvents(this.database, {
+        roomId: this.current.roomId,
+        expectedRevision: this.current.revision,
+        causationCommandId: null,
+        events: decision.events,
+      });
+      this.current = candidate;
+    });
     this.queue = result.then(
       () => undefined,
       () => undefined,
@@ -191,15 +218,15 @@ export class RoomExecutor {
     }
 
     let events = [...decision.events];
-    let candidateState: State;
+    let candidate: LoadedRoom;
     try {
-      candidateState = foldEvents(this.current.state, events);
+      candidate = foldRoomEvents(this.current, events);
     } catch {
       return commandError(envelope.commandId, "internal-error");
     }
 
     if (presence !== undefined) {
-      const requirements = deriveStartRequirements(candidateState);
+      const requirements = deriveStartRequirements(candidate.state);
       if (requirements !== undefined) {
         let connected: ReadonlySet<PlayerAccountId>;
         try {
@@ -212,7 +239,7 @@ export class RoomExecutor {
         ) {
           let startDecision;
           try {
-            startDecision = decide(candidateState, freshStartCommand());
+            startDecision = decide(candidate.state, freshStartCommand());
           } catch {
             return commandError(envelope.commandId, "internal-error");
           }
@@ -221,7 +248,7 @@ export class RoomExecutor {
           }
           events = [...events, ...startDecision.events];
           try {
-            candidateState = foldEvents(this.current.state, events);
+            candidate = foldRoomEvents(this.current, events);
           } catch {
             return commandError(envelope.commandId, "internal-error");
           }
@@ -229,15 +256,21 @@ export class RoomExecutor {
       }
     }
 
-    const nextRevision = this.current.revision + events.length;
-    const view = deriveRoomView(
-      {
-        roomId: this.current.roomId,
-        state: candidateState,
-        revision: nextRevision,
-      },
-      accountId,
-    );
+    try {
+      const settled = deriveRoomView(candidate, accountId)?.view;
+      if (settled?.lifecycle === "ACTIVE" && settled.handResult !== undefined) {
+        const next = decide(
+          candidate.state,
+          freshStartCommand("StartNextHand"),
+        );
+        if (!next.ok) return commandError(envelope.commandId, "internal-error");
+        events = [...events, ...next.events];
+        candidate = foldRoomEvents(candidate, next.events);
+      }
+    } catch {
+      return commandError(envelope.commandId, "internal-error");
+    }
+    const view = deriveRoomView(candidate, accountId);
     if (view === undefined) {
       return commandError(envelope.commandId, "internal-error");
     }
@@ -274,11 +307,7 @@ export class RoomExecutor {
       return commandError(envelope.commandId, "internal-error");
     }
 
-    this.current = {
-      roomId: this.current.roomId,
-      state: candidateState,
-      revision: nextRevision,
-    };
+    this.current = candidate;
     return acknowledgement;
   }
 
@@ -308,9 +337,9 @@ export class RoomExecutor {
       return;
     }
 
-    let candidateState: State;
+    let candidate: LoadedRoom;
     try {
-      candidateState = foldEvents(this.current.state, decision.events);
+      candidate = foldRoomEvents(this.current, decision.events);
       appendRoomEvents(this.database, {
         roomId: this.current.roomId,
         expectedRevision: this.current.revision,
@@ -320,11 +349,7 @@ export class RoomExecutor {
     } catch {
       return;
     }
-    this.current = {
-      roomId: this.current.roomId,
-      state: candidateState,
-      revision: this.current.revision + decision.events.length,
-    };
+    this.current = candidate;
   }
 }
 

@@ -39,10 +39,20 @@ describe("persisted room acknowledgements", () => {
     expect(decoded.commandId).toBe(commandId);
   });
 
+  it("accepts the previous output version after the v3 bump", () => {
+    const decoded = decodePersistedRoomCommandAck({
+      protocolVersion: 2,
+      ok: false,
+      commandId: "da9f540e-fd4b-4d74-be39-ccc7f080cab4",
+      error: { code: "internal-error" },
+    });
+    expect(decoded.protocolVersion).toBe(PROTOCOL_VERSION);
+  });
+
   it("rejects unsupported persisted output versions", () => {
     expect(() =>
       decodePersistedRoomCommandAck({
-        protocolVersion: 3,
+        protocolVersion: 4,
         ok: false,
         commandId: "da9f540e-fd4b-4d74-be39-ccc7f080cab4",
         error: { code: "internal-error" },

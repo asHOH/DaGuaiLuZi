@@ -21,7 +21,7 @@ Pin exact tool versions and upgrade them deliberately.
 
 - Give workers disjoint file ownership; one coordinator owns final builds and gates. Use focused checks during edits. After integration and review fixes, run `pnpm check`, then browser checks against that build; repeat only checks affected by later changes.
 - After implementation, an Astra worker reviews correctness, complexity, and test validity/coverage. The coordinator filters findings, assigns accepted fixes to a different Astra worker, and reviews the result before reporting.
-- Keep one browser journey per Ruleset. Demonstrate required UI interactions, then drive repeated moves (including Passes) through protocol clients. Use revisioned socket views; reserve HTTP reads for bootstrap and recovery checks, since Room reads currently replay the event stream.
+- Keep one browser journey per Ruleset. Demonstrate required UI interactions, then drive repeated moves (including Passes) through protocol clients. Use revisioned socket views; reserve HTTP reads for bootstrap and recovery checks.
 - Browser helpers must establish their authentication/Room preconditions and await authoritative state changes. Assert required interactions occurred regardless of randomized seats or dealer. Diagnose stalled steps before increasing timeouts.
 - On tooling failures such as Windows `spawn EPERM`, check execution permissions before retrying; do not change project tooling to mask an environment restriction.
 
@@ -41,7 +41,7 @@ pnpm --filter @dglz/server start
 
 Run the server tests with `pnpm --filter @dglz/server test`; they use temporary SQLite databases and real Socket.IO clients.
 
-Implemented seam: login, Room creation and joining, Match selection, seats and readiness, authenticated connected auto-start, private Hand views, Play/Pass through atomic Hand settlement, natural Match-completion serialization, command deduplication, and restart/reconnect resynchronization. Phase 1 stops at settlement; next-Hand setup, abort, Challenge Hand, and history transport remain later slices. Protocol v2 requires older browsers to reload; v1 stored acknowledgements remain readable.
+Implemented seam: login, Room creation/joining, Match selection, seats/readiness, unlocked rules/presets, connected Match start, private play, settlement with atomic next-Hand setup, Tribute/Return/tie choices, retained Hand results, natural Match-completion serialization, and command/reconnect recovery. Room executors retain projections after initial event replay; settled legacy Rooms resume once on authorized access. Abort, Challenge Hand, and history transport remain later slices. Protocol v3 requires older browsers to reload; v1/v2 stored acknowledgements remain readable.
 
 ## Web
 
@@ -51,4 +51,4 @@ For UI development, use `DGLZ_ALLOWED_ORIGIN=http://127.0.0.1:5173` on the serve
 
 Browser checks: run `pnpm --filter @dglz/web exec playwright install chromium` once, then `pnpm build` and `pnpm --filter @dglz/web test:browser`. Tests provision disposable accounts and SQLite databases and serve built assets through Fastify. Unit/server checks remain in `pnpm check`; browser checks run separately. Visual direction: [web-visual-direction](web-visual-direction.md).
 
-Gameplay UI: keyboard/touch selection, advisory Chinese play feedback from `game-rules`, authoritative Play/Pass, unbeaten play, Finish Positions, and Hand results. Both Ruleset browser journeys continue through settlement.
+Gameplay UI: keyboard/touch selection, advisory Chinese play feedback from `game-rules`, authoritative Play/Pass, unlocked rules/presets, contextual setup choices, revealed tie rounds, and nonblocking previous-Hand results. Both Ruleset browser journeys continue through next-Hand setup and a legal play; server tests cover both presets, ties, candidate constraints, privacy, and atomic recovery.
