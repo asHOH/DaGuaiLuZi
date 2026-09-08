@@ -40,4 +40,6 @@ Follow [architecture](architecture.md), [Rulesets](ruleset.md), [presets](rules-
 
 Each phase runs `pnpm check` plus `pnpm --filter @dglz/web test:browser`. Keep at most one browser happy path per Ruleset, extending it as phases land; use real temporary SQLite and protocol clients for branch/race coverage. Verify mobile/desktop controls and keyboard access. Test integration contracts without duplicating core's exhaustive rule tests; add a core check only if a core contract changes.
 
+Follow the [phase verification workflow](development.md#phase-verification) for worker ownership, Astra review/fixes, browser drivers, and final gates.
+
 Update [development](development.md) with each completed scope. Challenge Hands, history/Replay/sharing endpoints, remaining Room-management controls, account administration, deployment, and [turn timing](post-mvp-turn-timing.md) remain separate work. Retaining a settlement summary does not implement Hand history or Replay.
