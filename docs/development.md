@@ -17,6 +17,8 @@ Prettier owns code/config formatting; Markdown is excluded to keep tables compac
 
 Pin exact tool versions and upgrade them deliberately.
 
+Remaining delivery order and completion gates: [MVP roadmap](mvp-roadmap.md).
+
 ## Phase verification
 
 - Give workers disjoint file ownership; one coordinator owns final builds and gates. Use focused checks during edits. After integration and review fixes, run `pnpm check`, then browser checks against that build; repeat only checks affected by later changes.
