@@ -37,13 +37,16 @@ afterEach(async () => {
 
 async function table(
   rulesetId: RulesetId,
-  terminal = false,
+  atLevelFive = false,
   preset: "省心" | "自主" = "省心",
   fixture?: {
     initialSeed: string;
     nextSeed?: string;
     randomTribute?: boolean;
     deferConnect?: boolean;
+    matchEnding?: "no-failure-limit-at-5" | "three-failure-limit-at-5";
+    failureCounters?: [number, number];
+    stopBeforeSettlement?: boolean;
   },
 ) {
   const directory = await mkdtemp(join(tmpdir(), "dglz-gameplay-"));
@@ -72,6 +75,9 @@ async function table(
       ...(fixture?.randomTribute
         ? { tributeCardSelection: "fair-random" as const }
         : {}),
+      ...(fixture?.matchEnding === undefined
+        ? {}
+        : { matchEnding: fixture.matchEnding }),
     },
     seatingPolicy: "fixed",
   };
@@ -81,10 +87,15 @@ async function table(
   const seedCommand = (command: Command) => {
     const decision = decide(state, command);
     if (!decision.ok) throw new Error(decision.rejection.reason);
-    // Start at level 5 only for the terminal serialization fixture.
+    // Seed the level/failure boundary; the Hand still follows core decisions.
     const events = decision.events.map((event): Event =>
-      terminal && event.type === "MatchStarted"
-        ? { ...event, teamLevels: ["5", "5"], trumpRank: "5" }
+      atLevelFive && event.type === "MatchStarted"
+        ? {
+            ...event,
+            teamLevels: ["5", "5"],
+            trumpRank: "5",
+            failureCounters: fixture?.failureCounters ?? event.failureCounters,
+          }
         : event,
     );
     appendRoomEvents(database, {
@@ -115,6 +126,7 @@ async function table(
   });
   if (fixture !== undefined) {
     // Seed a reachable completed Hand through core decisions; exercise setup via real sockets below.
+    let stoppedBeforeSettlement = false;
     for (let step = 0; step < 1500; step++) {
       const view = derivePlayerView(state, accounts[0]!.accountId);
       if (view.handResult !== undefined) break;
@@ -127,14 +139,26 @@ async function table(
               (card) =>
                 decide(state, { type: "Play", playerId, cards: [card] }).ok,
             );
-      seedCommand(
+      const command: Command =
         card === undefined
           ? { type: "Pass", playerId }
-          : { type: "Play", playerId, cards: [card] },
-      );
+          : { type: "Play", playerId, cards: [card] };
+      const decision = decide(state, command);
+      if (
+        fixture.stopBeforeSettlement &&
+        decision.ok &&
+        decision.events.some((event) => event.type === "HandSettled")
+      ) {
+        stoppedBeforeSettlement = true;
+        break;
+      }
+      seedCommand(command);
     }
     if (
-      derivePlayerView(state, accounts[0]!.accountId).handResult === undefined
+      fixture.stopBeforeSettlement
+        ? !stoppedBeforeSettlement
+        : derivePlayerView(state, accounts[0]!.accountId).handResult ===
+          undefined
     )
       throw new Error("fixture-hand-did-not-settle");
     if (fixture.nextSeed !== undefined)
@@ -276,11 +300,12 @@ function active(data: RoomViewData) {
 async function finishSetup(
   game: Awaited<ReturnType<typeof table>>,
   initial: RoomViewData,
+  stopAt: ReturnType<typeof active>["setupStage"] = "play",
 ) {
   let current = initial;
   for (
     let step = 0;
-    step < 60 && active(current).setupStage !== "play";
+    step < 60 && active(current).setupStage !== stopAt;
     step++
   ) {
     const view = active(current);
@@ -373,13 +398,210 @@ async function finishSetup(
     current = ack.data;
     expect(await game.send(index, command)).toEqual(ack);
   }
-  expect(active(current).setupStage).toBe("play");
+  expect(active(current).setupStage).toBe(stopAt);
   const before = await game.read(0);
   await game.restart();
   expect(await game.read(0)).toEqual(before);
   return current;
 }
 /* oxlint-enable vitest/no-conditional-expect */
+
+async function startAnotherMatch(
+  game: Awaited<ReturnType<typeof table>>,
+  lobby: RoomViewData,
+) {
+  const selected = await game.send(
+    0,
+    game.envelope(lobby, { type: "SelectMatch" }),
+  );
+  if (!selected.ok) throw new Error(selected.error.code);
+  let current = selected.data;
+  for (let index = 0; index < game.accounts.length; index++) {
+    const ready = await game.send(
+      index,
+      game.envelope(current, { type: "SetReadiness", ready: true }),
+    );
+    if (!ready.ok) throw new Error(ready.error.code);
+    current = ready.data;
+  }
+  expect(active(current)).toMatchObject({
+    handNumber: 1,
+    completedHandCount: 0,
+    teamLevels: ["2", "2"],
+    rulesConfiguration: lobby.view.rulesConfiguration,
+    matchRulesConfigurationLocked: true,
+    seatingPolicyLocked: true,
+  });
+  expect(current.view).not.toHaveProperty("matchSummary");
+  expect(current.view).not.toHaveProperty("lastHandResult");
+  expect(game.rows().filter((row) => row.type === "MatchStarted")).toHaveLength(
+    2,
+  );
+  return current;
+}
+
+const tieFixture = {
+  initialSeed: "phase-5-singleton-tie-initial-36",
+  nextSeed: "phase-5-singleton-tie-2",
+  randomTribute: true,
+};
+for (const { ruleset, preset, fixture, stage } of [
+  {
+    ruleset: "dglz-4p-2d-v1",
+    preset: "省心",
+    fixture: undefined,
+    stage: "play",
+  },
+  {
+    ruleset: "dglz-6p-3d-v1",
+    preset: "省心",
+    fixture: undefined,
+    stage: "play",
+  },
+  {
+    ruleset: "dglz-6p-3d-v1",
+    preset: "自主",
+    fixture: { ...tieFixture, randomTribute: false },
+    stage: "tribute-selection",
+  },
+  {
+    ruleset: "dglz-6p-3d-v1",
+    preset: "自主",
+    fixture: tieFixture,
+    stage: "recipient-pairing-tie",
+  },
+  {
+    ruleset: "dglz-6p-3d-v1",
+    preset: "省心",
+    fixture: tieFixture,
+    stage: "return-card-selection",
+  },
+  {
+    ruleset: "dglz-6p-3d-v1",
+    preset: "自主",
+    fixture: tieFixture,
+    stage: "leader-selection-tie",
+  },
+] as const) {
+  it(`${ruleset} aborts ${stage} privately, recovers, and cannot abort a subsequent Match on retry`, async () => {
+    const game = await table(ruleset, false, preset, fixture);
+    let current = await game.read(0);
+    if (stage === "leader-selection-tie")
+      await finishSetup(game, current, stage);
+    current = await game.read(0);
+    expect(active(current).setupStage).toBe(stage);
+    const previous = active(current);
+    const command = game.envelope(current, { type: "AbortMatch" });
+    expect(await game.send(1, command)).toMatchObject({
+      ok: false,
+      error: { reason: "owner-only" },
+    });
+    const history = game.rows();
+    game.database.sqlite.exec(
+      "CREATE TRIGGER fail_abort BEFORE INSERT ON room_events WHEN NEW.event_type = 'MatchAborted' BEGIN SELECT RAISE(ABORT, 'forced-abort-failure'); END",
+    );
+    expect(await game.send(0, command)).toMatchObject({
+      ok: false,
+      error: { code: "internal-error" },
+    });
+    expect(await game.read(0)).toEqual(current);
+    expect(game.rows()).toEqual(history);
+    game.database.sqlite.exec("DROP TRIGGER fail_abort");
+    const aborted = await game.send(0, command);
+    if (!aborted.ok) throw new Error(aborted.error.code);
+    expect(aborted.data.view).toMatchObject({
+      lifecycle: "LOBBY",
+      teamLevels: previous.teamLevels,
+      completedHandCount: previous.completedHandCount,
+      matchSummary: {
+        outcome: "aborted",
+        teamLevels: previous.teamLevels,
+        completedHandCount: previous.completedHandCount,
+      },
+      matchRulesConfigurationLocked: true,
+      seatingPolicyLocked: true,
+    });
+    expect(aborted.data.view.lastHandResult).toEqual(previous.lastHandResult);
+    expect(aborted.data.view.matchSummary).not.toHaveProperty("winningTeam");
+    for (const key of [
+      "hand",
+      "handSizes",
+      "finishPositions",
+      "tributeTransfers",
+      "returnCandidates",
+      "tieOwnBallot",
+      "tieResolvedRounds",
+      "selectedActivity",
+    ])
+      expect(aborted.data.view).not.toHaveProperty(key);
+    expect(aborted.data.view.members.every((member) => !member.ready)).toBe(
+      true,
+    );
+    expect(game.rows()).toEqual([
+      ...history,
+      { type: "MatchAborted", commandId: command.commandId },
+    ]);
+    await game.restart();
+    expect(await game.read(0)).toEqual(aborted.data);
+    expect(await game.read(1)).toEqual(aborted.data);
+    expect(await game.send(0, command)).toEqual(aborted);
+    expect(
+      await game.send(0, game.envelope(aborted.data, { type: "AbortMatch" })),
+    ).toMatchObject({ ok: false, error: { reason: "room-not-active" } });
+    const next = await startAnotherMatch(game, aborted.data);
+    const nextHistory = game.rows();
+    expect(await game.send(0, command)).toEqual(aborted);
+    expect((await game.read(0)).revision).toBe(next.revision);
+    expect(game.rows()).toEqual(nextHistory);
+  }, 30000);
+}
+
+it("serializes an abort racing a setup choice without repeating a transfer", async () => {
+  const game = await table("dglz-6p-3d-v1", false, "自主", {
+    ...tieFixture,
+    randomTribute: false,
+  });
+  const current = await game.read(0);
+  const actor = active(current).pendingPlayerIds[0]!;
+  const index = game.accounts.findIndex(
+    (account) => account.accountId === actor,
+  );
+  const own = active(await game.read(index));
+  const commands = [
+    game.envelope(current, {
+      type: "SelectTributeCard",
+      card: own.eligibleTributeCards[0]!,
+    }),
+    game.envelope(current, { type: "AbortMatch" }),
+  ];
+  const raced = await Promise.all([
+    game.send(index, commands[0]!),
+    game.send(0, commands[1]!),
+  ]);
+  expect(raced.filter((ack) => ack.ok)).toHaveLength(1);
+  expect(raced.filter((ack) => !ack.ok)).toMatchObject([
+    { ok: false, error: { code: "stale-revision" } },
+  ]);
+  let ended = await game.read(0);
+  if (ended.view.lifecycle === "ACTIVE") {
+    const abort = await game.send(
+      0,
+      game.envelope(ended, { type: "AbortMatch" }),
+    );
+    if (!abort.ok) throw new Error(abort.error.code);
+    ended = abort.data;
+  }
+  const history = game.rows();
+  expect(history.filter((row) => row.type === "MatchAborted")).toHaveLength(1);
+  expect(ended.view.matchSummary?.outcome).toBe("aborted");
+  const winner = raced.findIndex((ack) => ack.ok);
+  expect(await game.send(winner === 0 ? index : 0, commands[winner]!)).toEqual(
+    raced[winner],
+  );
+  await game.restart();
+  expect(await game.read(0)).toEqual(ended);
+  expect(game.rows()).toEqual(history);
+}, 30000);
 
 /* oxlint-disable vitest/no-conditional-expect -- Each event-dependent check is required by the final coverage flags. */
 for (const ruleset of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
@@ -674,9 +896,139 @@ it("installs no next-Hand state when recovery commit fails, then retries once on
   expect(await game.read(0)).toEqual(recovered[0]);
 }, 30000);
 
+for (const matchEnding of [
+  "no-failure-limit-at-5",
+  "three-failure-limit-at-5",
+] as const) {
+  it(`${matchEnding}: commits the third failed level-5 attempt under the selected ending policy`, async () => {
+    const game = await table("dglz-4p-2d-v1", true, "省心", {
+      initialSeed: "phase3-failure-2",
+      matchEnding,
+      failureCounters: [2, 2],
+      stopBeforeSettlement: true,
+    });
+    const current = await game.read(0);
+    expect(active(current)).toMatchObject({
+      dealerTeam: 0,
+      trumpRank: "5",
+      failureCounters: [2, 2],
+      completedHandCount: 0,
+    });
+    const index = game.accounts.findIndex(
+      (account) => account.accountId === active(current).currentActor,
+    );
+    const command = game.envelope(current, { type: "Play", cards: ["3C#2"] });
+    const ack = await game.send(index, command);
+    if (!ack.ok) throw new Error(ack.error.reason ?? ack.error.code);
+    const limited = matchEnding === "three-failure-limit-at-5";
+    expect(ack.data.view).toMatchObject(
+      limited
+        ? {
+            lifecycle: "LOBBY",
+            completedHandCount: 1,
+            matchSummary: {
+              outcome: "completed",
+              winningTeam: 1,
+              endingReason: "three-failure-limit-at-5",
+              teamLevels: ["5", "5"],
+              completedHandCount: 1,
+            },
+          }
+        : {
+            lifecycle: "ACTIVE",
+            handNumber: 2,
+            completedHandCount: 1,
+            failureCounters: [3, 2],
+            setupStage: "play",
+          },
+    );
+    expect(ack.data.view.lastHandResult).toMatchObject({
+      handNumber: 1,
+      result: { outcome: "draw", caughtPlayerIds: [] },
+    });
+    const history = game.rows();
+    expect(history.filter((row) => row.type === "MatchCompleted")).toHaveLength(
+      limited ? 1 : 0,
+    );
+    expect(history.filter((row) => row.type === "HandStarted")).toHaveLength(
+      limited ? 0 : 1,
+    );
+    expect(
+      history
+        .filter((row) => row.commandId === command.commandId)
+        .map((row) => row.type),
+    ).toEqual(
+      expect.arrayContaining([
+        "HandResultDetermined",
+        "HandSettled",
+        limited ? "MatchCompleted" : "HandStarted",
+      ]),
+    );
+    await game.restart();
+    expect(await game.read(index)).toEqual(ack.data);
+    expect(await game.send(index, command)).toEqual(ack);
+    expect(game.rows()).toEqual(history);
+  }, 30000);
+}
+
+it("commits exactly one ending when abort races the final Match play", async () => {
+  const game = await table("dglz-4p-2d-v1", true, "省心", {
+    initialSeed: "phase3-failure-2",
+    matchEnding: "three-failure-limit-at-5",
+    failureCounters: [2, 2],
+    stopBeforeSettlement: true,
+  });
+  const current = await game.read(0);
+  const index = game.accounts.findIndex(
+    (account) => account.accountId === active(current).currentActor,
+  );
+  const commands = [
+    game.envelope(current, { type: "Play", cards: ["3C#2"] }),
+    game.envelope(current, { type: "AbortMatch" }),
+  ];
+  const raced = await Promise.all([
+    game.send(index, commands[0]!),
+    game.send(0, commands[1]!),
+  ]);
+  expect(raced.filter((ack) => ack.ok)).toHaveLength(1);
+  expect(raced.filter((ack) => !ack.ok)).toMatchObject([
+    { ok: false, error: { code: "stale-revision" } },
+  ]);
+  const winner = raced.findIndex((ack) => ack.ok);
+  const ended = await game.read(0);
+  expect(ended.view).toMatchObject({
+    lifecycle: "LOBBY",
+    completedHandCount: winner === 0 ? 1 : 0,
+    matchSummary: { outcome: winner === 0 ? "completed" : "aborted" },
+  });
+  const history = game.rows();
+  expect(
+    history.filter(
+      (row) => row.type === "MatchCompleted" || row.type === "MatchAborted",
+    ),
+  ).toHaveLength(1);
+  expect(
+    history.filter((row) => row.commandId === commands[1 - winner]!.commandId),
+  ).toHaveLength(0);
+  await game.restart();
+  expect(await game.read(0)).toEqual(ended);
+  expect(await game.send(winner === 0 ? index : 0, commands[winner]!)).toEqual(
+    raced[winner],
+  );
+  expect(game.rows()).toEqual(history);
+  const next = await startAnotherMatch(game, ended);
+  expect(await game.send(winner === 0 ? index : 0, commands[winner]!)).toEqual(
+    raced[winner],
+  );
+  expect((await game.read(0)).revision).toBe(next.revision);
+}, 30000);
+
 it("serializes natural Match completion and replays its lobby summary", async () => {
   const game = await table("dglz-4p-2d-v1", true);
   let current = await game.read(0);
+  let lastCommand: RoomCommandEnvelope | undefined;
+  let lastActor = 0;
+  let lastAck;
   for (
     let step = 0;
     step < 1200 && current.view.lifecycle === "ACTIVE";
@@ -686,17 +1038,17 @@ it("serializes natural Match completion and replays its lobby summary", async ()
       (account) => account.accountId === active(current).currentActor,
     );
     const own = active(await game.live(index, current.revision));
-    const ack = await game.send(
-      index,
-      game.envelope(
-        current,
-        own.unbeatenPlay === undefined
-          ? { type: "Play", cards: [own.hand[0]!] }
-          : { type: "Pass" },
-      ),
+    lastCommand = game.envelope(
+      current,
+      own.unbeatenPlay === undefined
+        ? { type: "Play", cards: [own.hand[0]!] }
+        : { type: "Pass" },
     );
+    const ack = await game.send(index, lastCommand);
     if (!ack.ok) throw new Error(ack.error.code);
     current = ack.data;
+    lastActor = index;
+    lastAck = ack;
   }
   expect(current.view).toMatchObject({
     lifecycle: "LOBBY",
@@ -724,4 +1076,13 @@ it("serializes natural Match completion and replays its lobby summary", async ()
   const before = await game.read(0);
   await game.restart();
   expect(await game.read(0)).toEqual(before);
+  expect(
+    await game.send(0, game.envelope(before, { type: "AbortMatch" })),
+  ).toMatchObject({ ok: false, error: { reason: "room-not-active" } });
+  const next = await startAnotherMatch(game, before);
+  expect(await game.send(lastActor, lastCommand!)).toEqual(lastAck);
+  expect((await game.read(0)).revision).toBe(next.revision);
+  expect(
+    game.rows().filter((row) => row.type === "MatchCompleted"),
+  ).toHaveLength(1);
 }, 30000);

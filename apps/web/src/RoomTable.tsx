@@ -1038,6 +1038,17 @@ export function RoomTable({
   return (
     <section className={styles.roomTable}>
       <header className={styles.roomHeader}>
+        {room.view.lifecycle === "ACTIVE" &&
+          room.view.ownerId === accountId && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={locked || pending}
+              onClick={() => onCommand({ type: "AbortMatch" })}
+            >
+              终止比赛
+            </button>
+          )}
         <span className={styles.lifecycle} data-testid="room-lifecycle">
           {lifecycleLabel}
         </span>

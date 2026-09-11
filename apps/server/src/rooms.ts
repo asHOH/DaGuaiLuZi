@@ -274,6 +274,14 @@ const MatchCompletedPayloadSchema = z
   })
   .strict();
 
+const MatchAbortedPayloadSchema = z
+  .object({
+    type: z.literal("MatchAborted"),
+    teamLevels: TeamLevelsSchema,
+    completedHandCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 const HandStartedPayloadSchema = z
   .object({
     type: z.literal("HandStarted"),
@@ -463,6 +471,7 @@ const PersistedRoomEventRowSchema = z
       "HandResultDetermined",
       "HandSettled",
       "MatchCompleted",
+      "MatchAborted",
       "HandStarted",
       "TributeCardSelected",
       "TributeTransferred",
@@ -654,6 +663,9 @@ function eventPayload(event: Event): string {
   }
   if (event.type === "MatchCompleted") {
     return JSON.stringify(MatchCompletedPayloadSchema.parse(event));
+  }
+  if (event.type === "MatchAborted") {
+    return JSON.stringify(MatchAbortedPayloadSchema.parse(event));
   }
   if (event.type === "HandStarted") {
     return JSON.stringify(HandStartedPayloadSchema.parse(event));
@@ -860,6 +872,8 @@ function parsePersistedRoomEvent(
         return HandSettledPayloadSchema.safeParse(decoded);
       case "MatchCompleted":
         return MatchCompletedPayloadSchema.safeParse(decoded);
+      case "MatchAborted":
+        return MatchAbortedPayloadSchema.safeParse(decoded);
       case "HandStarted":
         return HandStartedPayloadSchema.safeParse(decoded);
       case "TributeCardSelected":

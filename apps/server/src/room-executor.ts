@@ -93,6 +93,7 @@ function toDomainCommand(
     case "OfferReturnCandidates":
     case "SelectReturnCard":
     case "SubmitTieChoiceBallot":
+    case "AbortMatch":
       return { ...envelope.payload, playerId: accountId };
     case "Pass":
       return { type: "Pass", playerId: accountId };

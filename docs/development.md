@@ -41,7 +41,7 @@ pnpm --filter @dglz/server start
 
 Run the server tests with `pnpm --filter @dglz/server test`; they use temporary SQLite databases and real Socket.IO clients.
 
-Implemented seam: login, Room creation/joining, Match selection, seats/readiness, unlocked rules/presets, connected Match start, private play, settlement with atomic next-Hand setup, Tribute/Return/tie choices, retained Hand results, natural Match-completion serialization, and command/reconnect recovery. Room executors retain projections after initial event replay; settled legacy Rooms resume once on authorized access. Abort, Challenge Hand, and history transport remain later slices. Protocol v3 requires older browsers to reload; v1/v2 stored acknowledgements remain readable.
+Implemented seam: login, Room creation/joining, Match selection, seats/readiness, unlocked rules/presets, connected Match start, private play, settlement with atomic next-Hand setup, Tribute/Return/tie choices, retained Hand results, natural Match completion, owner abort, subsequent Matches, and command/reconnect recovery. Room executors retain projections after initial event replay; settled legacy Rooms resume once on authorized access. Challenge Hand and history transport remain separate work. Protocol v3 requires older browsers to reload; v1/v2 stored acknowledgements remain readable.
 
 ## Web
 
@@ -51,4 +51,4 @@ For UI development, use `DGLZ_ALLOWED_ORIGIN=http://127.0.0.1:5173` on the serve
 
 Browser checks: run `pnpm --filter @dglz/web exec playwright install chromium` once, then `pnpm build` and `pnpm --filter @dglz/web test:browser`. Tests provision disposable accounts and SQLite databases and serve built assets through Fastify. Unit/server checks remain in `pnpm check`; browser checks run separately. Visual direction: [web-visual-direction](web-visual-direction.md).
 
-Gameplay UI: keyboard/touch selection, advisory Chinese play feedback from `game-rules`, authoritative Play/Pass, unlocked rules/presets, contextual setup choices, revealed tie rounds, and nonblocking previous-Hand results. Both Ruleset browser journeys continue through next-Hand setup and a legal play; server tests cover both presets, ties, candidate constraints, privacy, and atomic recovery.
+Gameplay UI: keyboard/touch selection, advisory Chinese play feedback from `game-rules`, authoritative Play/Pass, unlocked rules/presets, contextual setup choices, revealed tie rounds, nonblocking previous-Hand results, and owner-only `终止比赛` throughout play/setup. Both Ruleset browser journeys continue through next-Hand play, abort/reload, and a new Match. Server tests cover both presets/ending policies, setup stages, abort races, retained configuration locks, private-state cleanup, atomic recovery, and retries across Matches.

@@ -304,6 +304,9 @@ async function loginUi(
   await page.getByLabel("用户名").fill(account.username);
   await page.getByLabel("密码").fill(account.password);
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(
+    page.getByRole("button", { name: "退出登录", exact: true }),
+  ).toBeVisible();
   if (destination === `${url}/`) {
     await expect(
       page.getByRole("heading", { name: "今晚，怎么打？" }),
@@ -651,6 +654,12 @@ async function completeSetup(
       await expect(
         page.getByRole("region", { name: "开局选择" }),
       ).toBeVisible();
+      const setupAbort = page.getByRole("button", {
+        name: "终止比赛",
+        exact: true,
+      });
+      if (actor === own.ownerId) await expect(setupAbort).toBeEnabled();
+      else await expect(setupAbort).toHaveCount(0);
       const summary = page.getByRole("region", { name: "上一局结果" });
       await expect(summary.getByRole("heading")).toContainText("第 1 局");
       const summaryText = await summary.innerText();
@@ -925,17 +934,120 @@ async function runHappyPath(
       rulesetId,
       server.accounts,
     );
+    // Setup may have signed this page into another player's account.
+    await ownerPage.getByRole("button", { name: "退出登录" }).click();
+    await expect(
+      ownerPage.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await loginUi(ownerPage, server.url, owner, inviteUrl);
+    const currentCookie = await contextCookie(ownerContext);
+    const beforeAbort = activeView(
+      await readRoom(server.url, roomId, currentCookie),
+    );
+    await expect(
+      joinerPage.getByRole("button", { name: "终止比赛", exact: true }),
+    ).toHaveCount(0);
+    const abort = ownerPage.getByRole("button", {
+      name: "终止比赛",
+      exact: true,
+    });
+    await expect(abort).toBeEnabled();
+    await ownerPage.getByTestId("hand-card").first().click();
+    await expect(ownerPage.getByTestId("hand-card").first()).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await ownerContext.setOffline(true);
+    await expect(abort).toBeDisabled();
+    await ownerContext.setOffline(false);
+    await expect(abort).toBeEnabled();
+    await abort.focus();
+    await abort.press("Enter");
+    for (const page of [ownerPage, joinerPage]) {
+      await expect(page.getByTestId("room-lifecycle")).toHaveText("大厅");
+      await expect(page.getByTestId("hand-card")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "终止比赛", exact: true }),
+      ).toHaveCount(0);
+      const summary = page.getByRole("region", {
+        name: "比赛结果",
+        exact: true,
+      });
+      await expect(summary).toContainText("比赛已终止");
+      await expect(summary).toContainText("已完成 1 局");
+      await expect(summary).not.toContainText("获胜");
+    }
+    const ended = await readRoom(server.url, roomId, currentCookie);
+    expect(ended.view.lifecycle).toBe("LOBBY");
+    if (ended.view.lifecycle !== "LOBBY") throw new Error("abort-not-in-lobby");
+    expect(ended.view.matchSummary).toEqual({
+      outcome: "aborted",
+      completedHandCount: 1,
+      teamLevels: beforeAbort.teamLevels,
+    });
+    expect(ended.view.lastHandResult).toEqual(beforeAbort.lastHandResult);
+    expect(ended.view.members.every((member) => !member.ready)).toBe(true);
+    expect(ended.view.selectedActivity).toBeUndefined();
+    await ownerPage.reload();
+    await expect(
+      ownerPage.getByRole("region", { name: "比赛结果", exact: true }),
+    ).toContainText("比赛已终止");
+    expect(await readRoom(server.url, roomId, currentCookie)).toEqual(ended);
+    await assertNoHorizontalOverflow(ownerPage);
+    await ownerPage.screenshot({
+      path: `output/playwright/${rulesetId}-aborted-lobby.png`,
+      fullPage: true,
+    });
+    await ownerPage.getByRole("button", { name: "选择比赛" }).click();
+    await expect(ownerPage.getByText("已选择比赛，等大家准备")).toBeVisible();
+    await ownerPage.getByRole("button", { name: "准备就绪" }).click();
+    await expect(
+      ownerPage.getByRole("button", { name: "取消准备" }),
+    ).toBeVisible();
+    for (const [accountId, client] of protocolClients) {
+      if (accountId === owner.accountId) continue;
+      await client.command(server.url, roomId, {
+        type: "SetReadiness",
+        ready: true,
+      });
+    }
+    for (const page of [ownerPage, joinerPage]) {
+      await expect(page.getByTestId("room-lifecycle")).toHaveText("牌局进行中");
+      await expect(page.getByTestId("hand-card")).toHaveCount(27);
+      await expect(
+        page.locator('[data-testid="hand-card"][aria-pressed="true"]'),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("region", { name: "比赛结果", exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("region", { name: "上一局结果", exact: true }),
+      ).toHaveCount(0);
+    }
+    const restarted = activeView(
+      await readRoom(server.url, roomId, currentCookie),
+    );
+    expect(restarted.handNumber).toBe(1);
+    expect(restarted.completedHandCount).toBe(0);
+    expect(restarted.lastHandResult).toBeUndefined();
+    expect(restarted.teamLevels).toEqual(["2", "2"]);
+    expect(restarted.matchRulesConfigurationLocked).toBe(true);
+    expect(restarted.seatingPolicyLocked).toBe(true);
+    expect(restarted.rulesConfiguration).toEqual(
+      beforeAbort.rulesConfiguration,
+    );
+    expect(restarted.seatingPolicy).toBe(beforeAbort.seatingPolicy);
   } finally {
     for (const client of clients) client.close();
     await Promise.all([ownerContext.close(), joinerContext.close()]);
   }
 }
 
-test("四人省心规则可完成一局并开始下一局", async ({ browser, testServer }) => {
+test("四人省心规则可续局、终止并重新比赛", async ({ browser, testServer }) => {
   await runHappyPath(browser, testServer, "dglz-4p-2d-v1", 4);
 });
 
-test("六人自主规则可完成一局并开始下一局", async ({ browser, testServer }) => {
+test("六人自主规则可续局、终止并重新比赛", async ({ browser, testServer }) => {
   await runHappyPath(browser, testServer, "dglz-6p-3d-v1", 6);
 });
 

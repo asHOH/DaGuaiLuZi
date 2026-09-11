@@ -14,6 +14,7 @@ import {
   RoomViewSyncEnvelopeSchema,
   RoomViewDataSchema,
   PassPayloadSchema,
+  AbortMatchPayloadSchema,
   PlayPayloadSchema,
   ReplaceMatchRulesConfigurationPayloadSchema,
   SelectTributeCardPayloadSchema,
@@ -111,6 +112,7 @@ describe("protocol schemas", () => {
       { type: "SelectMatch" },
       { type: "AssignSeat", seatIndex: 0 },
       { type: "SetReadiness", ready: true },
+      { type: "AbortMatch" },
     ] as const) {
       expect(
         RoomCommandEnvelopeSchema.safeParse({ ...command, payload }).success,
@@ -141,6 +143,15 @@ describe("protocol schemas", () => {
       }).success,
     ).toBe(false);
     expect(PassPayloadSchema.safeParse({ type: "Pass" }).success).toBe(true);
+    expect(
+      AbortMatchPayloadSchema.safeParse({ type: "AbortMatch" }).success,
+    ).toBe(true);
+    expect(
+      AbortMatchPayloadSchema.safeParse({
+        type: "AbortMatch",
+        reason: "untrusted-client-input",
+      }).success,
+    ).toBe(false);
     expect(
       ReplaceMatchRulesConfigurationPayloadSchema.safeParse({
         type: "ReplaceMatchRulesConfiguration",

@@ -164,6 +164,11 @@ export type PlayPayload = z.infer<typeof PlayPayloadSchema>;
 export const PassPayloadSchema = z.object({ type: z.literal("Pass") }).strict();
 export type PassPayload = z.infer<typeof PassPayloadSchema>;
 
+export const AbortMatchPayloadSchema = z
+  .object({ type: z.literal("AbortMatch") })
+  .strict();
+export type AbortMatchPayload = z.infer<typeof AbortMatchPayloadSchema>;
+
 export const ReplaceMatchRulesConfigurationPayloadSchema = z
   .object({
     type: z.literal("ReplaceMatchRulesConfiguration"),
@@ -236,6 +241,7 @@ export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
   SetReadinessPayloadSchema,
   PlayPayloadSchema,
   PassPayloadSchema,
+  AbortMatchPayloadSchema,
   ReplaceMatchRulesConfigurationPayloadSchema,
   SelectTributeCardPayloadSchema,
   OfferReturnCandidatesPayloadSchema,
