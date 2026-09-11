@@ -2,16 +2,15 @@
 
 Status: Phases 1–3 implemented and verified, 2026-09-11. Each phase delivers a working browser/server slice.
 
-Follow [architecture](architecture.md), [Rulesets](ruleset.md), [presets](rules-configuration-presets.md), [tie choices](tie-choice-protocol.md), and the completed [web integration](web-integration-plan.md). Reuse the implemented `game-core`; this is transport, persistence, orchestration, and UI integration.
+Historical record of transport, persistence, orchestration, and UI integration using the implemented `game-core`.
 
 ## Boundary and decisions
 
-- Flow: Chinese browser controls → validated protocol → authenticated Room executor → core decisions → atomic events/deduplication → account-specific full views. Keep the existing synchronization/retry contract and server-only core.
+- Flow: Chinese browser controls → validated protocol → authenticated Room executor → core decisions → atomic events/deduplication → account-specific full views. Follow the [synchronization/retry contract](architecture.md#client-resynchronization) and server-only core.
 - Extend `packages/protocol/src/index.ts`, server `rooms.ts`/`room-executor.ts`, and web `RoomTable.tsx`/styles; change socket plumbing only where required. No new package, dependency (except web → existing `@dglz/game-rules`), storage abstraction, or expected database migration.
-- Validate every newly reachable persisted event, including automatic follow-on events. Keep existing event streams and stored acknowledgements readable; extend optional output fields compatibly and apply the existing reload-required policy if a wire change is incompatible.
+- This slice validated newly reachable persisted events and preserved earlier streams/acknowledgements.
 - Model play, setup, settlement, and lobby views accurately: `currentActor` is absent outside a live turn. Include unbeaten play, Finish Positions, Hand result, and retained Match summary where applicable; do not infer lifecycle from a socket or card count.
-- Phase 2 policy: after a non-terminal Hand settles, the executor immediately supplies a fresh cryptographic seed to internal `StartNextHand`. Fold its setup events into the finishing command's transaction before acknowledgement. No client start command, timer, additional readiness, or connection gate between Hands. Core legality remains authoritative.
-- Retain the latest completed Hand's public settlement summary in full views, including after reload or the next deal. Derive it from committed Hand-result/settlement events, scoped to the current or most recently ended Match; no separate history table. Include the Hand number, result, Finish Positions, and resulting Team Levels. A dismissible `上一局结果` panel never blocks current actions. Phase 1 shows the settled Hand directly and intentionally stops there.
+- Phase 1 temporarily stopped at settlement; Phase 2 added next-Hand continuation and retained settlement summaries.
 - Recover a compatible settled Room left by phase 1 through the same serialized executor on access, completing the pending internal start once. Recheck state in the queue; reconnect never starts a second Hand or makes a player choice. Failed commits install no candidate state.
 
 ## 1. One complete Hand
@@ -25,7 +24,7 @@ Follow [architecture](architecture.md), [Rulesets](ruleset.md), [presets](rules-
 ## 2. Continue the Match
 
 - Before setup UI, expose `省心`/`自主` presets and individual supported settings in the unlocked lobby. Reuse complete `ReplaceMatchRulesConfiguration`; keep preset mapping outside core, default new Rooms to `省心`, and preserve existing Room settings and permanent locks.
-- Implement the next-Hand and retained-summary policies above. Add persisted decoding for `HandStarted` and every automatic/manual setup event; never serialize seeds to clients.
+- Implement the [next-Hand and retained-summary policies](architecture.md#match-continuation). Add persisted decoding for `HandStarted` and every automatic/manual setup event; never serialize seeds to clients.
 - Wire `SelectTributeCard`, `OfferReturnCandidates`, `SelectReturnCard`, and `SubmitTieChoiceBallot`. Extend full views with pending actors, eligible choices, candidate offers, own ballot, submitted-voter IDs, and revealed rounds.
 - Render one contextual setup decision at a time in rule order. Show `已提交，等待其他玩家` after a final choice; reveal other ballots only after resolution. Reuse card selection and command delivery.
 - Gate: both Rulesets continue from settlement through setup to the next legal play under both presets. Cover four-player non-joker Tribute, received-card return, candidate-rank constraints, pairing/leader ties and third-round fallback, no-Tribute flow, hidden ballots, concurrent choices, and restart/retry without duplicate deals or transfers. Reload preserves the previous result and current setup.
@@ -42,4 +41,4 @@ Each phase runs `pnpm check` plus `pnpm --filter @dglz/web test:browser`. Keep a
 
 Follow the [phase verification workflow](development.md#phase-verification) for worker ownership, Astra review/fixes, browser drivers, and final gates.
 
-Update [development](development.md) with each completed scope. Challenge Hands, history/Replay/sharing endpoints, remaining Room-management controls, account administration, deployment, and [turn timing](post-mvp-turn-timing.md) remain separate work. Retaining a settlement summary does not implement Hand history or Replay.
+This slice excluded Challenge Hands, history/Replay/sharing endpoints, remaining Room-management controls, account administration, deployment, and turn timing. Retaining a settlement summary does not implement Hand history or Replay.

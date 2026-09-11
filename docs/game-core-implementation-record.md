@@ -1,6 +1,6 @@
 # `game-core` Implementation Record
 
-Status: Complete as of 2026-09-06. This document records the seven implemented phases; it is not an active roadmap.
+Status: Complete as of 2026-09-06. Historical record of the seven implemented phases, including intermediate behavior and gates.
 
 ## Module seam
 

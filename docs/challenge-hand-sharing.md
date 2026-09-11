@@ -4,6 +4,8 @@ Status: Authoritative app-local sharing policy
 
 A completed source Hand produces one reusable `同牌挑战码`. Sharing is its purpose. The code opens the source Hand Replay and can initialize any number of `同牌挑战` Hands.
 
+Reuse and Replay availability follow the [MVP compatibility policy](architecture.md#mvp-compatibility); incompatible upgrades need not preserve old Templates or Codes.
+
 ## Responsibilities
 
 - The **Hand Seed** is server-held random input. With versioned randomness and setup data, it reproduces the deal and other seeded choices; it is never the user-facing sharing artifact.

@@ -1,7 +1,7 @@
 # Preferred Architecture
 
 Status: Initial stack selected; engineering guidance, not product requirements
-Updated: 2026-09-07
+Updated: 2026-09-11
 
 ## Decision summary
 
@@ -141,13 +141,19 @@ A single process-wide executor registry is the only entry point for existing-roo
 
 ### Client resynchronization
 
-Every player view includes its room revision. On every initial connection or reconnection, the server authenticates the session and sends a complete view derived for that account. The client atomically replaces its room state with that view and does not submit room commands until synchronization finishes. Command acknowledgements include the committed revision. Socket.IO reconnects automatically, but correctness never depends on transport-session recovery or replaying missed socket packets.
+Every player view includes its Room revision; command acknowledgements include the committed revision. On initial connection or reconnection, authenticate the session and send its account-specific full view. Correctness never depends on transport-session recovery or replaying missed packets.
+
+- Lock Room actions during initial connection, disconnect, and resynchronization; show `正在同步牌局…`. A socket connection alone does not unlock actions: a validated current-connection full view does.
+- Join bootstrap is the exception: a non-member connects without a Room ID and submits only `JoinRoom`, initially with revision `1`. On an explicit stale-revision rejection, retry with its `currentRevision` and a new command ID; no private view is available before membership. An uncertain join retries the identical command. Its validated success view unlocks Room actions; existing members reconnect with the Room ID normally.
+- Replace the view atomically. Within the current Room/connection, never let an older acknowledgement or view roll back its revision; discard callbacks from superseded connections or Rooms.
+- Except for join bootstrap, submit commands using the displayed revision and a unique command ID. Prevent duplicate submissions while pending. A retry of an uncertain command retains its ID and exact payload/revision; do not buffer new actions while offline.
+- Except for join bootstrap, on stale revision or uncertain delivery, synchronize before accepting further actions. Session expiry returns to login; incompatible protocol requires reload. Map failures to Chinese messages.
+- Preserve the Room URL across reloads and restore the account-specific view through the existing session. The server remains authoritative; no optimistic game state or client-driven auto-start.
+- On logout, expiry, or account change, clear the private view and pending commands, close the old socket, and discard its callbacks before restoring another account.
 
 ### Credentials module
 
-The account interface is intentionally small: administrator-provision account, authenticate, resolve/revoke session, change password, and administrator-reset password. The implementation hides username normalization, Argon2id, session-token hashing, throttling, and persistence. The initial application has no public registration endpoint.
-
-Accounts require a unique username and password. Email is nullable. The VPS/application administrator provisions accounts and resets passwords through administrative commands; a reset records an audit action and revokes all sessions. These commands may initially be CLI-only. If email later becomes meaningful, an email-reset adapter may be added.
+The account interface is intentionally small: administrator-provision account, authenticate, resolve/revoke session, change password, and administrator-reset password. The implementation hides username normalization, Argon2id, session-token hashing, throttling, and persistence. Account-access policy is defined [below](#account-access).
 
 This local module is preferred over Better Auth because Better Auth requires an email for every user, including users signing up through its username plugin, which conflicts with the product requirement.
 
@@ -157,7 +163,15 @@ Production serves the browser, HTTP API, and Socket.IO from one public origin. S
 
 A revoked session cannot authorize a new HTTP or Socket.IO command, including through an existing connection.
 
-## Room lifecycle
+## App-local engineering policies
+
+These are implementation defaults for ordinary app behavior, not additional product requirements. This section owns account access, Room lifecycle/configuration, and Match continuation policy; specialized game policies remain in their linked documents.
+
+### Account access
+
+Accounts require a unique username and password. Email is nullable. The VPS/application administrator provisions accounts and resets passwords through administrative commands; a reset records an audit action and revokes all sessions. These commands may initially be CLI-only. If email later becomes meaningful, an email-reset adapter may be added. The MVP has no public registration endpoint.
+
+### Room lifecycle
 
 Room membership, seat assignment, readiness, ownership, Rules Configuration, Seating Policy, and lifecycle state are durable room state. Each membership records a monotonic join order. When an owner leaves a `LOBBY`, the executor transfers ownership to the remaining membership with the lowest join order; a later rejoin creates a new membership and join order.
 
@@ -171,11 +185,11 @@ An `ACTIVE` Room locks membership, seats, Rules Configuration, and Seating Polic
 
 Natural Match or Challenge Hand completion likewise resets readiness and returns the Room to `LOBBY`. An unrecoverable active Room becomes `INTERRUPTED`. Its terminal actions either archive it or create a new Room containing only the copied Rules Configuration; the source Room, members, readiness, and history are not copied or mutated.
 
-## Room-level configuration
+### Room-level configuration
 
 Every Room selects one Seating Policy and a complete Rules Configuration for Matches. The app-local [Rules Configuration Presets](rules-configuration-presets.md) initialize every variant supported by its Ruleset; a Challenge Hand instead uses its Challenge Template's configuration without changing or permanently locking the Match configuration. `game-core` receives only the active resolved settings and has no preset concept. The Match configuration becomes immutable when the first Match starts; the Seating Policy becomes immutable when the first Match or Challenge Hand starts. A Hand records `rulesetId`, resolved variants, Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.
 
-### Ruleset identity and variants
+#### Ruleset identity and variants
 
 The authoritative [Rulesets](ruleset.md) define the game rules and distinct stable Ruleset IDs. Each future Ruleset receives a distinct versioned ID when defined.
 
@@ -190,6 +204,12 @@ type JokerPairComparison =
 ```
 
 Each configured difference is a named variant with example hands that are also executable tests.
+
+### Match continuation
+
+After a non-terminal Hand settles, the executor supplies a fresh cryptographic seed to internal `StartNextHand` and commits setup with the finishing command. No client start command, timer, additional readiness, or connection gate applies between Hands.
+
+Full views retain the latest completed Hand's public settlement summary across reload and the next deal, scoped to the current or most recently ended Match. Derive Hand number, result, Finish Positions, and resulting Team Levels from committed events; show a dismissible `上一局结果` panel without blocking current actions. This summary is not Hand history or Replay.
 
 ## Tie-choice coordination
 
@@ -224,7 +244,9 @@ Persisted snapshots are omitted initially. Add them only if measured recovery ti
 
 An authenticated read-only endpoint formats a completed Hand's events into its ordered action sequence, selected rules, original deals, result, and Challenge Code. Participants may open it from their history; an authenticated holder of its Challenge Code may open the same read-only Replay or create a Challenge Hand. Formatting is synchronous and requires no asynchronous projection infrastructure or second action-history model.
 
-Completed-hand events must remain decodable for history, but they do not have to remain replayable into the current live game engine. Best-effort room recovery only replays event versions supported by the deployed server; an incompatible in-progress room may be marked interrupted. Database migrations manage SQLite structure and do not reinterpret gameplay. Add a history decoder only when a concrete event-schema change requires one. Ruleset identifiers, Challenge Template randomness versions, event schemas, and client/server protocol compatibility remain separate concerns. If a client and server protocol are incompatible, the server rejects commands with a reload-required response.
+### MVP compatibility
+
+The MVP supports only the current engine and its data formats. Do not maintain old engines, rules/randomness/shuffle implementations, history decoders, or stored-acknowledgement adapters for backward compatibility. Incompatible Rooms cannot resume; their history, Replays, and Challenge Codes may become unavailable. Reject unsupported data explicitly; never reinterpret it under current rules. Database migrations manage storage structure, not gameplay compatibility. Incompatible clients receive a reload-required response.
 
 Off-VPS backups are not required for the initial release. Reconsider them only if recovery after total VPS loss becomes a product requirement.
 
@@ -233,7 +255,7 @@ Off-VPS backups are not required for the initial release. Reconsider them only i
 - The local credentials module is security-sensitive and needs focused review, login throttling, Argon2id parameter tests, secure reset tooling, and session-revocation tests.
 - Socket.IO is a non-standard higher-level protocol and still needs application-level command idempotency and view resynchronization.
 - SQLite constrains deployment to one write host and its database file must remain on a local filesystem, not a network volume.
-- Persisted events must remain readable for completed-hand history. Live replay compatibility is required only for event versions the deployed server promises to recover; no generic migration framework is built before a concrete change requires one.
+- Incompatible upgrades may make previous Rooms, history, Replays, and Challenge Codes unavailable under the [MVP compatibility policy](#mvp-compatibility).
 - Without a timer, an absent required player can block play until they reconnect or the owner aborts the Match or Challenge Hand. Automatic cleanup and timeout behavior remain deferred to the post-MVP timing policy.
 
 ## Primary references
