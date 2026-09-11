@@ -897,24 +897,20 @@ function parsePersistedRoomEvent(
   return parsed === undefined || !parsed.success ? undefined : parsed.data;
 }
 
-export function loadRoom(
+export function* readRoomEvents(
   database: AppDatabase,
   roomId: string,
-): LoadedRoom | undefined {
+): Generator<{ sequence: number; event: Event }> {
   const rows = database.db
     .select()
     .from(roomEvents)
     .where(eq(roomEvents.roomId, roomId))
     .orderBy(asc(roomEvents.sequence))
     .all();
-  if (rows.length === 0) {
-    return undefined;
-  }
-
-  let loaded: LoadedRoom | undefined;
+  let sequence = 0;
   for (const unvalidatedRow of rows) {
     const row = PersistedRoomEventRowSchema.safeParse(unvalidatedRow);
-    if (!row.success || row.data.sequence !== (loaded?.revision ?? 0) + 1) {
+    if (!row.success || row.data.sequence !== sequence + 1) {
       throw new UnsupportedPersistedEventError();
     }
     if (row.data.eventSchemaVersion !== ROOM_EVENT_SCHEMA_VERSION) {
@@ -930,28 +926,36 @@ export function loadRoom(
     if (parsedEvent === undefined) {
       throw new UnsupportedPersistedEventError();
     }
-    if (loaded === undefined && parsedEvent.type !== "RoomCreated") {
+    if (sequence === 0 && parsedEvent.type !== "RoomCreated") {
       throw new UnsupportedPersistedEventError();
     }
-    if (loaded !== undefined && parsedEvent.type === "RoomCreated") {
+    if (sequence !== 0 && parsedEvent.type === "RoomCreated") {
       throw new UnsupportedPersistedEventError();
     }
     if (parsedEvent.type === "RoomCreated" && parsedEvent.roomId !== roomId) {
       throw new UnsupportedPersistedEventError();
     }
+    sequence = row.data.sequence;
+    yield { sequence, event: parsedEvent };
+  }
+}
+
+export function loadRoom(
+  database: AppDatabase,
+  roomId: string,
+): LoadedRoom | undefined {
+  let loaded: LoadedRoom | undefined;
+  for (const { sequence, event } of readRoomEvents(database, roomId)) {
     try {
       if (loaded === undefined) {
-        const state = evolve(undefined, parsedEvent);
-        loaded = { roomId, state, revision: row.data.sequence };
+        const state = evolve(undefined, event);
+        loaded = { roomId, state, revision: sequence };
       } else {
-        loaded = foldRoomEvents(loaded, [parsedEvent]);
+        loaded = foldRoomEvents(loaded, [event]);
       }
     } catch {
       throw new UnsupportedPersistedEventError();
     }
-  }
-  if (loaded === undefined) {
-    throw new UnsupportedPersistedEventError();
   }
   return loaded;
 }

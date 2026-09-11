@@ -1218,7 +1218,10 @@ function validRulesConfiguration(
   );
 }
 
-function validateChallengeTemplate(template: ChallengeTemplate): boolean {
+export function isChallengeTemplate(
+  value: unknown,
+): value is ChallengeTemplate {
+  const template = value as ChallengeTemplate;
   if (
     typeof template !== "object" ||
     template === null ||
@@ -2768,7 +2771,7 @@ function decideSelectChallengeHand(
   const membershipRejection = requireLobbyMember(state, command.playerId);
   if (membershipRejection !== undefined) return rejected(membershipRejection);
   if (command.playerId !== state.ownerId) return rejected("owner-only");
-  if (!validateChallengeTemplate(command.template)) {
+  if (!isChallengeTemplate(command.template)) {
     return rejected("challenge-template-invalid");
   }
   const capacity = RULESET_DEFINITIONS[command.template.rulesetId].playerCount;
@@ -2810,7 +2813,7 @@ function decideStartChallengeHand(state: InternalState): Decision {
     return rejected("challenge-not-selected");
   }
   const template = state.challengeTemplate;
-  if (!validateChallengeTemplate(template)) {
+  if (!isChallengeTemplate(template)) {
     return rejected("challenge-template-invalid");
   }
   const playerIds = startPlayerIds(state);

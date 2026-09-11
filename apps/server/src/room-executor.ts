@@ -14,9 +14,11 @@ import {
   type RoomCommandAck,
   type RoomCommandEnvelope,
   type RoomViewData,
+  type ChallengePreview,
 } from "@dglz/protocol";
 
 import type { AppDatabase } from "./db/index.js";
+import { createChallengeCode } from "./challenges.js";
 import {
   appendRoomEvents,
   commitRoomCommand,
@@ -172,6 +174,25 @@ export class RoomExecutor {
       });
       this.current = candidate;
     });
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  public createChallengeCode(
+    accountId: PlayerAccountId,
+    handStartSequence: number,
+  ): Promise<ChallengePreview | "not-found" | "forbidden"> {
+    const result = this.queue.then(() =>
+      createChallengeCode(
+        this.database,
+        this.current.roomId,
+        handStartSequence,
+        accountId,
+      ),
+    );
     this.queue = result.then(
       () => undefined,
       () => undefined,

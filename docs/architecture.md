@@ -120,13 +120,15 @@ The completed implementation phases are retained in the [`game-core` implementat
 
 It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. Each Hand receives a fresh cryptographically random Hand Seed. For the first Hand of a Match, `game-core` uses the fixed lobby seats or derives a uniform seat permutation from that Hand Seed under Randomized Seating, then derives the initial dealer through a separate versioned, domain-separated selection function. Random selections required by resolved Rule Variants use the same approach and remain domain-separated from seating, dealer selection, and shuffling. `game-core` uses a versioned deterministic shuffle, so the same Hand Seed, Ruleset, resolved variants, shuffle version, and resolved seat ordering produce the same original deal. No Match-level seed derives future Hand Seeds. Hand-start events record these inputs, and later events record every card-zone change needed for state evolution and completed-hand history. Hand Seeds remain server-held.
 
+The server also uses `isChallengeTemplate(value)` to validate decoded private Templates with the same rules as Challenge selection.
+
 ### `protocol`
 
 This shared module defines and validates serialized browser/server messages. It contains commands, acknowledged results, compatibility information, player-specific views, completed-hand history, Challenge Codes, and Challenge Hand setup messages. It does not expose Hand Seeds, the authoritative live state, or gameplay decisions.
 
 ### Room executor
 
-Once a room exists, one executor owns every durable mutation of that room: membership and seats, ownership, readiness, rules selection, starting and dealing, gameplay, Match and Challenge Hand abortion, interruption, and Room archival. Connection state is not gameplay state. Account operations, initial Room creation, socket connection tracking, and read-only queries remain outside this seam. Its main interface is `execute(authenticatedCommand) -> acknowledgedResult`; the only additional entry point is `autoStart(authenticatedPresence)`, used on connection or reconnection and serialized through the same queue. A start folded into a client command shares that command's atomic commit; a connection-triggered start has no causation command ID. Internally it:
+Once a room exists, one executor owns every durable mutation of that room: membership and seats, ownership, readiness, rules selection, starting and dealing, gameplay, Match and Challenge Hand abortion, interruption, and Room archival. Connection state is not gameplay state. Account operations, initial Room creation, socket connection tracking, and read-only queries remain outside this seam. Its main interface is `execute(authenticatedCommand) -> acknowledgedResult`. Connection-triggered `autoStart(authenticatedPresence)`, settled-Hand recovery, and participant Challenge Code creation share the same queue. A start folded into a client command shares that command's atomic commit; a connection-triggered start has no causation command ID. Internally it:
 
 1. queues commands serially;
 2. rejects stale or unauthorized commands;

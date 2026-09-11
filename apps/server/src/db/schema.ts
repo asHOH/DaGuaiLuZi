@@ -5,6 +5,7 @@ import {
   primaryKey,
   sqliteTable,
   text,
+  unique,
 } from "drizzle-orm/sqlite-core";
 
 export const accounts = sqliteTable("accounts", {
@@ -52,6 +53,32 @@ export const roomEvents = sqliteTable(
   }),
 );
 
+export const challengeTemplates = sqliteTable(
+  "challenge_templates",
+  {
+    code: text("code").primaryKey(),
+    sourceRoomId: text("source_room_id").notNull(),
+    sourceHandStartSequence: integer("source_hand_start_sequence", {
+      mode: "number",
+    }).notNull(),
+    templateSchemaVersion: integer("template_schema_version", {
+      mode: "number",
+    }).notNull(),
+    template: text("template").notNull(),
+  },
+  (table) => ({
+    sourceHandUnique: unique().on(
+      table.sourceRoomId,
+      table.sourceHandStartSequence,
+    ),
+    sourceHandReference: foreignKey({
+      columns: [table.sourceRoomId, table.sourceHandStartSequence],
+      foreignColumns: [roomEvents.roomId, roomEvents.sequence],
+      name: "challenge_templates_source_room_id_source_hand_start_sequence_room_events_room_id_sequence_fk",
+    }),
+  }),
+);
+
 export const acceptedCommands = sqliteTable("accepted_commands", {
   commandId: text("command_id").primaryKey(),
   accountId: text("account_id")
@@ -62,4 +89,10 @@ export const acceptedCommands = sqliteTable("accepted_commands", {
   acknowledgement: text("acknowledgement").notNull(),
 });
 
-export const schema = { accounts, sessions, roomEvents, acceptedCommands };
+export const schema = {
+  accounts,
+  sessions,
+  roomEvents,
+  acceptedCommands,
+  challengeTemplates,
+};

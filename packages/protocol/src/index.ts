@@ -12,6 +12,13 @@ export const SeatingPolicySchema = z.enum(["fixed", "randomized"]);
 export const RoomIdSchema = z.string().uuid();
 export const CommandIdSchema = z.string().uuid();
 export const RoomRevisionSchema = z.number().int().positive();
+export const ChallengeCodeSchema = z.string().regex(/^[0-9a-f]{32}$/);
+export const CreateChallengeCodeSchema = z
+  .object({ handStartSequence: z.number().int().positive() })
+  .strict();
+export const LookupChallengeCodeSchema = z
+  .object({ code: ChallengeCodeSchema })
+  .strict();
 
 const sharedRulesConfiguration = {
   wildcardRank: z.enum(["weakest-rank", "strongest-rank"]),
@@ -648,6 +655,24 @@ export const LoginResponseEnvelopeSchema = z
     protocolVersion: z.literal(PROTOCOL_VERSION),
     ok: z.literal(true),
     data: LoginResponseDataSchema,
+  })
+  .strict();
+
+// Public preview only; the reusable Template and Hand Seed remain server-private.
+export const ChallengePreviewSchema = z
+  .object({
+    code: ChallengeCodeSchema,
+    rulesConfiguration: RulesConfigurationSchema,
+    teamLevels: TeamLevelsSchema,
+    trumpRank: TrumpRankSchema,
+  })
+  .strict();
+export type ChallengePreview = z.infer<typeof ChallengePreviewSchema>;
+export const ChallengeResponseEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    ok: z.literal(true),
+    data: ChallengePreviewSchema,
   })
   .strict();
 

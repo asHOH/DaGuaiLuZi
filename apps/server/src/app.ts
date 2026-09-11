@@ -12,10 +12,12 @@ import { Server as SocketIOServer, type Socket } from "socket.io";
 import { evolve } from "@dglz/game-core";
 import {
   CommandIdSchema,
+  CreateChallengeCodeSchema,
   CreateRoomCommandSchema,
   LoginCommandSchema,
   LoginResponseDataSchema,
   LogoutResponseDataSchema,
+  LookupChallengeCodeSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
   RoomCommandAckSchema,
@@ -47,6 +49,7 @@ import {
   UnsupportedPersistedEventError,
 } from "./rooms.js";
 import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
+import { challengePreview, lookupChallenge } from "./challenges.js";
 
 export type ServerOptions = Readonly<{
   webRoot?: string;
@@ -472,6 +475,10 @@ export async function createApp(
     if (reply.sent) {
       return;
     }
+    if (error instanceof UnsupportedPersistedEventError) {
+      sendError(reply, "unsupported-persisted-event");
+      return;
+    }
     if ((error as Error & { statusCode?: number }).statusCode === 429) {
       sendError(reply, "rate-limited");
       return;
@@ -622,6 +629,55 @@ export async function createApp(
       await room.resumeSettledHand(account.accountId);
       if (room.revision !== revision) await publishRoomViews(roomId.data, room);
       return reply.send(successEnvelope(room.viewFor(account.accountId)!));
+    },
+  );
+
+  app.post<{ Params: { roomId: string } }>(
+    "/api/rooms/:roomId/challenges",
+    async (request, reply) => {
+      const account = requestAccount(database, request);
+      if (account === undefined) return sendError(reply, "unauthorized");
+      const roomId = RoomIdSchema.safeParse(request.params.roomId);
+      const parsed = CreateChallengeCodeSchema.safeParse(request.body);
+      if (!roomId.success || !parsed.success)
+        return sendError(reply, "malformed-input");
+      const room = await roomExecutors.getOrCreate(roomId.data);
+      if (room === undefined) return sendError(reply, "room-not-found");
+      const result = await room.createChallengeCode(
+        account.accountId,
+        parsed.data.handStartSequence,
+      );
+      return typeof result === "string"
+        ? sendError(reply, result)
+        : reply.send(successEnvelope(result));
+    },
+  );
+
+  // Keep full Codes out of request URLs and their automatic access logs.
+  app.post(
+    "/api/challenges/lookup",
+    {
+      preValidation: async (request, reply) => {
+        if (requestAccount(database, request) === undefined)
+          return sendError(reply, "unauthorized");
+      },
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (request) =>
+            requestAccount(database, request)?.accountId ?? request.ip,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsed = LookupChallengeCodeSchema.safeParse(request.body);
+      if (!parsed.success) return sendError(reply, "malformed-input");
+      const found = lookupChallenge(database, parsed.data.code);
+      if (found === undefined) return sendError(reply, "not-found");
+      return reply.send(
+        successEnvelope(challengePreview(found.code, found.template)),
+      );
     },
   );
 

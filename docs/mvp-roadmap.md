@@ -1,6 +1,6 @@
 # MVP Roadmap
 
-Status: Gameplay integration verified; Challenge Hand integration next.
+Status: Challenge foundation verified; [Challenge Hand integration Phase 2](challenge-integration-plan.md) next.
 
 Delivery order only. [Product requirements](product-spec.md), [architecture](architecture.md), and [Challenge Hand policy](challenge-hand-sharing.md) remain authoritative. Inspect existing implementation before planning each phase; reuse completed work.
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ChallengeCodeSchema,
+  ChallengePreviewSchema,
+  CreateChallengeCodeSchema,
+  LookupChallengeCodeSchema,
   CreateRoomCommandSchema,
   JoinRoomCommandEnvelopeSchema,
   ErrorEnvelopeSchema,
@@ -357,5 +361,38 @@ describe("protocol schemas", () => {
       tributeRecipientPairing: "finish-position-by-tribute-rank",
       returnCardSelection: "giver-choice-from-candidates",
     });
+  });
+
+  it("validates Challenge references and rejects private fields in public previews", () => {
+    const code = "1234567890abcdef1234567890abcdef";
+    expect(LookupChallengeCodeSchema.parse({ code })).toEqual({ code });
+    expect(ChallengeCodeSchema.safeParse("123").success).toBe(false);
+    expect(
+      CreateChallengeCodeSchema.safeParse({ handStartSequence: 0 }).success,
+    ).toBe(false);
+    expect(
+      CreateChallengeCodeSchema.safeParse({ handStartSequence: 1.5 }).success,
+    ).toBe(false);
+    expect(
+      CreateChallengeCodeSchema.safeParse({
+        handStartSequence: 2,
+        handSeed: "private",
+      }).success,
+    ).toBe(false);
+    const preview = {
+      code,
+      rulesConfiguration: rulesConfigurationPreset("dglz-4p-2d-v1", "省心"),
+      teamLevels: ["2", "2"],
+      trumpRank: "2",
+    };
+    expect(ChallengePreviewSchema.safeParse(preview).success).toBe(true);
+    expect(
+      ChallengePreviewSchema.safeParse({ ...preview, handSeed: "private" })
+        .success,
+    ).toBe(false);
+    expect(
+      ChallengePreviewSchema.safeParse({ ...preview, playerIds: ["source"] })
+        .success,
+    ).toBe(false);
   });
 });
