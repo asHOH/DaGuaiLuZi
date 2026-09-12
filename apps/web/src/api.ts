@@ -45,6 +45,9 @@ const playErrors: Record<string, string> = {
   "tie-choice-not-eligible": "请选择本轮允许的对象，或选择放弃。",
   "tie-choice-duplicate": "你已提交本轮选择，请等待其他玩家。",
   "tie-choice-stale": "选择轮次已更新，请查看本轮选项。",
+  "challenge-ruleset-too-small": "房间人数超过此挑战所需人数，请另开一个房间。",
+  "challenge-already-selected": "已选择这个同牌挑战，请入座并准备。",
+  "owner-only": "只有房主可以选择或终止牌局。",
 };
 
 export const errorMessage = (code: string, reason?: string): string =>
@@ -56,6 +59,7 @@ export const errorMessage = (code: string, reason?: string): string =>
     "invalid-credentials": "用户名或密码不正确。",
     "reload-required": "版本已更新，请刷新页面。",
     "room-not-found": "找不到这个房间，请检查房间码。",
+    "not-found": "找不到可用的同牌挑战，请检查挑战码或本局是否已完成。",
     forbidden: "你尚未加入这个房间。",
     "malformed-input": "输入格式不正确，请检查后重试。",
     "rate-limited": "操作太频繁，请稍后再试。",

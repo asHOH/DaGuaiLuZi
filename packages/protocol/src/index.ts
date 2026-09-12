@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 3 as const;
+export const PROTOCOL_VERSION = 5 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
@@ -107,6 +107,22 @@ export const SelectMatchPayloadSchema = z
   .object({ type: z.literal("SelectMatch") })
   .strict();
 export type SelectMatchPayload = z.infer<typeof SelectMatchPayloadSchema>;
+
+export const SelectChallengeHandPayloadSchema = z
+  .object({
+    type: z.literal("SelectChallengeHand"),
+    code: ChallengeCodeSchema,
+  })
+  .strict();
+export type SelectChallengeHandPayload = z.infer<
+  typeof SelectChallengeHandPayloadSchema
+>;
+export const AbortChallengeHandPayloadSchema = z
+  .object({ type: z.literal("AbortChallengeHand") })
+  .strict();
+export type AbortChallengeHandPayload = z.infer<
+  typeof AbortChallengeHandPayloadSchema
+>;
 
 export const AssignSeatPayloadSchema = z
   .object({
@@ -244,6 +260,8 @@ export type SubmitTieChoiceBallotPayload = z.infer<
 export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
   JoinRoomPayloadSchema,
   SelectMatchPayloadSchema,
+  SelectChallengeHandPayloadSchema,
+  AbortChallengeHandPayloadSchema,
   AssignSeatPayloadSchema,
   SetReadinessPayloadSchema,
   PlayPayloadSchema,
@@ -497,6 +515,7 @@ const TieChoiceRoundResolvedSchema = z
 export const PlayerViewLastHandResultSchema = z
   .object({
     handNumber: z.number().int().positive(),
+    handStartSequence: z.number().int().positive().optional(),
     result: PlayerViewHandResultSchema,
     finishPositions: z.array(z.number().int().nonnegative().nullable()),
     teamLevels: TeamLevelsSchema,
@@ -576,11 +595,23 @@ const playerViewBaseShape = {
   seatingPolicyLocked: z.boolean(),
 };
 
+const PlayerViewChallengeSummarySchema = z
+  .object({
+    outcome: z.literal("completed"),
+    handStartSequence: z.number().int().positive().optional(),
+    result: PlayerViewHandResultSchema,
+  })
+  .strict();
+
 const lobbyPlayerViewSchema = z
   .object({
     ...playerViewBaseShape,
     lifecycle: z.literal("LOBBY"),
     selectedActivity: SelectedActivitySchema.optional(),
+    effectiveRulesetId: RulesetIdSchema.optional(),
+    effectiveRulesConfiguration: RulesConfigurationSchema.optional(),
+    challengeSummary: PlayerViewChallengeSummarySchema.optional(),
+    trumpRank: TrumpRankSchema.optional(),
     teamLevels: TeamLevelsSchema.optional(),
     completedHandCount: z.number().int().nonnegative().optional(),
     matchSummary: PlayerViewMatchSummarySchema.optional(),
@@ -625,10 +656,35 @@ const activePlayerViewSchema = z
   })
   .strict();
 
-export const PlayerViewSchema = z.discriminatedUnion("lifecycle", [
-  lobbyPlayerViewSchema,
-  activePlayerViewSchema,
-]);
+const activeChallengePlayerViewSchema = activePlayerViewSchema.extend({
+  selectedActivity: z.literal("challenge"),
+  effectiveRulesetId: RulesetIdSchema,
+  effectiveRulesConfiguration: RulesConfigurationSchema,
+  handNumber: z.literal(1),
+  completedHandCount: z.never().optional(),
+  lastHandResult: z.never().optional(),
+  matchSummary: z.never().optional(),
+});
+
+export const PlayerViewSchema = z
+  .union([
+    lobbyPlayerViewSchema,
+    activePlayerViewSchema,
+    activeChallengePlayerViewSchema,
+  ])
+  .superRefine((view, context) => {
+    if (
+      view.selectedActivity === "challenge" &&
+      (!("effectiveRulesConfiguration" in view) ||
+        !view.effectiveRulesConfiguration ||
+        view.effectiveRulesetId !== view.effectiveRulesConfiguration.rulesetId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "missing-or-mismatched-effective-rules",
+      });
+    }
+  });
 
 export type PlayerView = z.infer<typeof PlayerViewSchema>;
 

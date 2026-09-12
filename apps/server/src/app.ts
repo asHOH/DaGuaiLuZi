@@ -17,7 +17,6 @@ import {
   LoginCommandSchema,
   LoginResponseDataSchema,
   LogoutResponseDataSchema,
-  LookupChallengeCodeSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
   RoomCommandAckSchema,
@@ -49,7 +48,7 @@ import {
   UnsupportedPersistedEventError,
 } from "./rooms.js";
 import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
-import { challengePreview, lookupChallenge } from "./challenges.js";
+import { challengePreview } from "./challenges.js";
 
 export type ServerOptions = Readonly<{
   webRoot?: string;
@@ -654,32 +653,18 @@ export async function createApp(
   );
 
   // Keep full Codes out of request URLs and their automatic access logs.
-  app.post(
-    "/api/challenges/lookup",
-    {
-      preValidation: async (request, reply) => {
-        if (requestAccount(database, request) === undefined)
-          return sendError(reply, "unauthorized");
-      },
-      config: {
-        rateLimit: {
-          max: 20,
-          timeWindow: "1 minute",
-          keyGenerator: (request) =>
-            requestAccount(database, request)?.accountId ?? request.ip,
-        },
-      },
-    },
-    async (request, reply) => {
-      const parsed = LookupChallengeCodeSchema.safeParse(request.body);
-      if (!parsed.success) return sendError(reply, "malformed-input");
-      const found = lookupChallenge(database, parsed.data.code);
-      if (found === undefined) return sendError(reply, "not-found");
-      return reply.send(
-        successEnvelope(challengePreview(found.code, found.template)),
-      );
-    },
-  );
+  app.post("/api/challenges/lookup", async (request, reply) => {
+    const account = requestAccount(database, request);
+    if (account === undefined) return sendError(reply, "unauthorized");
+    const found = roomExecutors.challenges.resolve(
+      account.accountId,
+      request.body,
+    );
+    if (!found.ok) return sendError(reply, found.code);
+    return reply.send(
+      successEnvelope(challengePreview(found.code, found.template)),
+    );
+  });
 
   if (options.webRoot !== undefined) {
     await app.register(fastifyStatic, {

@@ -944,6 +944,23 @@ async function runHappyPath(
     const beforeAbort = activeView(
       await readRoom(server.url, roomId, currentCookie),
     );
+    await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();
+    const codeField = ownerPage.getByLabel("本局同牌挑战码", { exact: true });
+    await expect(codeField).toHaveValue(/^[0-9a-f]{32}$/);
+    const challengeCode = await codeField.inputValue();
+    await expect(
+      ownerPage.getByRole("button", { name: "复制同牌挑战码" }),
+    ).toBeEnabled();
+    if (playerCount === 4) {
+      await ownerContext.grantPermissions([
+        "clipboard-read",
+        "clipboard-write",
+      ]);
+      await ownerPage.getByRole("button", { name: "复制同牌挑战码" }).click();
+      expect(
+        await ownerPage.evaluate(() => navigator.clipboard.readText()),
+      ).toBe(challengeCode);
+    }
     await expect(
       joinerPage.getByRole("button", { name: "终止比赛", exact: true }),
     ).toHaveCount(0);
@@ -1037,6 +1054,257 @@ async function runHappyPath(
       beforeAbort.rulesConfiguration,
     );
     expect(restarted.seatingPolicy).toBe(beforeAbort.seatingPolicy);
+    await ownerPage
+      .getByRole("button", { name: "终止比赛", exact: true })
+      .click();
+    await expect(ownerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
+    if (playerCount === 4) {
+      await ownerPage
+        .getByLabel("同牌挑战码", { exact: true })
+        .fill("bad-code");
+      await ownerPage
+        .getByRole("button", { name: "查看牌局", exact: true })
+        .click();
+      await expect(ownerPage.getByRole("alert")).toHaveText(
+        "请输入完整的 32 位同牌挑战码。",
+      );
+      await ownerPage
+        .getByLabel("同牌挑战码", { exact: true })
+        .fill("f".repeat(32));
+      await ownerPage
+        .getByRole("button", { name: "查看牌局", exact: true })
+        .click();
+      await expect(ownerPage.getByRole("alert")).toHaveText(
+        "找不到可用的同牌挑战，请检查挑战码或本局是否已完成。",
+      );
+      let releaseLookup!: () => void;
+      let lookupArrived!: () => void;
+      const released = new Promise<void>((resolve) => {
+        releaseLookup = resolve;
+      });
+      const arrived = new Promise<void>((resolve) => {
+        lookupArrived = resolve;
+      });
+      await ownerPage.route(
+        "**/api/challenges/lookup",
+        async (route) => {
+          const response = await route.fetch();
+          lookupArrived();
+          await released;
+          await route.fulfill({ response });
+        },
+        { times: 1 },
+      );
+      await ownerPage
+        .getByLabel("同牌挑战码", { exact: true })
+        .fill(challengeCode);
+      await ownerPage
+        .getByRole("button", { name: "查看牌局", exact: true })
+        .click();
+      await arrived;
+      await ownerPage
+        .getByLabel("同牌挑战码", { exact: true })
+        .fill("changed-code");
+      const delayedResponse = ownerPage.waitForResponse(
+        "**/api/challenges/lookup",
+      );
+      releaseLookup();
+      await (await delayedResponse).finished();
+      await ownerPage.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect(
+        ownerPage.getByRole("button", { name: "查看牌局", exact: true }),
+      ).toBeEnabled();
+      await expect(
+        ownerPage.getByRole("button", { name: "使用此牌局", exact: true }),
+      ).toHaveCount(0);
+    }
+    await ownerPage
+      .getByLabel("同牌挑战码", { exact: true })
+      .fill(challengeCode);
+    await ownerPage
+      .getByRole("button", { name: "查看牌局", exact: true })
+      .click();
+    await ownerPage
+      .getByRole("button", { name: "使用此牌局", exact: true })
+      .click();
+    for (const page of [ownerPage, joinerPage]) {
+      await expect(
+        page.getByText("已选择同牌挑战", { exact: false }),
+      ).toBeVisible();
+      await expect(page.getByTestId("hand-card")).toHaveCount(0);
+    }
+    const selected = await readRoom(server.url, roomId, currentCookie);
+    expect(selected.view.selectedActivity).toBe("challenge");
+    if (selected.view.lifecycle !== "LOBBY")
+      throw new Error("challenge-selection-not-in-lobby");
+    expect(selected.view.effectiveRulesConfiguration).toEqual(
+      beforeAbort.rulesConfiguration,
+    );
+    await ownerPage.reload();
+    await expect(
+      ownerPage.getByText("已选择同牌挑战", { exact: false }),
+    ).toBeVisible();
+    for (const width of [390, 1280]) {
+      await ownerPage.setViewportSize({ width, height: 900 });
+      await assertNoHorizontalOverflow(ownerPage);
+      await ownerPage.screenshot({
+        path: `output/playwright/${rulesetId}-challenge-lobby-${width}.png`,
+        fullPage: true,
+      });
+    }
+    await ownerPage
+      .getByRole("button", { name: "准备就绪", exact: true })
+      .click();
+    for (const [accountId, client] of protocolClients) {
+      if (accountId !== owner.accountId)
+        await client.command(server.url, roomId, {
+          type: "SetReadiness",
+          ready: true,
+        });
+    }
+    await expect(ownerPage.getByTestId("hand-card")).toHaveCount(27);
+    const challengeStart = activeView(
+      await readRoom(server.url, roomId, currentCookie),
+    );
+    expect(challengeStart.selectedActivity).toBe("challenge");
+    expect(challengeStart.completedHandCount).toBeUndefined();
+    expect(challengeStart.setupStage).toBe("play");
+    const challengeCards = await ownerPage
+      .getByTestId("hand-card")
+      .evaluateAll((cards) =>
+        cards.map((card) => card.getAttribute("data-card")),
+      );
+    const otherChallengeCards = await joinerPage
+      .getByTestId("hand-card")
+      .evaluateAll((cards) =>
+        cards.map((card) => card.getAttribute("data-card")),
+      );
+    expect(
+      challengeCards.some((card) => otherChallengeCards.includes(card)),
+    ).toBe(false);
+    await ownerPage.reload();
+    await expect(ownerPage.getByTestId("hand-card")).toHaveCount(27);
+    expect(
+      await ownerPage
+        .getByTestId("hand-card")
+        .evaluateAll((cards) =>
+          cards.map((card) => card.getAttribute("data-card")),
+        ),
+    ).toEqual(challengeCards);
+    await expect(
+      joinerPage.getByRole("button", { name: "终止同牌挑战", exact: true }),
+    ).toHaveCount(0);
+    for (const width of [390, 1280]) {
+      await ownerPage.setViewportSize({ width, height: 900 });
+      await assertNoHorizontalOverflow(ownerPage);
+      await ownerPage.screenshot({
+        path: `output/playwright/${rulesetId}-challenge-active-${width}.png`,
+        fullPage: true,
+      });
+    }
+    let challengeRoom = await readRoom(server.url, roomId, currentCookie);
+    for (
+      let move = 0;
+      move < 2_000 && challengeRoom.view.lifecycle === "ACTIVE";
+      move += 1
+    ) {
+      const actor = challengeRoom.view.currentActor;
+      if (actor === undefined) throw new Error("missing-challenge-actor");
+      const client = protocolClients.get(actor)!;
+      if (challengeRoom.view.unbeatenPlay !== undefined) {
+        challengeRoom = await client.command(server.url, roomId, {
+          type: "Pass",
+        });
+      } else {
+        await expect
+          .poll(() => client.snapshot(roomId)?.revision, {
+            intervals: [5, 10, 20],
+          })
+          .toBeGreaterThanOrEqual(challengeRoom.revision);
+        const own = activeView(client.snapshot(roomId)!);
+        challengeRoom = await client.command(server.url, roomId, {
+          type: "Play",
+          cards: [own.hand[0]!],
+        });
+      }
+    }
+    expect(challengeRoom.view.lifecycle).toBe("LOBBY");
+    if (challengeRoom.view.lifecycle !== "LOBBY")
+      throw new Error("challenge-completion-timeout");
+    expect(challengeRoom.view.challengeSummary?.outcome).toBe("completed");
+    expect(challengeRoom.view.selectedActivity).toBeUndefined();
+    for (const page of [ownerPage, joinerPage]) {
+      await expect(
+        page.getByRole("region", { name: "同牌挑战结果", exact: true }),
+      ).toContainText("同牌挑战已完成");
+      await expect(page.getByTestId("hand-card")).toHaveCount(0);
+    }
+    await ownerPage.reload();
+    await expect(
+      ownerPage.getByRole("region", { name: "同牌挑战结果", exact: true }),
+    ).toContainText("同牌挑战已完成");
+    await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();
+    await expect(codeField).toHaveValue(/^[0-9a-f]{32}$/);
+    const completedChallengeCode = await codeField.inputValue();
+    await ownerPage.reload();
+    await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();
+    await expect(codeField).toHaveValue(completedChallengeCode);
+    for (const width of [390, 1280]) {
+      await ownerPage.setViewportSize({ width, height: 900 });
+      await assertNoHorizontalOverflow(ownerPage);
+      await ownerPage.screenshot({
+        path: `output/playwright/${rulesetId}-challenge-result-${width}.png`,
+        fullPage: true,
+      });
+    }
+    await ownerPage
+      .getByLabel("同牌挑战码", { exact: true })
+      .fill(challengeCode);
+    await ownerPage
+      .getByRole("button", { name: "查看牌局", exact: true })
+      .click();
+    await ownerPage
+      .getByRole("button", { name: "使用此牌局", exact: true })
+      .click();
+    await ownerPage
+      .getByRole("button", { name: "选择比赛", exact: true })
+      .click();
+    await expect(ownerPage.getByText("已选择比赛，等大家准备")).toBeVisible();
+    await ownerPage
+      .getByLabel("同牌挑战码", { exact: true })
+      .fill(challengeCode);
+    await ownerPage
+      .getByRole("button", { name: "查看牌局", exact: true })
+      .click();
+    await ownerPage
+      .getByRole("button", { name: "使用此牌局", exact: true })
+      .click();
+    await ownerPage
+      .getByRole("button", { name: "准备就绪", exact: true })
+      .click();
+    for (const [accountId, client] of protocolClients) {
+      if (accountId !== owner.accountId)
+        await client.command(server.url, roomId, {
+          type: "SetReadiness",
+          ready: true,
+        });
+    }
+    await expect(ownerPage.getByTestId("hand-card")).toHaveCount(27);
+    await ownerPage
+      .getByRole("button", { name: "终止同牌挑战", exact: true })
+      .click();
+    for (const page of [ownerPage, joinerPage]) {
+      await expect(page.getByTestId("room-lifecycle")).toHaveText("大厅");
+      await expect(page.getByTestId("hand-card")).toHaveCount(0);
+      await expect(
+        page.getByRole("region", { name: "同牌挑战结果", exact: true }),
+      ).toHaveCount(0);
+    }
   } finally {
     for (const client of clients) client.close();
     await Promise.all([ownerContext.close(), joinerContext.close()]);
@@ -1044,10 +1312,12 @@ async function runHappyPath(
 }
 
 test("四人省心规则可续局、终止并重新比赛", async ({ browser, testServer }) => {
+  test.setTimeout(120_000);
   await runHappyPath(browser, testServer, "dglz-4p-2d-v1", 4);
 });
 
 test("六人自主规则可续局、终止并重新比赛", async ({ browser, testServer }) => {
+  test.setTimeout(120_000);
   await runHappyPath(browser, testServer, "dglz-6p-3d-v1", 6);
 });
 

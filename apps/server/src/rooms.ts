@@ -16,7 +16,6 @@ import {
   CardFaceCodeSchema,
   PlayFormSchema,
   PlayRankSchema,
-  PROTOCOL_VERSION,
   RoomCommandAckSchema,
   type RoomCommandAck,
   RoomIdSchema,
@@ -30,6 +29,7 @@ import {
 } from "@dglz/protocol";
 import { z } from "zod";
 
+import { ChallengeTemplateSchema } from "./challenge-template.js";
 import type { AppDatabase } from "./db/index.js";
 import { roomEvents } from "./db/schema.js";
 
@@ -64,6 +64,31 @@ const MemberJoinedPayloadSchema = z
 
 const MatchSelectedPayloadSchema = z
   .object({ type: z.literal("MatchSelected") })
+  .strict();
+
+const ChallengeHandSelectedPayloadSchema = z
+  .object({
+    type: z.literal("ChallengeHandSelected"),
+    template: ChallengeTemplateSchema,
+  })
+  .strict();
+const ChallengeHandStartedPayloadSchema = z
+  .object({
+    type: z.literal("ChallengeHandStarted"),
+    template: ChallengeTemplateSchema,
+    playerIds: z.array(PlayerIdSchema),
+    seatingPolicy: SeatingPolicySchema,
+  })
+  .strict()
+  .refine(
+    (event) =>
+      event.playerIds.length ===
+        (event.template.rulesetId === "dglz-6p-3d-v1" ? 6 : 4) &&
+      new Set(event.playerIds).size === event.playerIds.length,
+    "invalid-players",
+  );
+const ChallengeHandAbortedPayloadSchema = z
+  .object({ type: z.literal("ChallengeHandAborted") })
   .strict();
 
 const MatchRulesConfigurationReplacedPayloadSchema = z
@@ -252,6 +277,21 @@ const HandResultDeterminedPayloadSchema = z
       nextDealerTeam: event.nextDealerTeam,
       caughtPlayerIds: event.caughtPlayerIds,
     };
+  });
+
+const ChallengeHandCompletedPayloadSchema = z
+  .object({
+    type: z.literal("ChallengeHandCompleted"),
+    outcome: z.enum(["win", "draw"]),
+    firstFinisherTeam: TeamIndexSchema,
+    winningTeam: TeamIndexSchema.optional(),
+    nextDealerTeam: TeamIndexSchema,
+    caughtPlayerIds: z.array(PlayerIdSchema).max(6),
+  })
+  .strict()
+  .transform((event): Extract<Event, { type: "ChallengeHandCompleted" }> => {
+    const { winningTeam, ...result } = event;
+    return winningTeam === undefined ? result : { ...result, winningTeam };
   });
 
 const HandSettledPayloadSchema = z
@@ -457,6 +497,10 @@ const PersistedRoomEventRowSchema = z
       "RoomCreated",
       "MemberJoined",
       "MatchSelected",
+      "ChallengeHandSelected",
+      "ChallengeHandStarted",
+      "ChallengeHandCompleted",
+      "ChallengeHandAborted",
       "SeatAssigned",
       "ReadinessChanged",
       "ReadinessCleared",
@@ -535,27 +579,10 @@ const AcceptedCommandRowSchema = z.object({
   acknowledgement: z.string().min(1),
 });
 
-/** Decode stored acknowledgements across the protocol output-version bump. */
 export function decodePersistedRoomCommandAck(value: unknown): RoomCommandAck {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new UnsupportedPersistedEventError();
-  }
-  const record = value as Record<string, unknown>;
-  if (
-    record.protocolVersion !== 1 &&
-    record.protocolVersion !== 2 &&
-    record.protocolVersion !== PROTOCOL_VERSION
-  ) {
-    throw new UnsupportedPersistedEventError();
-  }
-  try {
-    return RoomCommandAckSchema.parse({
-      ...record,
-      protocolVersion: PROTOCOL_VERSION,
-    });
-  } catch {
-    throw new UnsupportedPersistedEventError();
-  }
+  const parsed = RoomCommandAckSchema.safeParse(value);
+  if (!parsed.success) throw new UnsupportedPersistedEventError();
+  return parsed.data;
 }
 
 export function findAcceptedCommand(
@@ -611,6 +638,14 @@ export type CommittedRoomCommand = Readonly<{
 }>;
 
 function eventPayload(event: Event): string {
+  if (event.type === "ChallengeHandAborted")
+    return JSON.stringify(ChallengeHandAbortedPayloadSchema.parse(event));
+  if (event.type === "ChallengeHandCompleted")
+    return JSON.stringify(ChallengeHandCompletedPayloadSchema.parse(event));
+  if (event.type === "ChallengeHandStarted")
+    return JSON.stringify(ChallengeHandStartedPayloadSchema.parse(event));
+  if (event.type === "ChallengeHandSelected")
+    return JSON.stringify(ChallengeHandSelectedPayloadSchema.parse(event));
   if (event.type === "RoomCreated") {
     return JSON.stringify(RoomCreatedPayloadSchema.parse(event));
   }
@@ -770,6 +805,8 @@ export type LoadedRoom = Readonly<{
   state: State;
   revision: number;
   lastHandResult?: PlayerViewLastHandResult;
+  handStartSequence?: number;
+  challengeParticipantIds?: readonly PlayerAccountId[];
 }>;
 
 function captureLastHandResult(
@@ -815,19 +852,40 @@ export function foldRoomEvents(
   let state = loadedRoom.state;
   let lastHandResult = loadedRoom.lastHandResult;
   let revision = loadedRoom.revision;
+  let handStartSequence = loadedRoom.handStartSequence;
+  let challengeParticipantIds = loadedRoom.challengeParticipantIds;
   for (const event of events) {
     state = evolve(state, event);
     revision += 1;
-    if (event.type === "MatchStarted") {
+    if (
+      event.type === "MatchStarted" ||
+      event.type === "HandStarted" ||
+      event.type === "ChallengeHandStarted"
+    ) {
+      handStartSequence = revision;
+      challengeParticipantIds =
+        event.type === "ChallengeHandStarted" ? event.playerIds : undefined;
+    }
+    if (
+      event.type === "MatchStarted" ||
+      event.type === "ChallengeHandStarted"
+    ) {
       lastHandResult = undefined;
     } else if (event.type === "HandSettled") {
-      lastHandResult = captureLastHandResult(state, event.handNumber);
+      lastHandResult = {
+        ...captureLastHandResult(state, event.handNumber),
+        ...(handStartSequence === undefined ? {} : { handStartSequence }),
+      };
     }
   }
   return {
     roomId: loadedRoom.roomId,
     state,
     revision,
+    ...(handStartSequence === undefined ? {} : { handStartSequence }),
+    ...(challengeParticipantIds === undefined
+      ? {}
+      : { challengeParticipantIds }),
     ...(lastHandResult === undefined ? {} : { lastHandResult }),
   };
 }
@@ -838,6 +896,14 @@ function parsePersistedRoomEvent(
 ): Event | undefined {
   const parsed = (() => {
     switch (eventType) {
+      case "ChallengeHandAborted":
+        return ChallengeHandAbortedPayloadSchema.safeParse(decoded);
+      case "ChallengeHandCompleted":
+        return ChallengeHandCompletedPayloadSchema.safeParse(decoded);
+      case "ChallengeHandStarted":
+        return ChallengeHandStartedPayloadSchema.safeParse(decoded);
+      case "ChallengeHandSelected":
+        return ChallengeHandSelectedPayloadSchema.safeParse(decoded);
       case "RoomCreated":
         return RoomCreatedPayloadSchema.safeParse(decoded);
       case "MemberJoined":
@@ -968,6 +1034,16 @@ export function deriveRoomView(
   if (!view.members.some((member) => member.playerId === playerId)) {
     return undefined;
   }
+  const lastHandResult =
+    loadedRoom.lastHandResult === undefined
+      ? undefined
+      : { ...loadedRoom.lastHandResult };
+  if (
+    lastHandResult !== undefined &&
+    !lastHandResult.seats.some((seat) => seat.playerId === playerId)
+  ) {
+    delete lastHandResult.handStartSequence;
+  }
   return RoomViewDataSchema.parse({
     revision: loadedRoom.revision,
     view: {
@@ -983,7 +1059,27 @@ export function deriveRoomView(
       ...(view.selectedActivity === undefined
         ? {}
         : { selectedActivity: view.selectedActivity }),
-      ...(view.teamLevels === undefined
+      ...(view.effectiveRulesetId === undefined
+        ? {}
+        : {
+            effectiveRulesetId: view.effectiveRulesetId,
+            effectiveRulesConfiguration: view.effectiveRulesConfiguration,
+          }),
+      ...(view.challengeSummary === undefined
+        ? {}
+        : {
+            challengeSummary: {
+              ...view.challengeSummary,
+              ...(loadedRoom.challengeParticipantIds?.includes(playerId) &&
+              loadedRoom.handStartSequence !== undefined
+                ? { handStartSequence: loadedRoom.handStartSequence }
+                : {}),
+            },
+          }),
+      ...(view.lifecycle === "LOBBY" && view.selectedActivity === "challenge"
+        ? { teamLevels: view.teamLevels, trumpRank: view.trumpRank }
+        : {}),
+      ...(view.teamLevels === undefined || view.selectedActivity === "challenge"
         ? {}
         : {
             teamLevels: view.teamLevels,
@@ -991,9 +1087,7 @@ export function deriveRoomView(
             ...(view.matchSummary === undefined
               ? {}
               : { matchSummary: view.matchSummary }),
-            ...(loadedRoom.lastHandResult === undefined
-              ? {}
-              : { lastHandResult: loadedRoom.lastHandResult }),
+            ...(lastHandResult === undefined ? {} : { lastHandResult }),
           }),
       ...(view.lifecycle !== "ACTIVE"
         ? {}
@@ -1003,10 +1097,14 @@ export function deriveRoomView(
             teamLevels: view.teamLevels,
             trumpRank: view.trumpRank,
             failureCounters: view.failureCounters,
-            completedHandCount: view.completedHandCount,
+            ...(view.selectedActivity === "challenge"
+              ? {}
+              : { completedHandCount: view.completedHandCount }),
             handNumber:
-              (view.completedHandCount ?? 0) +
-              (view.handResult === undefined ? 1 : 0),
+              view.selectedActivity === "challenge"
+                ? 1
+                : (view.completedHandCount ?? 0) +
+                  (view.handResult === undefined ? 1 : 0),
             handSizes: view.handSizes,
             hand: view.hand,
             ...(view.currentActor === undefined
@@ -1021,9 +1119,7 @@ export function deriveRoomView(
             ...(view.handResult === undefined
               ? {}
               : { handResult: view.handResult }),
-            ...(loadedRoom.lastHandResult === undefined
-              ? {}
-              : { lastHandResult: loadedRoom.lastHandResult }),
+            ...(lastHandResult === undefined ? {} : { lastHandResult }),
             passedPlayerIds: view.passedPlayerIds,
             finishPositions: view.finishPositions?.map(
               (position) => position ?? null,

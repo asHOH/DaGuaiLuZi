@@ -3,6 +3,66 @@ import { expect, it } from "vitest";
 import { rulesConfigurationPreset, type RoomViewData } from "@dglz/protocol";
 import { RoomTable } from "../src/RoomTable.js";
 
+it("shows Challenge rules and completion sharing only with an eligible source reference", () => {
+  const room: RoomViewData = {
+    revision: 10,
+    view: {
+      lifecycle: "LOBBY",
+      roomId: "room",
+      ownerId: "alice",
+      members: [{ playerId: "alice", joinOrder: 0, ready: false }],
+      seats: [{ seatIndex: 0, playerId: "alice" }],
+      rulesConfiguration: rulesConfigurationPreset("dglz-4p-2d-v1", "省心"),
+      seatingPolicy: "fixed",
+      matchRulesConfigurationLocked: false,
+      seatingPolicyLocked: false,
+      selectedActivity: "challenge",
+      effectiveRulesetId: "dglz-6p-3d-v1",
+      effectiveRulesConfiguration: rulesConfigurationPreset(
+        "dglz-6p-3d-v1",
+        "自主",
+      ),
+      teamLevels: ["3", "4"],
+      trumpRank: "4",
+      challengeSummary: {
+        outcome: "completed",
+        handStartSequence: 3,
+        result: {
+          outcome: "draw",
+          firstFinisherTeam: 0,
+          nextDealerTeam: 0,
+          caughtPlayerIds: [],
+        },
+      },
+    },
+  };
+  const render = (accountId: string) =>
+    renderToStaticMarkup(
+      <RoomTable
+        room={room}
+        accountId={accountId}
+        locked={false}
+        pending={false}
+        onCommand={() => {}}
+      />,
+    );
+  const owner = render("alice");
+  expect(owner).toContain("同牌挑战已完成");
+  expect(owner).toContain("本局平局");
+  expect(owner).toContain("生成同牌挑战码");
+  expect(owner).toContain("六人三副牌");
+  expect(owner).toContain("进贡方从候选中选择");
+  expect(owner).toContain("查看牌局");
+  expect(owner).toContain("选择比赛");
+  expect(owner).not.toContain("设置牌局规则");
+  if (room.view.lifecycle !== "LOBBY") throw new Error("expected-lobby");
+  delete room.view.challengeSummary!.handStartSequence;
+  const member = render("bob");
+  expect(member).not.toContain("生成同牌挑战码");
+  expect(member).not.toContain("查看牌局");
+  expect(member).toContain("同牌挑战已完成");
+});
+
 it("shows the final Match count and levels, with a winner only for natural completion", () => {
   const room: RoomViewData = {
     revision: 1,

@@ -32,13 +32,13 @@ export function selectionFeedback(
   view: Pick<
     Extract<PlayerView, { lifecycle: "ACTIVE" }>,
     "hand" | "rulesConfiguration" | "trumpRank" | "unbeatenPlay"
-  >,
+  > & { effectiveRulesConfiguration?: PlayerView["rulesConfiguration"] },
   selection: readonly string[],
 ): EvaluatePlayResult {
   const previous = view.unbeatenPlay;
   return evaluatePlay({
     cards: cardsFromCodes(selection),
-    configuration: view.rulesConfiguration,
+    configuration: view.effectiveRulesConfiguration ?? view.rulesConfiguration,
     trumpRank: view.trumpRank,
     isFinishingPlay: selection.length === view.hand.length,
     ...(previous === undefined

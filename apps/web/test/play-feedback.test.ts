@@ -29,6 +29,27 @@ it("uses own remaining hand size for finishing-wildcard feedback", () => {
   ).toMatchObject({ ok: true, play: { form: "four-plus-one" } });
 });
 
+it("evaluates a Challenge with its effective rules instead of the Room Match rules", () => {
+  const challenge = {
+    ...view,
+    rulesConfiguration: {
+      ...view.rulesConfiguration,
+      finishingWildcardInterpretation: "normal" as const,
+    },
+    effectiveRulesConfiguration: view.rulesConfiguration,
+  };
+  expect(selectionFeedback(challenge, view.hand)).toMatchObject({
+    ok: true,
+    play: { form: "mixed-suit-straight", rank: "5" },
+  });
+  expect(
+    selectionFeedback(
+      { ...view, rulesConfiguration: challenge.rulesConfiguration },
+      view.hand,
+    ),
+  ).toMatchObject({ ok: true, play: { form: "four-plus-one" } });
+});
+
 it("compares against the server's committed interpretation of the unbeaten play", () => {
   const hand: typeof view.hand = ["6C#1", "7D#1", "8S#1", "9H#1", "10C#1"];
   expect(

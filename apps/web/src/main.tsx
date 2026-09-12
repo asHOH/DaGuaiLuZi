@@ -372,6 +372,7 @@ function App() {
             )}
             {roomState.room && (
               <RoomTable
+                key={`${account.accountId}:${roomId}`}
                 room={roomState.room}
                 accountId={account.accountId}
                 locked={
@@ -382,6 +383,7 @@ function App() {
                 }
                 pending={roomState.pending}
                 onCommand={(payload) => connection.current?.send(payload)}
+                onFailure={fail}
               />
             )}
           </>

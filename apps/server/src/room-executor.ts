@@ -2,11 +2,13 @@ import { createHash, randomBytes } from "node:crypto";
 
 import {
   decide,
+  derivePlayerView,
   deriveStartRequirements,
   RANDOMNESS_VERSION,
   SHUFFLE_VERSION,
   type Command,
   type PlayerAccountId,
+  type State,
 } from "@dglz/game-core";
 import {
   PROTOCOL_VERSION,
@@ -15,10 +17,12 @@ import {
   type RoomCommandEnvelope,
   type RoomViewData,
   type ChallengePreview,
+  type RoomCommandPayload,
+  type ProtocolErrorCode,
 } from "@dglz/protocol";
 
 import type { AppDatabase } from "./db/index.js";
-import { createChallengeCode } from "./challenges.js";
+import { ChallengeLookup, createChallengeCode } from "./challenges.js";
 import {
   appendRoomEvents,
   commitRoomCommand,
@@ -33,12 +37,7 @@ export type RoomPresence = () => Promise<ReadonlySet<PlayerAccountId>>;
 
 function commandError(
   commandId: string,
-  code:
-    | "command-id-reused"
-    | "domain-rejected"
-    | "internal-error"
-    | "room-not-found"
-    | "stale-revision",
+  code: ProtocolErrorCode,
   details: Readonly<{ reason?: string; currentRevision?: number }> = {},
 ): RoomCommandAck {
   return RoomCommandAckSchema.parse({
@@ -65,41 +64,9 @@ export function roomCommandFingerprint(envelope: RoomCommandEnvelope): string {
 
 function toDomainCommand(
   accountId: PlayerAccountId,
-  envelope: RoomCommandEnvelope,
+  payload: Exclude<RoomCommandPayload, { type: "SelectChallengeHand" }>,
 ): Command {
-  switch (envelope.payload.type) {
-    case "JoinRoom":
-      return { type: "JoinRoom", playerId: accountId };
-    case "SelectMatch":
-      return { type: "SelectMatch", playerId: accountId };
-    case "AssignSeat":
-      return {
-        type: "AssignSeat",
-        playerId: accountId,
-        seatIndex: envelope.payload.seatIndex,
-      };
-    case "SetReadiness":
-      return {
-        type: "SetReadiness",
-        playerId: accountId,
-        ready: envelope.payload.ready,
-      };
-    case "Play":
-      return {
-        type: "Play",
-        playerId: accountId,
-        cards: envelope.payload.cards,
-      };
-    case "ReplaceMatchRulesConfiguration":
-    case "SelectTributeCard":
-    case "OfferReturnCandidates":
-    case "SelectReturnCard":
-    case "SubmitTieChoiceBallot":
-    case "AbortMatch":
-      return { ...envelope.payload, playerId: accountId };
-    case "Pass":
-      return { type: "Pass", playerId: accountId };
-  }
+  return { ...payload, playerId: accountId };
 }
 
 function freshStartCommand(
@@ -113,6 +80,13 @@ function freshStartCommand(
   };
 }
 
+function activityStartCommand(state: State): Command {
+  return derivePlayerView(state, "__room_start__").selectedActivity ===
+    "challenge"
+    ? { type: "StartChallengeHand" }
+    : freshStartCommand();
+}
+
 export class RoomExecutor {
   private current: LoadedRoom;
   private queue: Promise<void> = Promise.resolve();
@@ -120,6 +94,9 @@ export class RoomExecutor {
   public constructor(
     private readonly database: AppDatabase,
     loadedRoom: LoadedRoom,
+    private readonly challenges: ChallengeLookup = new ChallengeLookup(
+      database,
+    ),
   ) {
     this.current = loadedRoom;
   }
@@ -159,7 +136,12 @@ export class RoomExecutor {
   public resumeSettledHand(accountId: PlayerAccountId): Promise<void> {
     const result = this.queue.then(() => {
       const view = this.viewFor(accountId)?.view;
-      if (view?.lifecycle !== "ACTIVE" || view.handResult === undefined) return;
+      if (
+        view?.lifecycle !== "ACTIVE" ||
+        view.selectedActivity !== "match" ||
+        view.handResult === undefined
+      )
+        return;
       const decision = decide(
         this.current.state,
         freshStartCommand("StartNextHand"),
@@ -226,10 +208,21 @@ export class RoomExecutor {
 
     let decision;
     try {
-      decision = decide(
-        this.current.state,
-        toDomainCommand(accountId, envelope),
-      );
+      let command: Command;
+      if (envelope.payload.type === "SelectChallengeHand") {
+        const found = this.challenges.resolve(accountId, {
+          code: envelope.payload.code,
+        });
+        if (!found.ok) return commandError(envelope.commandId, found.code);
+        command = {
+          type: "SelectChallengeHand",
+          playerId: accountId,
+          template: found.template,
+        };
+      } else {
+        command = toDomainCommand(accountId, envelope.payload);
+      }
+      decision = decide(this.current.state, command);
     } catch {
       return commandError(envelope.commandId, "internal-error");
     }
@@ -261,7 +254,10 @@ export class RoomExecutor {
         ) {
           let startDecision;
           try {
-            startDecision = decide(candidate.state, freshStartCommand());
+            startDecision = decide(
+              candidate.state,
+              activityStartCommand(candidate.state),
+            );
           } catch {
             return commandError(envelope.commandId, "internal-error");
           }
@@ -280,7 +276,11 @@ export class RoomExecutor {
 
     try {
       const settled = deriveRoomView(candidate, accountId)?.view;
-      if (settled?.lifecycle === "ACTIVE" && settled.handResult !== undefined) {
+      if (
+        settled?.lifecycle === "ACTIVE" &&
+        settled.selectedActivity === "match" &&
+        settled.handResult !== undefined
+      ) {
         const next = decide(
           candidate.state,
           freshStartCommand("StartNextHand"),
@@ -351,7 +351,10 @@ export class RoomExecutor {
 
     let decision;
     try {
-      decision = decide(this.current.state, freshStartCommand());
+      decision = decide(
+        this.current.state,
+        activityStartCommand(this.current.state),
+      );
     } catch {
       return;
     }
@@ -377,8 +380,11 @@ export class RoomExecutor {
 
 export class RoomExecutorRegistry {
   private readonly executors = new Map<string, RoomExecutor>();
+  public readonly challenges: ChallengeLookup;
 
-  public constructor(private readonly database: AppDatabase) {}
+  public constructor(private readonly database: AppDatabase) {
+    this.challenges = new ChallengeLookup(database);
+  }
 
   public async getOrCreate(roomId: string): Promise<RoomExecutor | undefined> {
     const existing = this.executors.get(roomId);
@@ -388,7 +394,7 @@ export class RoomExecutorRegistry {
 
     const loaded = loadRoom(this.database, roomId);
     if (loaded === undefined) return undefined;
-    const executor = new RoomExecutor(this.database, loaded);
+    const executor = new RoomExecutor(this.database, loaded, this.challenges);
     this.executors.set(roomId, executor);
     return executor;
   }

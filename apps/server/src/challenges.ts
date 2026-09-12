@@ -13,12 +13,14 @@ import {
   ChallengeCodeSchema,
   ChallengePreviewSchema,
   RoomIdSchema,
+  LookupChallengeCodeSchema,
   type ChallengePreview,
 } from "@dglz/protocol";
 
 import type { AppDatabase } from "./db/index.js";
 import { challengeTemplates } from "./db/schema.js";
 import { readRoomEvents, UnsupportedPersistedEventError } from "./rooms.js";
+import { ChallengeTemplateSchema } from "./challenge-template.js";
 
 const TEMPLATE_SCHEMA_VERSION = 1;
 const StoredChallengeSchema = z
@@ -37,24 +39,7 @@ function decodeChallenge(row: unknown): {
 } {
   try {
     const stored = StoredChallengeSchema.parse(row);
-    const value: unknown = JSON.parse(stored.template);
-    // JSON arrays encode unfinished positions as null; the core uses undefined.
-    if (typeof value === "object" && value !== null && "setup" in value) {
-      const setup = value.setup;
-      if (
-        typeof setup === "object" &&
-        setup !== null &&
-        "kind" in setup &&
-        setup.kind === "subsequent-hand" &&
-        "finishPositions" in setup &&
-        Array.isArray(setup.finishPositions)
-      ) {
-        setup.finishPositions = setup.finishPositions.map(
-          (position: unknown) => (position === null ? undefined : position),
-        );
-      }
-    }
-    if (!isChallengeTemplate(value)) throw new UnsupportedPersistedEventError();
+    const value = ChallengeTemplateSchema.parse(JSON.parse(stored.template));
     return { code: stored.code, template: value };
   } catch {
     throw new UnsupportedPersistedEventError();
@@ -119,19 +104,32 @@ function completedSource(
   // ponytail: replay on Code creation; index completed Hands only if measured history size warrants it.
   for (const { sequence, event } of readRoomEvents(database, roomId)) {
     if (sequence === handStartSequence) {
-      if (event.type !== "MatchStarted" && event.type !== "HandStarted")
+      if (
+        event.type !== "MatchStarted" &&
+        event.type !== "HandStarted" &&
+        event.type !== "ChallengeHandStarted"
+      )
         return undefined;
-      const template = templateAtStart(event, state);
+      const template =
+        event.type === "ChallengeHandStarted"
+          ? event.template
+          : templateAtStart(event, state);
       if (!isChallengeTemplate(template))
         throw new UnsupportedPersistedEventError();
       source = { template, playerIds: event.playerIds };
     } else if (source !== undefined) {
-      if (event.type === "HandSettled") return source;
+      if (
+        event.type === "HandSettled" ||
+        event.type === "ChallengeHandCompleted"
+      )
+        return source;
       if (
         event.type === "MatchAborted" ||
         event.type === "MatchCompleted" ||
         event.type === "MatchStarted" ||
-        event.type === "HandStarted"
+        event.type === "HandStarted" ||
+        event.type === "ChallengeHandStarted" ||
+        event.type === "ChallengeHandAborted"
       )
         return undefined;
     }
@@ -211,4 +209,47 @@ export function lookupChallenge(
     .where(eq(challengeTemplates.code, code))
     .get();
   return row === undefined ? undefined : decodeChallenge(row);
+}
+
+export type ChallengeLookupResult =
+  | { ok: true; code: string; template: ChallengeTemplate }
+  | {
+      ok: false;
+      code:
+        | "rate-limited"
+        | "malformed-input"
+        | "not-found"
+        | "unsupported-persisted-event";
+    };
+
+/** One account budget shared by HTTP previews and socket selections in this application. */
+export class ChallengeLookup {
+  private readonly attempts = new Map<
+    string,
+    { count: number; expiresAt: number }
+  >();
+
+  public constructor(private readonly database: AppDatabase) {}
+
+  public resolve(accountId: string, input: unknown): ChallengeLookupResult {
+    const now = Date.now();
+    let window = this.attempts.get(accountId);
+    if (window === undefined || window.expiresAt <= now) {
+      window = { count: 0, expiresAt: now + 60_000 };
+      this.attempts.set(accountId, window);
+    }
+    if (++window.count > 20) return { ok: false, code: "rate-limited" };
+    const parsed = LookupChallengeCodeSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: "malformed-input" };
+    try {
+      const found = lookupChallenge(this.database, parsed.data.code);
+      return found === undefined
+        ? { ok: false, code: "not-found" }
+        : { ok: true, ...found };
+    } catch (error) {
+      if (error instanceof UnsupportedPersistedEventError)
+        return { ok: false, code: "unsupported-persisted-event" };
+      throw error;
+    }
+  }
 }

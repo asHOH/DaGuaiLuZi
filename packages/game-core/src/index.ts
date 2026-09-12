@@ -4446,6 +4446,11 @@ export function derivePlayerView(
           effectiveRulesConfiguration: cloneRulesConfiguration(
             current.challengeTemplate.rulesConfiguration,
           ),
+          teamLevels: [...current.challengeTemplate.teamLevels] as [
+            TeamLevel,
+            TeamLevel,
+          ],
+          trumpRank: current.challengeTemplate.trumpRank,
         }
       : current.lifecycle === "ACTIVE" &&
           current.activeMatch?.kind === "challenge"
@@ -4456,6 +4461,13 @@ export function derivePlayerView(
           }
         : {}),
   };
+
+  if (
+    current.lifecycle === "LOBBY" &&
+    current.selectedActivity === "challenge"
+  ) {
+    return deepFreeze(view);
+  }
 
   if (current.activeMatch !== undefined) {
     const retainedFacts =

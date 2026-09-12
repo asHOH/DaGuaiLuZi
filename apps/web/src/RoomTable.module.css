@@ -29,6 +29,43 @@
   margin-bottom: 0.75rem;
 }
 
+.challengePanel {
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1.2rem;
+}
+
+.challengePanel form,
+.challengeShare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.challengePanel label,
+.challengeShare label {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.challengeShare input {
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.challengeShare p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.challengePreview {
+  border-left: 3px solid var(--brass);
+  margin-top: 1rem;
+  padding-left: 1rem;
+}
+
 .sectionHeading,
 .tableHeading,
 .handHeading,
@@ -663,6 +700,10 @@
   margin-top: 1rem;
   padding-top: 0.75rem;
   color: var(--ivory);
+}
+
+.lobbyMain > .result {
+  margin-bottom: 1.5rem;
 }
 
 .previousHand {

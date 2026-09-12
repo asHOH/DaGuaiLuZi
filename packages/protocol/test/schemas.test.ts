@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   ChallengeCodeSchema,
+  PlayerViewSchema,
+  RoomCommandPayloadSchema,
   ChallengePreviewSchema,
   CreateChallengeCodeSchema,
   LookupChallengeCodeSchema,
@@ -284,9 +286,30 @@ describe("protocol schemas", () => {
       },
     };
     expect(RoomViewDataSchema.safeParse(data).success).toBe(true);
+    for (const handStartSequence of [12, 0, -1, 1.5]) {
+      expect(
+        RoomViewDataSchema.safeParse({
+          ...data,
+          view: {
+            ...data.view,
+            challengeSummary: {
+              outcome: "completed",
+              handStartSequence,
+              result: {
+                outcome: "draw",
+                firstFinisherTeam: 0,
+                nextDealerTeam: 0,
+                caughtPlayerIds: [],
+              },
+            },
+          },
+        }).success,
+      ).toBe(handStartSequence === 12);
+    }
     expect(
       PlayerViewLastHandResultSchema.safeParse({
         handNumber: 1,
+        handStartSequence: 12,
         result: {
           outcome: "draw",
           firstFinisherTeam: 0,
@@ -395,4 +418,78 @@ describe("protocol schemas", () => {
         .success,
     ).toBe(false);
   });
+});
+
+it("validates Challenge commands and private projections without Match counters", () => {
+  const code = "1234567890abcdef1234567890abcdef";
+  expect(
+    RoomCommandPayloadSchema.safeParse({ type: "SelectChallengeHand", code })
+      .success,
+  ).toBe(true);
+  expect(
+    RoomCommandPayloadSchema.safeParse({
+      type: "SelectChallengeHand",
+      code,
+      template: {},
+    }).success,
+  ).toBe(false);
+  expect(
+    RoomCommandPayloadSchema.safeParse({ type: "AbortChallengeHand" }).success,
+  ).toBe(true);
+  const view = {
+    roomId: "da9f540e-fd4b-4d74-be39-ccc7f080cab4",
+    ownerId: "alice",
+    members: [],
+    seats: [],
+    rulesConfiguration: fourPlayerConfiguration,
+    seatingPolicy: "fixed",
+    matchRulesConfigurationLocked: true,
+    seatingPolicyLocked: true,
+    lifecycle: "ACTIVE",
+    selectedActivity: "challenge",
+    effectiveRulesetId: "dglz-4p-2d-v1",
+    effectiveRulesConfiguration: fourPlayerConfiguration,
+    dealerSeat: 0,
+    dealerTeam: 0,
+    teamLevels: ["2", "2"],
+    trumpRank: "2",
+    failureCounters: [0, 0],
+    handNumber: 1,
+    handSizes: [27, 27, 27, 27],
+    hand: [],
+    passedPlayerIds: [],
+    finishPositions: [],
+    setupStage: "play",
+    tributeTransfers: [],
+    returnCandidates: [],
+    pendingPlayerIds: [],
+    eligibleTributeCards: [],
+  };
+  expect(PlayerViewSchema.safeParse(view).success).toBe(true);
+  for (const extra of [
+    { completedHandCount: 0 },
+    { handSeed: "secret" },
+    { effectiveRulesetId: "dglz-6p-3d-v1" },
+    { handNumber: 2 },
+    { effectiveRulesConfiguration: undefined },
+  ]) {
+    expect(PlayerViewSchema.safeParse({ ...view, ...extra }).success).toBe(
+      false,
+    );
+  }
+  const {
+    effectiveRulesetId: _id,
+    effectiveRulesConfiguration: _config,
+    ...match
+  } = view;
+  expect(
+    PlayerViewSchema.safeParse({ ...match, selectedActivity: "match" }).success,
+  ).toBe(false);
+  expect(
+    PlayerViewSchema.safeParse({
+      ...match,
+      selectedActivity: "match",
+      completedHandCount: 0,
+    }).success,
+  ).toBe(true);
 });

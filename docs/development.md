@@ -43,11 +43,11 @@ pnpm --filter @dglz/server start
 
 Run the server tests with `pnpm --filter @dglz/server test`; they use temporary SQLite databases and real Socket.IO clients.
 
-Implemented seam: login, Room creation/joining, Match selection, seats/readiness, unlocked rules/presets, connected Match start, private play, settlement with atomic next-Hand setup, Tribute/Return/tie choices, retained Hand results, natural Match completion, owner abort, subsequent Matches, and command/reconnect recovery. Room executors retain projections after initial event replay; settled legacy Rooms resume once on authorized access. Challenge Hand and history transport remain separate work. Protocol v3 requires older browsers to reload; v1/v2 stored acknowledgements remain readable in the current implementation; preserving that support is not required by the [MVP compatibility policy](architecture.md#mvp-compatibility).
+Implemented seam: login, Room creation/joining, Match/Challenge selection, seats/readiness, unlocked rules/presets, connected start, private play, Tribute/Return/tie choices, settlement, owner abort, and command/reconnect recovery. Only Matches advance to another Hand; Challenges return to the lobby after one result. Room executors retain projections after initial event replay. Protocol v5 requires older browsers to reload; unsupported stored acknowledgements are rejected under the [MVP compatibility policy](architecture.md#mvp-compatibility).
 
-### Challenge foundation
+### Challenge integration
 
-`POST /api/rooms/:roomId/challenges` accepts `{ handStartSequence }` from a source-Hand participant and returns its stable Code/public preview. `POST /api/challenges/lookup` accepts `{ code }` from any authenticated account (20 lookups/minute/account). Codes stay out of request URLs; Templates/Seeds remain server-private. Phase 1 derives only completed Match Hands; Challenge transport and completed-Challenge sources follow in Phase 2. See [integration phases](challenge-integration-plan.md).
+`POST /api/rooms/:roomId/challenges` accepts `{ handStartSequence }` from a completed Match/Challenge Hand participant and returns its stable Code/public preview. Displayed completed results include that reference only for participants. `POST /api/challenges/lookup` accepts `{ code }` from any authenticated account. Socket `SelectChallengeHand { code }` resolves the Template server-side; HTTP lookup and socket selection share 20 lookups/minute/account. `AbortChallengeHand` returns to the lobby without a result. Codes stay out of request URLs/logs; Templates/Seeds remain server-private. The Chinese UI generates/copies Codes from results, previews/selects Codes in the lobby, and shows Challenge completion. History/Replay UI follows separately. See [integration phases](challenge-integration-plan.md).
 
 ## Web
 

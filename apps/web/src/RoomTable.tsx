@@ -8,6 +8,7 @@ import {
 
 import { errorMessage } from "./api";
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
+import { ChallengeEntry, ChallengeShare } from "./ChallengeControls";
 
 import styles from "./RoomTable.module.css";
 
@@ -17,6 +18,7 @@ type RoomTableProps = {
   locked: boolean;
   pending: boolean;
   onCommand: (payload: RoomCommandPayload) => void;
+  onFailure?: ((reason: unknown) => void) | undefined;
 };
 
 const POSITION_NAMES = ["一", "二", "三", "四", "五", "六"];
@@ -131,8 +133,10 @@ function memberDisplay(
   return seatIndex === undefined ? "已加入" : positionLabel(seatIndex);
 }
 
-function rulesConfiguration(view: RoomViewData["view"]) {
-  return Object.entries(view.rulesConfiguration).map(([key, value]) => (
+function rulesConfiguration(
+  configuration: RoomViewData["view"]["rulesConfiguration"],
+) {
+  return Object.entries(configuration).map(([key, value]) => (
     <div className={styles.ruleRow} key={key}>
       <dt>{RULE_LABELS[key] ?? key}</dt>
       <dd>{RULE_VALUES[value] ?? value}</dd>
@@ -216,13 +220,17 @@ function RulesDetails({
   disabled: boolean;
   onCommand?: RoomTableProps["onCommand"];
 }) {
+  const configuration =
+    view.selectedActivity === "challenge" &&
+    "effectiveRulesConfiguration" in view
+      ? (view.effectiveRulesConfiguration ?? view.rulesConfiguration)
+      : view.rulesConfiguration;
   return (
     <details className={styles.rulesDetails}>
       <summary>
         <span>牌局规则</span>
         <span className={styles.summaryMeta}>
-          {RULE_VALUES[view.rulesConfiguration.rulesetId] ??
-            view.rulesConfiguration.rulesetId}
+          {RULE_VALUES[configuration.rulesetId] ?? configuration.rulesetId}
         </span>
       </summary>
       <div className={styles.rulesBody}>
@@ -236,7 +244,9 @@ function RulesDetails({
           )}
         </div>
         {onCommand === undefined ? (
-          <dl className={styles.ruleList}>{rulesConfiguration(view)}</dl>
+          <dl className={styles.ruleList}>
+            {rulesConfiguration(configuration)}
+          </dl>
         ) : (
           <fieldset className={styles.ruleEditor} disabled={disabled}>
             <legend>设置牌局规则</legend>
@@ -308,12 +318,14 @@ function LobbyView({
   pending,
   view,
   onCommand,
+  onFailure,
 }: {
   accountId: string;
   locked: boolean;
   pending: boolean;
   view: Extract<RoomViewData["view"], { lifecycle: "LOBBY" }>;
   onCommand: (payload: RoomCommandPayload) => void;
+  onFailure: RoomTableProps["onFailure"];
 }) {
   const currentMember = view.members.find(
     (member) => member.playerId === accountId,
@@ -325,6 +337,26 @@ function LobbyView({
   return (
     <div className={styles.lobbyLayout}>
       <section className={styles.lobbyMain} aria-labelledby="lobby-title">
+        {view.challengeSummary !== undefined && (
+          <section className={styles.result} aria-label="同牌挑战结果">
+            <h3>同牌挑战已完成</h3>
+            <p>
+              {view.challengeSummary.result.outcome === "draw"
+                ? "本局平局"
+                : `${view.challengeSummary.result.winningTeam === 0 ? "一队" : "二队"}获胜`}{" "}
+              · 本次挑战结束
+            </p>
+            {view.challengeSummary.handStartSequence !== undefined && (
+              <ChallengeShare
+                key={view.challengeSummary.handStartSequence}
+                roomId={view.roomId}
+                handStartSequence={view.challengeSummary.handStartSequence}
+                disabled={actionsDisabled}
+                onFailure={onFailure}
+              />
+            )}
+          </section>
+        )}
         {view.matchSummary !== undefined && (
           <section className={styles.result} aria-label="比赛结果">
             <h3>
@@ -366,20 +398,24 @@ function LobbyView({
         </ol>
 
         <div className={styles.lobbyActions}>
-          {view.ownerId === accountId &&
-            view.selectedActivity === undefined && (
-              <button
-                className={styles.primaryButton}
-                type="button"
-                disabled={actionsDisabled}
-                onClick={() => onCommand({ type: "SelectMatch" })}
-              >
-                选择比赛
-              </button>
-            )}
+          {view.ownerId === accountId && view.selectedActivity !== "match" && (
+            <button
+              className={styles.primaryButton}
+              type="button"
+              disabled={actionsDisabled}
+              onClick={() => onCommand({ type: "SelectMatch" })}
+            >
+              选择比赛
+            </button>
+          )}
           {view.ownerId === accountId && view.selectedActivity === "match" && (
             <span className={styles.selectionNotice}>
               已选择比赛，等大家准备
+            </span>
+          )}
+          {view.selectedActivity === "challenge" && (
+            <span className={styles.selectionNotice}>
+              已选择同牌挑战 · 只打一局
             </span>
           )}
           {currentSeat !== undefined && currentMember !== undefined && (
@@ -404,6 +440,20 @@ function LobbyView({
             </span>
           )}
         </div>
+        {view.selectedActivity === "challenge" &&
+          view.teamLevels !== undefined && (
+            <p>
+              一队等级 {view.teamLevels[0]} · 二队等级 {view.teamLevels[1]} ·
+              当前级牌 {view.trumpRank}
+            </p>
+          )}
+        {view.ownerId === accountId && (
+          <ChallengeEntry
+            disabled={actionsDisabled}
+            onCommand={onCommand}
+            onFailure={onFailure}
+          />
+        )}
       </section>
 
       <aside className={styles.lobbyAside} aria-label="房间状态">
@@ -449,7 +499,9 @@ function LobbyView({
         <RulesDetails
           view={view}
           disabled={actionsDisabled}
-          {...(view.ownerId === accountId && !view.matchRulesConfigurationLocked
+          {...(view.ownerId === accountId &&
+          !view.matchRulesConfigurationLocked &&
+          view.selectedActivity !== "challenge"
             ? { onCommand }
             : {})}
         />
@@ -460,8 +512,14 @@ function LobbyView({
 
 function PreviousHand({
   summary,
+  roomId,
+  disabled,
+  onFailure,
 }: {
   summary: NonNullable<RoomViewData["view"]["lastHandResult"]>;
+  roomId: string;
+  disabled: boolean;
+  onFailure: RoomTableProps["onFailure"];
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -495,6 +553,15 @@ function PreviousHand({
               )
               .join(" · ")}
           </p>
+          {summary.handStartSequence !== undefined && (
+            <ChallengeShare
+              key={summary.handStartSequence}
+              roomId={roomId}
+              handStartSequence={summary.handStartSequence}
+              disabled={disabled}
+              onFailure={onFailure}
+            />
+          )}
         </>
       )}
     </section>
@@ -600,11 +667,14 @@ function ActiveView({
           (candidate) => candidate.recipientId === pendingActor,
         )
       : undefined;
+  const configuration =
+    view.selectedActivity === "challenge"
+      ? view.effectiveRulesConfiguration
+      : view.rulesConfiguration;
   const candidateCount =
     transfer !== undefined &&
-    view.rulesConfiguration.rulesetId === "dglz-6p-3d-v1" &&
-    view.rulesConfiguration.returnCardSelection ===
-      "giver-choice-from-candidates"
+    configuration.rulesetId === "dglz-6p-3d-v1" &&
+    configuration.returnCardSelection === "giver-choice-from-candidates"
       ? transfer.rank === "BIG"
         ? 3
         : transfer.rank === "SMALL"
@@ -648,9 +718,9 @@ function ActiveView({
         <div className={styles.tableHeading}>
           <div>
             <p className={styles.eyebrow}>
-              牌局 · 第{" "}
+              {view.selectedActivity === "challenge" ? "同牌挑战" : "牌局"} · 第{" "}
               {view.handNumber ??
-                view.completedHandCount +
+                (view.completedHandCount ?? 0) +
                   (view.handResult === undefined ? 1 : 0)}{" "}
               局
             </p>
@@ -1031,6 +1101,7 @@ export function RoomTable({
   locked,
   pending,
   onCommand,
+  onFailure,
 }: RoomTableProps) {
   const lifecycleLabel =
     room.view.lifecycle === "LOBBY" ? "大厅" : "牌局进行中";
@@ -1044,9 +1115,18 @@ export function RoomTable({
               type="button"
               className={styles.secondaryButton}
               disabled={locked || pending}
-              onClick={() => onCommand({ type: "AbortMatch" })}
+              onClick={() =>
+                onCommand({
+                  type:
+                    room.view.selectedActivity === "challenge"
+                      ? "AbortChallengeHand"
+                      : "AbortMatch",
+                })
+              }
             >
-              终止比赛
+              {room.view.selectedActivity === "challenge"
+                ? "终止同牌挑战"
+                : "终止比赛"}
             </button>
           )}
         <span className={styles.lifecycle} data-testid="room-lifecycle">
@@ -1058,6 +1138,9 @@ export function RoomTable({
         <PreviousHand
           key={`${room.view.roomId}:${accountId}:${room.view.lastHandResult.handNumber}:${room.view.lastHandResult.seats.map((seat) => seat.playerId).join(",")}`}
           summary={room.view.lastHandResult}
+          roomId={room.view.roomId}
+          disabled={locked || pending}
+          onFailure={onFailure}
         />
       )}
 
@@ -1068,10 +1151,11 @@ export function RoomTable({
           pending={pending}
           view={room.view}
           onCommand={onCommand}
+          onFailure={onFailure}
         />
       ) : (
         <ActiveView
-          key={`${room.view.roomId}:${accountId}:${room.view.handNumber ?? room.view.completedHandCount + (room.view.handResult === undefined ? 1 : 0)}`}
+          key={`${room.view.roomId}:${accountId}:${room.view.handNumber ?? (room.view.completedHandCount ?? 0) + (room.view.handResult === undefined ? 1 : 0)}`}
           accountId={accountId}
           view={room.view}
           locked={locked}
