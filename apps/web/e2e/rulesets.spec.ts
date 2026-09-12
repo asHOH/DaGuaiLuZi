@@ -14,6 +14,7 @@ import {
 import { decodeCardInstance } from "@dglz/game-rules";
 import { io, type Socket } from "socket.io-client";
 import {
+  errorEnvelope,
   LoginResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
@@ -960,6 +961,23 @@ async function runHappyPath(
       expect(
         await ownerPage.evaluate(() => navigator.clipboard.readText()),
       ).toBe(challengeCode);
+      await ownerPage.evaluate(() => {
+        Object.defineProperty(navigator.clipboard, "writeText", {
+          configurable: true,
+          value: () =>
+            Promise.reject(new DOMException("Denied", "NotAllowedError")),
+        });
+      });
+      await ownerPage.getByRole("button", { name: "复制同牌挑战码" }).click();
+      await expect(
+        ownerPage.getByRole("status").filter({ hasText: "未能自动复制" }),
+      ).toHaveText("未能自动复制，请选中上方挑战码后手动复制。");
+      await codeField.focus();
+      expect(
+        await codeField.evaluate((input: HTMLInputElement) =>
+          input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0),
+        ),
+      ).toBe(challengeCode);
     }
     await expect(
       joinerPage.getByRole("button", { name: "终止比赛", exact: true }),
@@ -1248,6 +1266,76 @@ async function runHappyPath(
     await expect(
       ownerPage.getByRole("region", { name: "同牌挑战结果", exact: true }),
     ).toContainText("同牌挑战已完成");
+    if (playerCount === 4) {
+      for (const operation of ["lookup", "generate"] as const) {
+        for (const code of ["unauthorized", "reload-required"] as const) {
+          await test.step(`${operation}: ${code} clears the Room and allows recovery`, async () => {
+            const endpoint =
+              operation === "lookup"
+                ? "**/api/challenges/lookup"
+                : `**/api/rooms/${roomId}/challenges`;
+            await ownerPage.route(
+              endpoint,
+              (route) =>
+                route.fulfill({
+                  status: code === "unauthorized" ? 401 : 409,
+                  json: errorEnvelope(code),
+                }),
+              { times: 1 },
+            );
+            if (operation === "lookup") {
+              await ownerPage
+                .getByLabel("同牌挑战码", { exact: true })
+                .fill(challengeCode);
+              await ownerPage
+                .getByRole("button", { name: "查看牌局", exact: true })
+                .click();
+            } else {
+              await ownerPage
+                .getByRole("button", { name: "生成同牌挑战码" })
+                .click();
+            }
+            await expect(ownerPage.getByRole("alert")).toContainText(
+              code === "unauthorized"
+                ? "登录已失效，请重新登录。"
+                : "版本已更新，请刷新页面。",
+            );
+            await expect(ownerPage.getByTestId("room-lifecycle")).toHaveCount(
+              0,
+            );
+            await expect(
+              ownerPage.getByRole("region", {
+                name: "同牌挑战结果",
+                exact: true,
+              }),
+            ).toHaveCount(0);
+            await expect(
+              ownerPage.getByRole("button", { name: "退出登录", exact: true }),
+            ).toHaveCount(0);
+            if (code === "unauthorized") {
+              await expect(
+                ownerPage.getByRole("button", { name: "登录", exact: true }),
+              ).toBeVisible();
+              // The injected failure leaves the real session valid; exercise session recovery.
+              await ownerPage
+                .getByRole("button", { name: "重试恢复登录", exact: true })
+                .click();
+            } else {
+              await ownerPage
+                .getByRole("button", { name: "刷新页面", exact: true })
+                .click();
+            }
+            await expect(
+              ownerPage.getByRole("region", {
+                name: "同牌挑战结果",
+                exact: true,
+              }),
+            ).toContainText("同牌挑战已完成");
+            await expect(ownerPage.getByRole("alert")).toHaveCount(0);
+          });
+        }
+      }
+    }
     await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();
     await expect(codeField).toHaveValue(/^[0-9a-f]{12}$/);
     const completedChallengeCode = await codeField.inputValue();

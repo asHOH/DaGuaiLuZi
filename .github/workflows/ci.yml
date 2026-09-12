@@ -29,3 +29,9 @@ jobs:
 
       - name: Check
         run: pnpm check
+
+      - name: Install Chromium
+        run: pnpm --filter @dglz/web exec playwright install --with-deps chromium
+
+      - name: Browser checks
+        run: pnpm --filter @dglz/web test:browser

@@ -31,7 +31,11 @@ import {
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
 import { hashSessionToken } from "../src/auth.js";
-import { createChallengeCode, lookupChallenge } from "../src/challenges.js";
+import {
+  ChallengeLookup,
+  createChallengeCode,
+  lookupChallenge,
+} from "../src/challenges.js";
 import { openDatabase } from "../src/db/index.js";
 import { accounts, challengeTemplates, sessions } from "../src/db/schema.js";
 import { RoomExecutorRegistry } from "../src/room-executor.js";
@@ -424,6 +428,27 @@ it("rolls back failed Code creation and rejects corrupted or incompatible stored
   expect(() => lookupChallenge(game.database, result.code)).toThrow(
     UnsupportedPersistedEventError,
   );
+});
+
+it("restores the full lookup budget exactly when its window expires", async () => {
+  const database = openDatabase(":memory:");
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+  try {
+    const lookup = new ChallengeLookup(database);
+    const resolve = () => lookup.resolve("player", { code: "0".repeat(12) });
+    for (let i = 0; i < 20; i++)
+      expect(resolve()).toEqual({ ok: false, code: "not-found" });
+    expect(resolve()).toEqual({ ok: false, code: "rate-limited" });
+    clock.mockReturnValue(60_999);
+    expect(resolve()).toEqual({ ok: false, code: "rate-limited" });
+    clock.mockReturnValue(61_000);
+    for (let i = 0; i < 20; i++)
+      expect(resolve()).toEqual({ ok: false, code: "not-found" });
+    expect(resolve()).toEqual({ ok: false, code: "rate-limited" });
+  } finally {
+    clock.mockRestore();
+    database.close();
+  }
 });
 
 it("requires authentication, limits invalid lookups, returns public metadata, and keeps Codes out of logs", async () => {
