@@ -387,9 +387,10 @@ describe("protocol schemas", () => {
   });
 
   it("validates Challenge references and rejects private fields in public previews", () => {
-    const code = "1234567890abcdef1234567890abcdef";
+    const code = "123456789abc";
     expect(LookupChallengeCodeSchema.parse({ code })).toEqual({ code });
     expect(ChallengeCodeSchema.safeParse("123").success).toBe(false);
+    expect(ChallengeCodeSchema.safeParse("a".repeat(32)).success).toBe(false);
     expect(
       CreateChallengeCodeSchema.safeParse({ handStartSequence: 0 }).success,
     ).toBe(false);
@@ -421,7 +422,7 @@ describe("protocol schemas", () => {
 });
 
 it("validates Challenge commands and private projections without Match counters", () => {
-  const code = "1234567890abcdef1234567890abcdef";
+  const code = "123456789abc";
   expect(
     RoomCommandPayloadSchema.safeParse({ type: "SelectChallengeHand", code })
       .success,

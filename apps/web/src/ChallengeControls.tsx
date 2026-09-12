@@ -47,7 +47,7 @@ export function ChallengeEntry({
     event.preventDefault();
     const parsed = ChallengeCodeSchema.safeParse(code.trim().toLowerCase());
     if (!parsed.success) {
-      setError("请输入完整的 32 位同牌挑战码。");
+      setError("请输入完整的 12 位同牌挑战码。");
       return;
     }
     const generation = ++request.current;

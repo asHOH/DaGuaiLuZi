@@ -170,22 +170,17 @@ export function createChallengeCode(
       .from(challengeTemplates)
       .where(reference)
       .get();
-    if (row === undefined) {
+    for (let attempt = 0; row === undefined && attempt < 8; attempt++) {
       database.db
         .insert(challengeTemplates)
         .values({
-          code: randomBytes(16).toString("hex"),
+          code: randomBytes(6).toString("hex"),
           sourceRoomId: roomId,
           sourceHandStartSequence: handStartSequence,
           templateSchemaVersion: TEMPLATE_SCHEMA_VERSION,
           template: JSON.stringify(source.template),
         })
-        .onConflictDoNothing({
-          target: [
-            challengeTemplates.sourceRoomId,
-            challengeTemplates.sourceHandStartSequence,
-          ],
-        })
+        .onConflictDoNothing()
         .run();
       row = database.db
         .select()
@@ -193,6 +188,7 @@ export function createChallengeCode(
         .where(reference)
         .get();
     }
+    if (row === undefined) throw new Error("challenge-code-generation-failed");
     const stored = decodeChallenge(row);
     return challengePreview(stored.code, stored.template);
   })();

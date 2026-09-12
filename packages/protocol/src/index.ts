@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 5 as const;
+export const PROTOCOL_VERSION = 6 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
@@ -12,7 +12,7 @@ export const SeatingPolicySchema = z.enum(["fixed", "randomized"]);
 export const RoomIdSchema = z.string().uuid();
 export const CommandIdSchema = z.string().uuid();
 export const RoomRevisionSchema = z.number().int().positive();
-export const ChallengeCodeSchema = z.string().regex(/^[0-9a-f]{32}$/);
+export const ChallengeCodeSchema = z.string().regex(/^[0-9a-f]{12}$/);
 export const CreateChallengeCodeSchema = z
   .object({ handStartSequence: z.number().int().positive() })
   .strict();

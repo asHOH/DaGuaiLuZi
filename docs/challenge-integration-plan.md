@@ -8,7 +8,7 @@ Scope: [Challenge Hand Sharing](challenge-hand-sharing.md). Reuse the existing c
 | 2 | Protocol/executor integration for Challenge selection, connected start, play, completion, abort, and recovery. | Independent Code reuse preserves the source; one-Hand completion and abort privacy hold. |
 | 3 | Chinese Code sharing/entry, Challenge setup/results, browser acceptance. | Both Ruleset journeys pass. |
 
-Phase 1 materializes a Template/Code on the first participant request, serialized by the source Room executor. `(Room ID, Hand start-event sequence)` identifies the source across Matches; SQLite enforces uniqueness. A Code contains 128 random bits. Lookup receives it in a POST body and returns only public configuration/levels; no Template, Seed, or source identities cross HTTP. Unsupported persisted versions are rejected.
+Phase 1 materializes a Template/Code on the first participant request, serialized by the source Room executor. `(Room ID, Hand start-event sequence)` identifies the source across Matches; SQLite enforces uniqueness. A Code contains 48 random bits encoded as 12 lowercase hexadecimal characters; collisions are retried. Lookup receives it in a POST body and returns only public configuration/levels; no Template, Seed, or source identities cross HTTP. Unsupported persisted versions are rejected.
 
 Per phase: focused checks, Astra review, filtered fixes by a different Astra worker, coordinator verification, then report.
 

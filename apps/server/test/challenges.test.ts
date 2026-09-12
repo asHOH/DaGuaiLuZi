@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,6 +43,14 @@ import {
   deriveRoomView,
   UnsupportedPersistedEventError,
 } from "../src/rooms.js";
+
+vi.mock("node:crypto", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:crypto")>();
+  return {
+    ...original,
+    randomBytes: vi.fn<typeof original.randomBytes>(original.randomBytes),
+  };
+});
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -256,11 +264,16 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       ),
     ).toBe(true);
     const first = preview(requests[0]!);
-    expect(first.code).toMatch(/^[0-9a-f]{32}$/);
+    expect(first.code).toMatch(/^[0-9a-f]{12}$/);
+    // Force a collision with another completed Hand; retry must keep its Code intact.
+    const generate = vi.mocked<(size: number) => Buffer>(randomBytes);
+    generate.mockReturnValueOnce(Buffer.from(first.code, "hex"));
+    const callsBefore = generate.mock.calls.length;
     const second = preview(
       await executor.createChallengeCode(game.playerIds[0]!, nextStart),
     );
     expect(second.code).not.toBe(first.code);
+    expect(generate.mock.calls.slice(callsBefore)).toEqual([[6], [6]]);
     const initialTemplate = lookupChallenge(
       game.database,
       first.code,
@@ -511,7 +524,7 @@ it("requires authentication, limits invalid lookups, returns public metadata, an
       (
         await request(
           "/api/challenges/lookup",
-          { code: i.toString(16).padStart(32, "0") },
+          { code: i.toString(16).padStart(12, "0") },
           outsider,
         )
       ).statusCode,
@@ -890,7 +903,7 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       expect(
         (
           await target.request("/api/challenges/lookup", {
-            code: "0".repeat(32),
+            code: "0".repeat(12),
           })
         ).statusCode,
       ).toBe(404);

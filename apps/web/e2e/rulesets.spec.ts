@@ -946,7 +946,7 @@ async function runHappyPath(
     );
     await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();
     const codeField = ownerPage.getByLabel("本局同牌挑战码", { exact: true });
-    await expect(codeField).toHaveValue(/^[0-9a-f]{32}$/);
+    await expect(codeField).toHaveValue(/^[0-9a-f]{12}$/);
     const challengeCode = await codeField.inputValue();
     await expect(
       ownerPage.getByRole("button", { name: "复制同牌挑战码" }),
@@ -1066,11 +1066,11 @@ async function runHappyPath(
         .getByRole("button", { name: "查看牌局", exact: true })
         .click();
       await expect(ownerPage.getByRole("alert")).toHaveText(
-        "请输入完整的 32 位同牌挑战码。",
+        "请输入完整的 12 位同牌挑战码。",
       );
       await ownerPage
         .getByLabel("同牌挑战码", { exact: true })
-        .fill("f".repeat(32));
+        .fill("f".repeat(12));
       await ownerPage
         .getByRole("button", { name: "查看牌局", exact: true })
         .click();
@@ -1249,7 +1249,7 @@ async function runHappyPath(
       ownerPage.getByRole("region", { name: "同牌挑战结果", exact: true }),
     ).toContainText("同牌挑战已完成");
     await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();
-    await expect(codeField).toHaveValue(/^[0-9a-f]{32}$/);
+    await expect(codeField).toHaveValue(/^[0-9a-f]{12}$/);
     const completedChallengeCode = await codeField.inputValue();
     await ownerPage.reload();
     await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();

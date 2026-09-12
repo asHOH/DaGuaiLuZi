@@ -43,7 +43,7 @@ pnpm --filter @dglz/server start
 
 Run the server tests with `pnpm --filter @dglz/server test`; they use temporary SQLite databases and real Socket.IO clients.
 
-Implemented seam: login, Room creation/joining, Match/Challenge selection, seats/readiness, unlocked rules/presets, connected start, private play, Tribute/Return/tie choices, settlement, owner abort, and command/reconnect recovery. Only Matches advance to another Hand; Challenges return to the lobby after one result. Room executors retain projections after initial event replay. Protocol v5 requires older browsers to reload; unsupported stored acknowledgements are rejected under the [MVP compatibility policy](architecture.md#mvp-compatibility).
+Implemented seam: login, Room creation/joining, Match/Challenge selection, seats/readiness, unlocked rules/presets, connected start, private play, Tribute/Return/tie choices, settlement, owner abort, and command/reconnect recovery. Only Matches advance to another Hand; Challenges return to the lobby after one result. Room executors retain projections after initial event replay. Protocol v6 requires older browsers to reload; unsupported stored acknowledgements are rejected under the [MVP compatibility policy](architecture.md#mvp-compatibility).
 
 ### Challenge integration
 
