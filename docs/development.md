@@ -50,6 +50,10 @@ Implemented seam: login, Room creation/joining, Match/Challenge selection, seats
 
 `POST /api/rooms/:roomId/challenges` accepts `{ handStartSequence }` from a completed Match/Challenge Hand participant and returns its stable Code/public preview. Displayed completed results include that reference only for participants. `POST /api/challenges/lookup` accepts `{ code }` from any authenticated account. Socket `SelectChallengeHand { code }` resolves the Template server-side; HTTP lookup and socket selection share 20 lookups/minute/account. `AbortChallengeHand` returns to the lobby without a result. Codes stay out of request URLs/logs; Templates/Seeds remain server-private. The Chinese UI generates/copies Codes from results, previews/selects Codes in the lobby, and shows Challenge completion. History/Replay UI follows separately. See [integration phases](challenge-integration-plan.md).
 
+### Completed-Hand history
+
+`GET /api/history` returns `{ hands }` for the authenticated account's recorded participation across Rooms. `GET /api/rooms/:roomId/hands/:handStartSequence` returns one participant-authorized summary. `POST /api/history/lookup { code }` opens the same summary for an authenticated Code holder and shares the existing Challenge lookup budget. Reads do not resume gameplay or create Codes; summaries include a Code only if already created through the participant endpoint. Completed Hands survive Match abortion and membership changes; unfinished/aborted Hands remain private. Summaries contain no deals, actions, Seeds, or Templates yet. Replay data and UI follow in [phases 2–3](hand-history-plan.md).
+
 ## Web
 
 `pnpm build` builds the Chinese browser UI; the server serves it and Room links from the same origin. For local HTTP, set `DGLZ_ALLOWED_ORIGIN=http://127.0.0.1:3000` and `DGLZ_SECURE_COOKIES=false`, then run the server command above. Open `http://127.0.0.1:3000`.

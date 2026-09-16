@@ -1,13 +1,13 @@
 # MVP Roadmap
 
-Status: [Challenge Hand integration](challenge-integration-plan.md) verified; completed-Hand history and Replay next.
+Status: [Challenge Hand integration](challenge-integration-plan.md) and [history/access Phase 1](hand-history-plan.md) verified; Replay data and minimal viewer next.
 
 Delivery order only. [Product requirements](product-spec.md), [architecture](architecture.md), and [Challenge Hand policy](challenge-hand-sharing.md) remain authoritative. Inspect existing implementation before planning each phase; reuse completed work.
 
 | Order | Scope | Completion gate |
 | --- | --- | --- |
 | 1 | Challenge Hand integration: completed-Hand Challenge Codes/Templates, Room selection, play, settlement, abortion, and code reuse. | Same source setup supports independent Challenge Hands; source history stays unchanged; aborted Hands expose no completed history. |
-| 2 | Completed-Hand history, read-only Replay, and sharing using the same Challenge Codes. | Participants find completed Hands; authenticated code holders open Replay or start challenges; viewers have independent playback positions; incomplete Hands stay private. |
+| 2 | [Completed-Hand history and Replay](hand-history-plan.md): backend history/access, Replay data/minimal viewer, and the complete UI journey using the same Challenge Codes. | Participants find completed Hands; authenticated code holders open Replay or start challenges; viewers have independent playback positions; incomplete Hands stay private. |
 | 3 | Remaining Room controls: lobby leave/ownership transfer, final-owner exit or healthy-lobby closure, Seating Policy, interrupted-Room archival/replacement. | The final owner can leave or close a healthy lobby; lifecycle controls preserve authority, history, and configuration locks. |
 | 4 | Remaining account administration: password change, administrator reset, audit, and session revocation. | Provisioning/reset works through CLI; revoked sessions cannot act. |
 | 5 | MVP acceptance: both Rulesets, Match → history → Replay → Challenge, recovery, privacy, and responsive/accessibility checks. | Automated gates and a real multiplayer session on mobile/desktop pass. |

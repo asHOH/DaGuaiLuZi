@@ -17,6 +17,8 @@ import {
 } from "@dglz/game-core";
 import {
   ChallengeResponseEnvelopeSchema,
+  CompletedHandResponseEnvelopeSchema,
+  HandHistoryResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
   rulesConfigurationPreset,
@@ -37,7 +39,13 @@ import {
   lookupChallenge,
 } from "../src/challenges.js";
 import { openDatabase } from "../src/db/index.js";
-import { accounts, challengeTemplates, sessions } from "../src/db/schema.js";
+import {
+  accounts,
+  challengeTemplates,
+  roomEvents,
+  sessions,
+} from "../src/db/schema.js";
+import { listCompletedHands, readCompletedHand } from "../src/hand-history.js";
 import { RoomExecutorRegistry } from "../src/room-executor.js";
 import {
   appendRoomCreated,
@@ -134,7 +142,11 @@ async function source(rulesetId: RulesetId = "dglz-4p-2d-v1") {
     finish() {
       for (let step = 0; step < 1500; step++) {
         const view = derivePlayerView(state, playerIds[0]!);
-        if (view.handResult !== undefined) return;
+        if (
+          view.handResult !== undefined ||
+          view.matchSummary?.outcome === "completed"
+        )
+          return;
         if (view.setupStage === "return-card-selection") {
           const playerId = view.pendingPlayerIds![0]!;
           const own = derivePlayerView(state, playerId);
@@ -213,6 +225,133 @@ function preview(value: ChallengePreview | string): ChallengePreview {
   if (typeof value === "string") throw new Error(value);
   return value;
 }
+
+it("retains the final Hand of a completed Match after owner departure and application restart", async () => {
+  const game = await source();
+  const owner = game.playerIds[0]!;
+  let finalStart = game.initialStart;
+  for (let hand = 0; hand < 100; hand++) {
+    game.finish();
+    if (
+      derivePlayerView(game.state(), owner).matchSummary?.outcome ===
+      "completed"
+    )
+      break;
+    finalStart = game.revision() + 1;
+    game.send({
+      type: "StartNextHand",
+      handSeed: `history-completion-${hand}`,
+      randomnessVersion: RANDOMNESS_VERSION,
+      shuffleVersion: SHUFFLE_VERSION,
+    });
+  }
+  const events = [...readRoomEvents(game.database, game.roomId)];
+  const completion = events.findLast(
+    ({ event }) => event.type === "MatchCompleted",
+  )?.event;
+  const settlement = events.findLast(
+    ({ event }) => event.type === "HandSettled",
+  )?.event;
+  const result = events.findLast(
+    ({ event }) => event.type === "HandResultDetermined",
+  )?.event;
+  if (
+    completion?.type !== "MatchCompleted" ||
+    settlement?.type !== "HandSettled" ||
+    result?.type !== "HandResultDetermined"
+  )
+    throw new Error("match-did-not-complete");
+  expect(derivePlayerView(game.state(), owner).matchSummary?.outcome).toBe(
+    "completed",
+  );
+  const { type: _type, ...expectedResult } = result;
+  const expected = readCompletedHand(
+    game.database,
+    game.roomId,
+    finalStart,
+  )!.summary;
+  expect(expected).toMatchObject({
+    handNumber: completion.completedHandCount,
+    teamLevels: settlement.teamLevels,
+    result: expectedResult,
+  });
+  expect(listCompletedHands(game.database, owner)[0]).toEqual(expected);
+  expect(game.send({ type: "LeaveRoom", playerId: owner })).toContainEqual({
+    type: "OwnerTransferred",
+    ownerId: game.playerIds[1],
+  });
+  expect([...readRoomEvents(game.database, game.roomId)].at(-1)!.event).toEqual(
+    {
+      type: "OwnerTransferred",
+      ownerId: game.playerIds[1],
+    },
+  );
+  expect(
+    derivePlayerView(
+      loadRoom(game.database, game.roomId)!.state,
+      game.playerIds[1]!,
+    ).ownerId,
+  ).toBe(game.playerIds[1]);
+  expect(
+    derivePlayerView(
+      loadRoom(game.database, game.roomId)!.state,
+      game.playerIds[1]!,
+    ).members.map(({ playerId }) => playerId),
+  ).not.toContain(owner);
+  game.database.db
+    .insert(accounts)
+    .values({
+      id: owner,
+      username: owner,
+      passwordHash: "unused",
+      createdAt: Date.now(),
+    })
+    .run();
+  game.database.db
+    .insert(sessions)
+    .values({
+      tokenHash: hashSessionToken(owner),
+      accountId: owner,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 600000,
+    })
+    .run();
+  let app = await createApp({
+    dbPath: game.dbPath,
+    allowedOrigin: "https://game.example",
+    secureCookies: false,
+  });
+  cleanups.push(() => app.close());
+  const request = (url: string) =>
+    app.inject({
+      method: "GET",
+      url,
+      headers: {
+        [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+        cookie: `dglz_session=${owner}`,
+      },
+    });
+  const handUrl = `/api/rooms/${game.roomId}/hands/${finalStart}`;
+  expect(
+    CompletedHandResponseEnvelopeSchema.parse((await request(handUrl)).json())
+      .data,
+  ).toEqual(expected);
+  await app.close();
+  app = await createApp({
+    dbPath: game.dbPath,
+    allowedOrigin: "https://game.example",
+    secureCookies: false,
+  });
+  expect(
+    CompletedHandResponseEnvelopeSchema.parse((await request(handUrl)).json())
+      .data,
+  ).toEqual(expected);
+  expect(
+    HandHistoryResponseEnvelopeSchema.parse(
+      (await request("/api/history")).json(),
+    ).data.hands[0],
+  ).toEqual(expected);
+}, 30000);
 
 for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
   it(`${rulesetId}: materializes stable Codes and reproduces initial and subsequent setup by logical seat`, async () => {
@@ -532,6 +671,16 @@ it("requires authentication, limits invalid lookups, returns public metadata, an
     "trumpRank",
   ]);
   expect(found.headers["cache-control"]).toBe("no-store");
+  const historyLookup = await request(
+    "/api/history/lookup",
+    { code: data.code },
+    outsider,
+  );
+  expect(historyLookup.statusCode).toBe(200);
+  expect(
+    CompletedHandResponseEnvelopeSchema.parse(historyLookup.json()).data
+      .challengeCode,
+  ).toBe(data.code);
   const malformedCode = `${data.code}!`;
   expect(
     (await request("/api/challenges/lookup", { code: malformedCode }, outsider))
@@ -540,11 +689,12 @@ it("requires authentication, limits invalid lookups, returns public metadata, an
   const output = logs.join("");
   expect(output).toContain(createUrl);
   expect(output).toContain("/api/challenges/lookup");
+  expect(output).toContain("/api/history/lookup");
   expect(output).toContain('"statusCode":200');
   expect(output).toContain('"statusCode":400');
   expect(output).not.toContain(data.code);
   expect(output).not.toContain(malformedCode);
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 17; i++) {
     expect(
       (
         await request(
@@ -591,6 +741,270 @@ it("requires authentication, limits invalid lookups, returns public metadata, an
       .statusCode,
   ).toBe(401);
 });
+
+for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
+  it(`${rulesetId}: history authorizes recorded participants and Code holders across Rooms and restart`, async () => {
+    const game = await source(rulesetId);
+    const participant = game.playerIds[1]!;
+    const newcomer = randomUUID();
+    for (const id of [participant, newcomer]) {
+      game.database.db
+        .insert(accounts)
+        .values({
+          id,
+          username: id,
+          passwordHash: "unused",
+          createdAt: Date.now(),
+        })
+        .run();
+      game.database.db
+        .insert(sessions)
+        .values({
+          tokenHash: hashSessionToken(id),
+          accountId: id,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 600000,
+        })
+        .run();
+    }
+    let app = await createApp({
+      dbPath: game.dbPath,
+      allowedOrigin: "https://game.example",
+      secureCookies: false,
+    });
+    cleanups.push(() => app.close());
+    const request = (
+      url: string,
+      id?: string,
+      body?: Record<string, unknown>,
+    ) =>
+      app.inject({
+        method: body === undefined ? "GET" : "POST",
+        url,
+        ...(body === undefined ? {} : { payload: body }),
+        headers: {
+          [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+          origin: "https://game.example",
+          ...(id === undefined ? {} : { cookie: `dglz_session=${id}` }),
+        },
+      });
+    const handUrl = `/api/rooms/${game.roomId}/hands/${game.initialStart}`;
+    expect((await request("/api/history")).statusCode).toBe(401);
+    expect((await request(handUrl)).statusCode).toBe(401);
+    expect(
+      (
+        await request("/api/history/lookup", undefined, {
+          code: "0".repeat(12),
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect((await request(handUrl, participant)).statusCode).toBe(404);
+    expect(
+      HandHistoryResponseEnvelopeSchema.parse(
+        (await request("/api/history", participant)).json(),
+      ).data.hands,
+    ).toEqual([]);
+    expect(
+      (await request(`/api/rooms/${game.roomId}/hands/1.5`, participant))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await request("/api/rooms/invalid/hands/1", participant)).statusCode,
+    ).toBe(400);
+    expect(
+      (await request(`/api/rooms/${randomUUID()}/hands/1`, participant))
+        .statusCode,
+    ).toBe(404);
+
+    game.finish();
+    const firstView = derivePlayerView(game.state(), participant);
+    const secondStart = game.revision() + 1;
+    game.send({
+      type: "StartNextHand",
+      handSeed: "history-second",
+      randomnessVersion: RANDOMNESS_VERSION,
+      shuffleVersion: SHUFFLE_VERSION,
+    });
+    game.finish();
+    const abortedStart = game.revision() + 1;
+    game.send({
+      type: "StartNextHand",
+      handSeed: "history-aborted",
+      randomnessVersion: RANDOMNESS_VERSION,
+      shuffleVersion: SHUFFLE_VERSION,
+    });
+    game.send({ type: "AbortMatch", playerId: game.playerIds[0]! });
+
+    // A second Room uses the same legally generated actions with an independent Room identity.
+    const otherRoomId = randomUUID();
+    const events = [...readRoomEvents(game.database, game.roomId)];
+    const createdEvent = events[0]!.event;
+    if (createdEvent.type !== "RoomCreated")
+      throw new Error("missing-room-created");
+    appendRoomCreated(game.database, { ...createdEvent, roomId: otherRoomId });
+    appendRoomEvents(game.database, {
+      roomId: otherRoomId,
+      expectedRevision: 1,
+      causationCommandId: null,
+      events: events.slice(1).map((row) => row.event),
+    });
+    game.send({ type: "LeaveRoom", playerId: participant });
+    game.send({ type: "JoinRoom", playerId: newcomer });
+    const beforeReads = game.database.db.select().from(roomEvents).all();
+
+    const listed = await request("/api/history", participant);
+    expect(listed.statusCode).toBe(200);
+    expect(listed.headers["cache-control"]).toBe("no-store");
+    const hands = HandHistoryResponseEnvelopeSchema.parse(listed.json()).data
+      .hands;
+    expect(hands).toHaveLength(4);
+    expect(new Set(hands.map((hand) => hand.roomId))).toEqual(
+      new Set([game.roomId, otherRoomId]),
+    );
+    expect(
+      hands
+        .filter((hand) => hand.roomId === game.roomId)
+        .map((hand) => hand.handStartSequence),
+    ).toEqual([secondStart, game.initialStart]);
+    const first = CompletedHandResponseEnvelopeSchema.parse(
+      (await request(handUrl, participant)).json(),
+    ).data;
+    expect(first).toMatchObject({
+      roomId: game.roomId,
+      handStartSequence: game.initialStart,
+      activity: "match",
+      handNumber: 1,
+      rulesConfiguration: firstView.rulesConfiguration,
+      seatingPolicy: "randomized",
+      playerIds: firstView.seats.map((seat) => seat.playerId),
+      result: firstView.handResult,
+      finishPositions: firstView.finishPositions!.map(
+        (position) => position ?? null,
+      ),
+      teamLevels: firstView.teamLevels,
+    });
+    expect(Object.keys(first).sort()).toEqual(
+      [
+        "roomId",
+        "handStartSequence",
+        "activity",
+        "handNumber",
+        "completedAt",
+        "rulesConfiguration",
+        "seatingPolicy",
+        "playerIds",
+        "trumpRank",
+        "result",
+        "finishPositions",
+        "teamLevels",
+      ].sort(),
+    );
+    expect(
+      (
+        await request(
+          `/api/rooms/${game.roomId}/hands/${abortedStart}`,
+          participant,
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect((await request(handUrl, newcomer)).statusCode).toBe(403);
+    expect(
+      HandHistoryResponseEnvelopeSchema.parse(
+        (await request("/api/history", newcomer)).json(),
+      ).data.hands,
+    ).toEqual([]);
+    expect(game.database.db.select().from(roomEvents).all()).toEqual(
+      beforeReads,
+    );
+    expect(
+      game.database.db.select().from(challengeTemplates).all(),
+    ).toHaveLength(0);
+
+    // A departed participant can still create the same stable Code through the existing endpoint.
+    const created = await request(
+      `/api/rooms/${game.roomId}/challenges`,
+      participant,
+      { handStartSequence: game.initialStart },
+    );
+    expect(created.statusCode).toBe(200);
+    const code = ChallengeResponseEnvelopeSchema.parse(created.json()).data
+      .code;
+    const shared = await request("/api/history/lookup", newcomer, { code });
+    expect(shared.statusCode).toBe(200);
+    expect(shared.headers["cache-control"]).toBe("no-store");
+    expect(
+      CompletedHandResponseEnvelopeSchema.parse(shared.json()).data,
+    ).toEqual({ ...first, challengeCode: code });
+    expect((await request(handUrl, newcomer)).statusCode).toBe(403);
+    expect(
+      (await request("/api/history/lookup", newcomer, { code: "bad" }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await request("/api/history/lookup", newcomer, { code: "0".repeat(12) }))
+        .statusCode,
+    ).toBe(404);
+    for (let i = 0; i < 17; i++)
+      await request("/api/challenges/lookup", newcomer, { code });
+    expect(
+      (await request("/api/history/lookup", newcomer, { code })).statusCode,
+    ).toBe(429);
+
+    await app.close();
+    app = await createApp({
+      dbPath: game.dbPath,
+      allowedOrigin: "https://game.example",
+      secureCookies: false,
+    });
+    expect(
+      CompletedHandResponseEnvelopeSchema.parse(
+        (await request("/api/history/lookup", newcomer, { code })).json(),
+      ).data,
+    ).toEqual({ ...first, challengeCode: code });
+    expect(
+      HandHistoryResponseEnvelopeSchema.parse(
+        (await request("/api/history", participant)).json(),
+      ).data.hands,
+    ).toEqual(
+      hands.map((hand) =>
+        hand.roomId === game.roomId &&
+        hand.handStartSequence === game.initialStart
+          ? { ...hand, challengeCode: code }
+          : hand,
+      ),
+    );
+    expect(game.database.db.select().from(roomEvents).all()).toEqual(
+      beforeReads,
+    );
+
+    game.database.db
+      .update(sessions)
+      .set({ revokedAt: Date.now() })
+      .where(eq(sessions.accountId, newcomer))
+      .run();
+    expect((await request("/api/history", newcomer)).statusCode).toBe(401);
+    expect((await request(handUrl, newcomer)).statusCode).toBe(401);
+    expect(
+      (await request("/api/history/lookup", newcomer, { code })).statusCode,
+    ).toBe(401);
+    game.database.sqlite
+      .prepare(
+        "UPDATE room_events SET event_schema_version = 999 WHERE room_id = ? AND sequence = ?",
+      )
+      .run(game.roomId, game.initialStart);
+    const incompatible = await request(handUrl, participant);
+    expect(incompatible.statusCode).toBe(500);
+    expect(incompatible.json()).toMatchObject({
+      error: { code: "unsupported-persisted-event" },
+    });
+    expect((await request("/api/history", participant)).json()).toMatchObject({
+      error: { code: "unsupported-persisted-event" },
+    });
+    expect(
+      (await request("/api/history/lookup", participant, { code })).json(),
+    ).toMatchObject({ error: { code: "unsupported-persisted-event" } });
+  }, 20000);
+}
 
 async function socketTarget(
   game: Awaited<ReturnType<typeof source>>,
@@ -846,6 +1260,24 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     const challengeStartSequence = history.find(
       ({ event }) => event.type === "ChallengeHandStarted",
     )!.sequence;
+    const completedHistory = listCompletedHands(game.database, target.ids[0]!);
+    const completedView = target.view().view;
+    if (completedView.lifecycle !== "LOBBY")
+      throw new Error("challenge-not-completed");
+    expect(completedHistory).toHaveLength(1);
+    expect(completedHistory[0]).toMatchObject({
+      roomId: target.roomId,
+      handStartSequence: challengeStartSequence,
+      activity: "challenge",
+      handNumber: 1,
+      playerIds: target.ids,
+      rulesConfiguration: lookupChallenge(game.database, code)!.template
+        .rulesConfiguration,
+      result: completedView.challengeSummary!.result,
+    });
+    expect(completedHistory[0]!.finishPositions).toHaveLength(
+      target.ids.length,
+    );
     expect(target.view().view).toHaveProperty(
       "challengeSummary.handStartSequence",
       challengeStartSequence,
@@ -899,6 +1331,12 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     );
     expect(unshareable.statusCode).toBe(404);
     expect(unshareable.json()).toMatchObject({ error: { code: "not-found" } });
+    expect(listCompletedHands(game.database, target.ids[0]!)).toEqual([
+      { ...completedHistory[0], challengeCode: reusable.code },
+    ]);
+    expect(
+      readCompletedHand(game.database, target.roomId, abortedStartSequence),
+    ).toBeUndefined();
     expect([...readRoomEvents(game.database, game.roomId)]).toEqual(
       sourceHistory,
     );

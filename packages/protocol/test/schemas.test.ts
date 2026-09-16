@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   ChallengeCodeSchema,
+  CompletedHandReferenceSchema,
+  CompletedHandSummarySchema,
   PlayerViewSchema,
   RoomCommandPayloadSchema,
   ChallengePreviewSchema,
@@ -43,6 +45,48 @@ const fourPlayerConfiguration = {
   tributeRecipientPairing: "adjacent-first-automatic",
   matchEnding: "no-failure-limit-at-5",
 } as const;
+
+it("validates completed-Hand references and rejects private fields in history", () => {
+  const summary = {
+    roomId: "da9f540e-fd4b-4d74-be39-ccc7f080cab4",
+    handStartSequence: 12,
+    activity: "match",
+    handNumber: 1,
+    completedAt: 1000,
+    rulesConfiguration: fourPlayerConfiguration,
+    seatingPolicy: "fixed",
+    playerIds: ["a", "b", "c", "d"],
+    trumpRank: "2",
+    result: {
+      outcome: "win",
+      firstFinisherTeam: 0,
+      winningTeam: 0,
+      nextDealerTeam: 0,
+      caughtPlayerIds: ["d"],
+    },
+    finishPositions: [1, 2, 3, null],
+    teamLevels: ["3", "2"],
+  };
+  expect(CompletedHandSummarySchema.parse(summary)).toEqual(summary);
+  for (const extra of [
+    { handSeed: "secret" },
+    { template: {} },
+    { events: [] },
+    { handStartSequence: 0 },
+    { challengeCode: "invalid" },
+  ]) {
+    expect(
+      CompletedHandSummarySchema.safeParse({ ...summary, ...extra }).success,
+    ).toBe(false);
+  }
+  expect(
+    CompletedHandReferenceSchema.safeParse({
+      roomId: summary.roomId,
+      handStartSequence: 12,
+      accountId: "a",
+    }).success,
+  ).toBe(false);
+});
 
 describe("protocol schemas", () => {
   it("accepts the supported commands and rejects unknown fields", () => {

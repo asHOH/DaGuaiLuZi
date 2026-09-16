@@ -525,6 +525,42 @@ export const PlayerViewLastHandResultSchema = z
 export type PlayerViewLastHandResult = z.infer<
   typeof PlayerViewLastHandResultSchema
 >;
+
+export const CompletedHandReferenceSchema = z
+  .object({
+    roomId: RoomIdSchema,
+    handStartSequence: z.number().int().positive(),
+  })
+  .strict();
+export const CompletedHandSummarySchema = CompletedHandReferenceSchema.extend({
+  activity: SelectedActivitySchema,
+  handNumber: z.number().int().positive(),
+  completedAt: z.number().int().positive(),
+  rulesConfiguration: RulesConfigurationSchema,
+  seatingPolicy: SeatingPolicySchema,
+  // Recorded logical seat order, independent of the Room's current members.
+  playerIds: z.array(identifier).min(4).max(6),
+  trumpRank: TrumpRankSchema,
+  result: PlayerViewHandResultSchema,
+  finishPositions: z.array(z.number().int().nonnegative().nullable()),
+  teamLevels: TeamLevelsSchema,
+  challengeCode: ChallengeCodeSchema.optional(),
+}).strict();
+export type CompletedHandSummary = z.infer<typeof CompletedHandSummarySchema>;
+export const HandHistoryResponseEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    ok: z.literal(true),
+    data: z.object({ hands: z.array(CompletedHandSummarySchema) }).strict(),
+  })
+  .strict();
+export const CompletedHandResponseEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    ok: z.literal(true),
+    data: CompletedHandSummarySchema,
+  })
+  .strict();
 const PlayerViewMatchSummarySchema = z.discriminatedUnion("outcome", [
   z
     .object({

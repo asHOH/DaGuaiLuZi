@@ -62,6 +62,13 @@ const MemberJoinedPayloadSchema = z
   })
   .strict();
 
+const MemberLeftPayloadSchema = z
+  .object({ type: z.literal("MemberLeft"), playerId: PlayerIdSchema })
+  .strict();
+const OwnerTransferredPayloadSchema = z
+  .object({ type: z.literal("OwnerTransferred"), ownerId: PlayerIdSchema })
+  .strict();
+
 const MatchSelectedPayloadSchema = z
   .object({ type: z.literal("MatchSelected") })
   .strict();
@@ -496,6 +503,8 @@ const PersistedRoomEventRowSchema = z
     eventType: z.enum([
       "RoomCreated",
       "MemberJoined",
+      "MemberLeft",
+      "OwnerTransferred",
       "MatchSelected",
       "ChallengeHandSelected",
       "ChallengeHandStarted",
@@ -652,6 +661,10 @@ function eventPayload(event: Event): string {
   if (event.type === "MemberJoined") {
     return JSON.stringify(MemberJoinedPayloadSchema.parse(event));
   }
+  if (event.type === "MemberLeft")
+    return JSON.stringify(MemberLeftPayloadSchema.parse(event));
+  if (event.type === "OwnerTransferred")
+    return JSON.stringify(OwnerTransferredPayloadSchema.parse(event));
   if (event.type === "MatchSelected") {
     return JSON.stringify(MatchSelectedPayloadSchema.parse(event));
   }
@@ -908,6 +921,10 @@ function parsePersistedRoomEvent(
         return RoomCreatedPayloadSchema.safeParse(decoded);
       case "MemberJoined":
         return MemberJoinedPayloadSchema.safeParse(decoded);
+      case "MemberLeft":
+        return MemberLeftPayloadSchema.safeParse(decoded);
+      case "OwnerTransferred":
+        return OwnerTransferredPayloadSchema.safeParse(decoded);
       case "MatchSelected":
         return MatchSelectedPayloadSchema.safeParse(decoded);
       case "MatchRulesConfigurationReplaced":
@@ -966,7 +983,7 @@ function parsePersistedRoomEvent(
 export function* readRoomEvents(
   database: AppDatabase,
   roomId: string,
-): Generator<{ sequence: number; event: Event }> {
+): Generator<{ sequence: number; recordedAt: number; event: Event }> {
   const rows = database.db
     .select()
     .from(roomEvents)
@@ -1002,7 +1019,7 @@ export function* readRoomEvents(
       throw new UnsupportedPersistedEventError();
     }
     sequence = row.data.sequence;
-    yield { sequence, event: parsedEvent };
+    yield { sequence, recordedAt: row.data.recordedAt, event: parsedEvent };
   }
 }
 

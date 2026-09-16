@@ -12,6 +12,7 @@ import { Server as SocketIOServer, type Socket } from "socket.io";
 import { evolve } from "@dglz/game-core";
 import {
   CommandIdSchema,
+  CompletedHandReferenceSchema,
   CreateChallengeCodeSchema,
   CreateRoomCommandSchema,
   LoginCommandSchema,
@@ -49,6 +50,7 @@ import {
 } from "./rooms.js";
 import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
 import { challengePreview } from "./challenges.js";
+import { listCompletedHands, readCompletedHand } from "./hand-history.js";
 
 export type ServerOptions = Readonly<{
   webRoot?: string;
@@ -630,6 +632,56 @@ export async function createApp(
       return reply.send(successEnvelope(room.viewFor(account.accountId)!));
     },
   );
+
+  app.get("/api/history", async (request, reply) => {
+    const account = requestAccount(database, request);
+    if (account === undefined) return sendError(reply, "unauthorized");
+    return reply.send(
+      successEnvelope({
+        hands: listCompletedHands(database, account.accountId),
+      }),
+    );
+  });
+
+  app.get<{ Params: { roomId: string; handStartSequence: string } }>(
+    "/api/rooms/:roomId/hands/:handStartSequence",
+    async (request, reply) => {
+      const account = requestAccount(database, request);
+      if (account === undefined) return sendError(reply, "unauthorized");
+      const reference = CompletedHandReferenceSchema.safeParse({
+        roomId: request.params.roomId,
+        handStartSequence: Number(request.params.handStartSequence),
+      });
+      if (!reference.success) return sendError(reply, "malformed-input");
+      const hand = readCompletedHand(
+        database,
+        reference.data.roomId,
+        reference.data.handStartSequence,
+      );
+      if (hand === undefined) return sendError(reply, "not-found");
+      if (!hand.summary.playerIds.includes(account.accountId))
+        return sendError(reply, "forbidden");
+      return reply.send(successEnvelope(hand.summary));
+    },
+  );
+
+  // Shared Code lookup budget; request bodies keep Codes out of access logs.
+  app.post("/api/history/lookup", async (request, reply) => {
+    const account = requestAccount(database, request);
+    if (account === undefined) return sendError(reply, "unauthorized");
+    const found = roomExecutors.challenges.resolve(
+      account.accountId,
+      request.body,
+    );
+    if (!found.ok) return sendError(reply, found.code);
+    const hand = readCompletedHand(
+      database,
+      found.sourceRoomId,
+      found.sourceHandStartSequence,
+    );
+    if (hand === undefined) return sendError(reply, "not-found");
+    return reply.send(successEnvelope(hand.summary));
+  });
 
   app.post<{ Params: { roomId: string } }>(
     "/api/rooms/:roomId/challenges",
