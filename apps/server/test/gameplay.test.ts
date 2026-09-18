@@ -28,7 +28,14 @@ import {
 import { createApp } from "../src/app.js";
 import { provisionAccount } from "../src/auth.js";
 import { openDatabase } from "../src/db/index.js";
-import { appendRoomCreated, appendRoomEvents } from "../src/rooms.js";
+import {
+  appendRoomCreated,
+  appendRoomEvents,
+  loadRoom,
+  readRoomEvents,
+} from "../src/rooms.js";
+import { readCompletedHand } from "../src/hand-history.js";
+import { readHandReplay } from "../src/hand-replay.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -843,6 +850,76 @@ it("keeps concurrent ballots private across restart and persists pairing/leader 
     game.rows().filter((row) => row.type === "ReturnCandidatesOffered").length,
   ).toBeGreaterThan(0);
   expect(active(current).lastHandResult?.handNumber).toBe(1);
+  const roomId = current.view.roomId;
+  const handStart = [...readRoomEvents(game.database, roomId)].findLast(
+    (row) => row.event.type === "HandStarted",
+  )!.sequence;
+  expect(readCompletedHand(game.database, roomId, handStart)).toBeUndefined();
+  // Finish this legally generated tie/candidate setup, without needing more socket round trips.
+  let { state, revision } = loadRoom(game.database, roomId)!;
+  for (let move = 0; move < 1500; move++) {
+    const view = derivePlayerView(state, "public");
+    if (
+      view.handResult !== undefined ||
+      view.matchSummary?.outcome === "completed"
+    )
+      break;
+    const playerId = view.currentActor!;
+    const own = derivePlayerView(state, playerId);
+    const card = own.hand!.find(
+      (card) => decide(state, { type: "Play", playerId, cards: [card] }).ok,
+    );
+    const decision = decide(
+      state,
+      card === undefined
+        ? { type: "Pass", playerId }
+        : { type: "Play", playerId, cards: [card] },
+    );
+    if (!decision.ok) throw new Error(decision.rejection.reason);
+    appendRoomEvents(game.database, {
+      roomId,
+      expectedRevision: revision,
+      causationCommandId: null,
+      events: decision.events,
+    });
+    state = decision.events.reduce(evolve, state);
+    revision += decision.events.length;
+  }
+  const source = readCompletedHand(game.database, roomId, handStart)!;
+  expect(source).toBeDefined();
+  const beforeReplay = [...readRoomEvents(game.database, roomId)];
+  const replay = readHandReplay(game.database, source);
+  const descriptions = replay.steps
+    .flatMap((step) => step.actions)
+    .map((action) => action.text);
+  expect(descriptions).toContain("进贡配对第3轮揭晓，采用自动裁定");
+  expect(descriptions).toContain("首家选择第3轮揭晓，采用自动裁定");
+  expect(descriptions.some((text) => text.endsWith("提供还牌候选"))).toBe(true);
+  expect(replay.steps.at(-1)!.result).toEqual(source.summary.result);
+  const firstBallot = beforeReplay.find(
+    (row) =>
+      row.sequence > handStart && row.event.type === "TieChoiceBallotSubmitted",
+  )!;
+  const ballotFrame = replay.steps.find(
+    (step) => step.sequence === firstBallot.sequence,
+  )!;
+  expect(ballotFrame.actions).toHaveLength(1);
+  expect(ballotFrame.actions[0]!.text).toContain("已提交进贡配对第1轮选择");
+  expect(ballotFrame.actions[0]!.text).not.toContain("放弃");
+  // Every card-zone snapshot must conserve the original physical cards, including transfers.
+  for (const step of replay.steps) {
+    const played = beforeReplay
+      .filter(
+        (row) => row.sequence > handStart && row.sequence <= step.sequence,
+      )
+      .flatMap((row) =>
+        row.event.type === "CardsPlayed" ? [...row.event.cards] : [],
+      );
+    expect([...step.hands.flat(), ...played].sort()).toEqual(
+      replay.originalDeal.flat().sort(),
+    );
+  }
+  expect([...readRoomEvents(game.database, roomId)]).toEqual(beforeReplay);
 }, 30000);
 
 it("recovers a settled no-Tribute Hand once under concurrent reconnects", async () => {

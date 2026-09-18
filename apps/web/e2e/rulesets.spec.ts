@@ -1393,6 +1393,144 @@ async function runHappyPath(
         page.getByRole("region", { name: "同牌挑战结果", exact: true }),
       ).toHaveCount(0);
     }
+    // Replay is a separate read-only view; each browser owns its own position.
+    for (const page of [ownerPage, joinerPage]) {
+      await page.getByRole("button", { name: "返回开桌", exact: true }).click();
+      await page.getByLabel("回放挑战码", { exact: true }).fill(challengeCode);
+      await page.getByRole("button", { name: "查看回放", exact: true }).click();
+      await expect(page.getByTestId("replay-position")).toHaveText(
+        /^第 1 \/ \d+ 步$/,
+      );
+      await expect(page.getByTestId("replay-card")).toHaveCount(
+        playerCount * 27,
+      );
+      await expect(page.getByText(/^本局级牌：/)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "上一步", exact: true }),
+      ).toBeDisabled();
+    }
+    const originalCards = await ownerPage
+      .getByTestId("replay-card")
+      .allTextContents();
+    await ownerPage
+      .getByRole("button", { name: "下一步", exact: true })
+      .click();
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 2 \/ \d+ 步$/,
+    );
+    await expect(joinerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    await ownerPage
+      .getByRole("button", { name: "上一步", exact: true })
+      .click();
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    expect(
+      await ownerPage.getByTestId("replay-card").allTextContents(),
+    ).toEqual(originalCards);
+    await ownerPage
+      .getByRole("button", { name: "查看结算", exact: true })
+      .click();
+    await expect(
+      ownerPage.getByRole("button", { name: "下一步", exact: true }),
+    ).toBeDisabled();
+    await expect(
+      ownerPage.getByRole("region", { name: "牌局回放", exact: true }),
+    ).toContainText("本局结算");
+    await ownerPage
+      .getByRole("button", { name: "回到发牌", exact: true })
+      .focus();
+    await ownerPage.keyboard.press("Enter");
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    expect(
+      await ownerPage.getByTestId("replay-card").allTextContents(),
+    ).toEqual(originalCards);
+    for (const width of [390, 1280]) {
+      await ownerPage.setViewportSize({ width, height: 900 });
+      await assertNoHorizontalOverflow(ownerPage);
+      await ownerPage.screenshot({
+        path: `output/playwright/${rulesetId}-replay-${width}.png`,
+        fullPage: true,
+      });
+    }
+    await ownerPage.getByLabel("回放挑战码", { exact: true }).fill("invalid");
+    await expect(
+      ownerPage.getByRole("region", { name: "牌局回放", exact: true }),
+    ).toHaveCount(0);
+    let releaseReplay!: () => void;
+    let replayArrived!: () => void;
+    let replayStatus: number | undefined;
+    const replayReleased = new Promise<void>((resolve) => {
+      releaseReplay = resolve;
+    });
+    const replayRequested = new Promise<void>((resolve) => {
+      replayArrived = resolve;
+    });
+    await ownerPage.route(
+      "**/api/replays/lookup",
+      async (route) => {
+        const response = await route.fetch();
+        replayStatus = response.status();
+        replayArrived();
+        await replayReleased;
+        await route.fulfill({ response });
+      },
+      { times: 1 },
+    );
+    await ownerPage
+      .getByLabel("回放挑战码", { exact: true })
+      .fill(challengeCode);
+    await ownerPage
+      .getByRole("button", { name: "查看回放", exact: true })
+      .click();
+    const staleReplayResponse = ownerPage.waitForResponse(
+      "**/api/replays/lookup",
+    );
+    try {
+      await replayRequested;
+      expect(replayStatus).toBe(200);
+      await ownerPage.getByLabel("回放挑战码", { exact: true }).fill("invalid");
+    } finally {
+      releaseReplay();
+    }
+    await (await staleReplayResponse).finished();
+    await ownerPage.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await expect(
+      ownerPage.getByRole("region", { name: "牌局回放", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      ownerPage.getByRole("button", { name: "查看回放", exact: true }),
+    ).toBeEnabled();
+    await ownerPage.route(
+      "**/api/replays/lookup",
+      (route) =>
+        route.fulfill({ status: 401, json: errorEnvelope("unauthorized") }),
+      { times: 1 },
+    );
+    await ownerPage
+      .getByLabel("回放挑战码", { exact: true })
+      .fill(challengeCode);
+    await ownerPage
+      .getByRole("button", { name: "查看回放", exact: true })
+      .click();
+    await expect(
+      ownerPage.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(
+      ownerPage.getByRole("region", { name: "牌局回放", exact: true }),
+    ).toHaveCount(0);
+    await expect(joinerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
   } finally {
     for (const client of clients) client.close();
     await Promise.all([ownerContext.close(), joinerContext.close()]);

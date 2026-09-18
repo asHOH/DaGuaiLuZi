@@ -51,6 +51,7 @@ import {
 import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
 import { challengePreview } from "./challenges.js";
 import { listCompletedHands, readCompletedHand } from "./hand-history.js";
+import { readHandReplay } from "./hand-replay.js";
 
 export type ServerOptions = Readonly<{
   webRoot?: string;
@@ -681,6 +682,45 @@ export async function createApp(
     );
     if (hand === undefined) return sendError(reply, "not-found");
     return reply.send(successEnvelope(hand.summary));
+  });
+
+  app.get<{ Params: { roomId: string; handStartSequence: string } }>(
+    "/api/rooms/:roomId/hands/:handStartSequence/replay",
+    async (request, reply) => {
+      const account = requestAccount(database, request);
+      if (account === undefined) return sendError(reply, "unauthorized");
+      const reference = CompletedHandReferenceSchema.safeParse({
+        roomId: request.params.roomId,
+        handStartSequence: Number(request.params.handStartSequence),
+      });
+      if (!reference.success) return sendError(reply, "malformed-input");
+      const source = readCompletedHand(
+        database,
+        reference.data.roomId,
+        reference.data.handStartSequence,
+      );
+      if (source === undefined) return sendError(reply, "not-found");
+      if (!source.summary.playerIds.includes(account.accountId))
+        return sendError(reply, "forbidden");
+      return reply.send(successEnvelope(readHandReplay(database, source)));
+    },
+  );
+
+  app.post("/api/replays/lookup", async (request, reply) => {
+    const account = requestAccount(database, request);
+    if (account === undefined) return sendError(reply, "unauthorized");
+    const found = roomExecutors.challenges.resolve(
+      account.accountId,
+      request.body,
+    );
+    if (!found.ok) return sendError(reply, found.code);
+    const source = readCompletedHand(
+      database,
+      found.sourceRoomId,
+      found.sourceHandStartSequence,
+    );
+    if (source === undefined) return sendError(reply, "not-found");
+    return reply.send(successEnvelope(readHandReplay(database, source)));
   });
 
   app.post<{ Params: { roomId: string } }>(

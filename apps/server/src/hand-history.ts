@@ -63,9 +63,10 @@ function templateAtStart(
   };
 }
 
-type CompletedHand = {
+export type CompletedHand = {
   summary: CompletedHandSummary;
   template: ChallengeTemplate;
+  endSequence: number;
 };
 
 /** Server-only source facts; HTTP responses must select summary explicitly. */
@@ -135,6 +136,7 @@ export function* readCompletedHands(
         .get();
       yield {
         template: start.template,
+        endSequence: sequence,
         summary: CompletedHandSummarySchema.parse({
           roomId,
           handStartSequence: start.sequence,

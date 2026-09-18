@@ -30,7 +30,7 @@ const SUITS: Record<string, { name: string; symbol: string }> = {
   C: { name: "梅花", symbol: "♣" },
 };
 
-const RULE_LABELS: Record<string, string> = {
+export const RULE_LABELS: Record<string, string> = {
   rulesetId: "规则组",
   jokerPairComparison: "王牌对子比较",
   wildcardRank: "万能牌取值",
@@ -43,7 +43,7 @@ const RULE_LABELS: Record<string, string> = {
   matchEnding: "比赛结束",
 };
 
-const RULE_VALUES: Record<string, string> = {
+export const RULE_VALUES: Record<string, string> = {
   "dglz-6p-3d-v1": "六人三副牌",
   "dglz-4p-2d-v1": "四人两副牌",
   "two-small-and-mixed-are-equal": "两张小王与混合王同级",
@@ -95,7 +95,7 @@ function memberSeatIndex(
   return view.seats.find((seat) => seat.playerId === playerId)?.seatIndex;
 }
 
-function cardLabel(code: string): {
+export function cardLabel(code: string): {
   display: string;
   aria: string;
   tone: "red" | "black" | "joker";

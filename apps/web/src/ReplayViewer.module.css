@@ -1,0 +1,222 @@
+.viewer {
+  line-height: 1.5;
+  margin: 2.5rem auto 1rem;
+  max-width: 76rem;
+}
+
+.lookupPanel,
+.replay {
+  background: var(--felt);
+  border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+  border-radius: 0.75rem;
+  padding: clamp(1rem, 2.6vw, 2rem);
+  display: grid;
+  gap: 1rem;
+}
+
+.viewer h3,
+.viewer h4,
+.viewer h5,
+.metadata,
+.ruleList,
+.ruleList dd,
+.metadata dd {
+  margin: 0;
+}
+
+.eyebrow,
+.lookupPanel p,
+.seat > p {
+  margin: 0.4rem 0;
+}
+
+.eyebrow,
+.metadata dt,
+.sectionHeading > span,
+.seatHeading > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.lookupForm {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.lookupControls,
+.replayHeader,
+.sectionHeading,
+.seatHeading,
+.metadata,
+.tableMeta,
+.stepToolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.lookupControls input {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+}
+
+.lookupControls button {
+  flex-shrink: 0;
+}
+
+.lookupPanel .error {
+  color: #ffb4ab;
+}
+
+.status {
+  color: var(--muted);
+}
+
+.replay {
+  margin-top: 1rem;
+}
+
+.replayHeader,
+.sectionHeading,
+.seatHeading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.metadata,
+.tableMeta,
+.stepToolbar {
+  flex-wrap: wrap;
+}
+
+.metadata dd {
+  overflow-wrap: anywhere;
+}
+
+.rules,
+.tableState,
+.handsState {
+  border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+  padding-top: 1rem;
+}
+
+.rules summary {
+  cursor: pointer;
+  margin-bottom: 0.75rem;
+}
+
+.ruleList div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.3rem 0;
+}
+
+.ruleList dt,
+.tableMeta {
+  color: var(--muted);
+}
+
+.ruleList dd {
+  text-align: right;
+}
+
+.stepToolbar {
+  justify-content: center;
+}
+
+.stepToolbar output {
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.actions ol {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.actions li {
+  padding: 0.3rem 0;
+}
+
+.tableMeta,
+.unbeatenPlay {
+  margin-top: 0.75rem;
+}
+
+.seats {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.seat {
+  border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+  border-radius: 0.5rem;
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.cardList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0.65rem 0 0;
+  padding: 0;
+}
+
+.card {
+  background: var(--ivory);
+  border-radius: 0.3rem;
+  font-weight: 700;
+  min-width: 2.1rem;
+  padding: 0.5rem 0.25rem;
+  text-align: center;
+}
+
+.cardRed {
+  color: #ad4339;
+}
+
+.cardBlack {
+  color: var(--felt);
+}
+
+.cardJoker {
+  color: #795326;
+}
+
+.result {
+  color: var(--brass);
+}
+
+@media (max-width: 760px) {
+  .seats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .lookupControls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .stepToolbar output {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .stepToolbar button {
+    flex: 1 1 calc(50% - 0.75rem);
+  }
+
+  .seats {
+    grid-template-columns: 1fr;
+  }
+}

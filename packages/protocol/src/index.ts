@@ -598,6 +598,46 @@ const SetupStageSchema = z.enum([
   "play",
 ]);
 
+export const HandReplayStepSchema = z
+  .object({
+    sequence: z.number().int().positive(),
+    actions: z
+      .array(
+        z
+          .object({
+            text: z.string().min(1),
+            cards: z.array(CardInstanceCodeSchema).max(5).optional(),
+          })
+          .strict(),
+      )
+      .min(1),
+    hands: z.array(z.array(CardInstanceCodeSchema)),
+    currentActorSeat: z.number().int().nonnegative().optional(),
+    unbeatenPlay: PlayerViewPlaySchema.optional(),
+    passedSeatIndices: z.array(z.number().int().nonnegative()),
+    finishPositions: z.array(z.number().int().positive().nullable()),
+    setupStage: SetupStageSchema,
+    teamLevels: TeamLevelsSchema,
+    result: PlayerViewHandResultSchema.optional(),
+  })
+  .strict();
+export type HandReplayStep = z.infer<typeof HandReplayStepSchema>;
+export const HandReplaySchema = z
+  .object({
+    summary: CompletedHandSummarySchema,
+    originalDeal: z.array(z.array(CardInstanceCodeSchema)),
+    steps: z.array(HandReplayStepSchema).min(2),
+  })
+  .strict();
+export type HandReplay = z.infer<typeof HandReplaySchema>;
+export const HandReplayResponseEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    ok: z.literal(true),
+    data: HandReplaySchema,
+  })
+  .strict();
+
 const PlayerViewTributeTransferSchema = z
   .object({
     giverId: identifier,

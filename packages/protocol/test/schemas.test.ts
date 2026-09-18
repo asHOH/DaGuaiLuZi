@@ -4,6 +4,7 @@ import {
   ChallengeCodeSchema,
   CompletedHandReferenceSchema,
   CompletedHandSummarySchema,
+  HandReplayStepSchema,
   PlayerViewSchema,
   RoomCommandPayloadSchema,
   ChallengePreviewSchema,
@@ -86,6 +87,31 @@ it("validates completed-Hand references and rejects private fields in history", 
       accountId: "a",
     }).success,
   ).toBe(false);
+});
+
+it("keeps Replay frames explicit and rejects raw or private event fields", () => {
+  const step = {
+    sequence: 12,
+    actions: [{ text: "原始发牌（进贡前）" }],
+    hands: [["AS#1"], [], [], []],
+    passedSeatIndices: [],
+    finishPositions: [null, null, null, null],
+    setupStage: "play",
+    teamLevels: ["2", "2"],
+  };
+  expect(HandReplayStepSchema.parse(step)).toEqual(step);
+  for (const extra of [
+    { handSeed: "secret" },
+    { template: {} },
+    { state: {} },
+    { events: [] },
+    { hands: [["invalid-card"]] },
+    { actions: [{ text: "选择", candidateId: "secret" }] },
+  ]) {
+    expect(HandReplayStepSchema.safeParse({ ...step, ...extra }).success).toBe(
+      false,
+    );
+  }
 });
 
 describe("protocol schemas", () => {

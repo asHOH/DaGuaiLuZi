@@ -1,6 +1,6 @@
 # MVP Roadmap
 
-Status: [Challenge Hand integration](challenge-integration-plan.md) and [history/access Phase 1](hand-history-plan.md) verified; Replay data and minimal viewer next.
+Status: [Challenge Hand integration](challenge-integration-plan.md) and [history/Replay Phases 1–2](hand-history-plan.md) verified; the full history, sharing, and Challenge-entry journey is next.
 
 Delivery order only. [Product requirements](product-spec.md), [architecture](architecture.md), and [Challenge Hand policy](challenge-hand-sharing.md) remain authoritative. Inspect existing implementation before planning each phase; reuse completed work.
 

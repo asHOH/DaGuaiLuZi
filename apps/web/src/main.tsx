@@ -10,6 +10,7 @@ import {
 } from "@dglz/protocol";
 import { api, ApiError, errorMessage } from "./api";
 import { createRoomConnection, initialRoomState } from "./room-connection";
+import { ReplayViewer } from "./ReplayViewer";
 import { RoomTable } from "./RoomTable";
 import styles from "./shell.module.css";
 
@@ -319,6 +320,11 @@ function App() {
                 <button disabled={busy}>加入房间</button>
               </form>
             </div>
+            <ReplayViewer
+              key={account.accountId}
+              accountId={account.accountId}
+              onFailure={fail}
+            />
           </section>
         ) : !validRoom ? (
           <section className={styles.panel}>

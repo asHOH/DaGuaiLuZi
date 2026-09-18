@@ -19,6 +19,7 @@ import {
   ChallengeResponseEnvelopeSchema,
   CompletedHandResponseEnvelopeSchema,
   HandHistoryResponseEnvelopeSchema,
+  HandReplayResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
   rulesConfigurationPreset,
@@ -46,6 +47,7 @@ import {
   sessions,
 } from "../src/db/schema.js";
 import { listCompletedHands, readCompletedHand } from "../src/hand-history.js";
+import { readHandReplay } from "../src/hand-replay.js";
 import { RoomExecutorRegistry } from "../src/room-executor.js";
 import {
   appendRoomCreated,
@@ -224,6 +226,85 @@ function challengeStart(template: ChallengeTemplate): State {
 function preview(value: ChallengePreview | string): ChallengePreview {
   if (typeof value === "string") throw new Error(value);
   return value;
+}
+
+function verifyReplay(
+  database: ReturnType<typeof openDatabase>,
+  roomId: string,
+  start: number,
+) {
+  const sourceHand = readCompletedHand(database, roomId, start)!;
+  const before = [...readRoomEvents(database, roomId)];
+  const replay = readHandReplay(database, sourceHand);
+  const cards = replay.originalDeal.flat().sort();
+  expect(cards).toHaveLength(replay.summary.playerIds.length * 27);
+  expect(new Set(cards).size).toBe(cards.length);
+  expect(replay.steps[0]!.hands).toEqual(replay.originalDeal);
+  expect(replay.steps[0]!.sequence).toBe(start);
+  expect(replay.steps.at(-1)).toMatchObject({
+    sequence: sourceHand.endSequence,
+    result: replay.summary.result,
+    finishPositions: replay.summary.finishPositions,
+    teamLevels: replay.summary.teamLevels,
+  });
+  expect(
+    replay.steps.slice(0, -1).every((step) => step.result === undefined),
+  ).toBe(true);
+  let lastSequence = start - 1;
+  const expectedHands = replay.originalDeal.map((hand) => [...hand]);
+  for (const step of replay.steps) {
+    expect(step.sequence).toBeGreaterThan(lastSequence);
+    for (const { event } of before.filter(
+      (row) => row.sequence > lastSequence && row.sequence <= step.sequence,
+    )) {
+      const remove = (seat: number, card: string) => {
+        const index = expectedHands[seat]!.indexOf(
+          card as (typeof expectedHands)[number][number],
+        );
+        if (index < 0) throw new Error("recorded-card-not-in-expected-hand");
+        return expectedHands[seat]!.splice(index, 1)[0]!;
+      };
+      if (event.type === "CardsPlayed")
+        for (const card of event.cards) remove(event.seatIndex, card);
+      if (event.type === "TributeTransferred")
+        expectedHands[event.recipientSeat]!.push(
+          remove(event.giverSeat, event.card),
+        );
+      if (event.type === "ReturnTransferred")
+        expectedHands[event.giverSeat]!.push(
+          remove(event.recipientSeat, event.card),
+        );
+    }
+    expect(step.hands.map((hand) => [...hand].sort())).toEqual(
+      expectedHands.map((hand) => [...hand].sort()),
+    );
+    const played = before
+      .filter((row) => row.sequence > start && row.sequence <= step.sequence)
+      .flatMap((row) =>
+        row.event.type === "CardsPlayed" ? [...row.event.cards] : [],
+      );
+    expect([...step.hands.flat(), ...played].sort()).toEqual(cards);
+    lastSequence = step.sequence;
+  }
+  const recordedPlays = before
+    .filter(
+      (row) => row.sequence > start && row.sequence <= sourceHand.endSequence,
+    )
+    .flatMap((row) =>
+      row.event.type === "CardsPlayed" ? [[...row.event.cards]] : [],
+    );
+  expect(
+    replay.steps.flatMap((step) =>
+      step.actions
+        .filter((action) => action.text.endsWith("出牌"))
+        .map((action) => action.cards),
+    ),
+  ).toEqual(recordedPlays);
+  expect([...readRoomEvents(database, roomId)]).toEqual(before);
+  expect(JSON.stringify(replay)).not.toMatch(
+    /handSeed|template|randomnessVersion|shuffleVersion/,
+  );
+  return replay;
 }
 
 it("retains the final Hand of a completed Match after owner departure and application restart", async () => {
@@ -421,6 +502,15 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       game.database,
       first.code,
     )!.template;
+    expect(
+      verifyReplay(game.database, game.roomId, game.initialStart).originalDeal,
+    ).toEqual(initial.hands);
+    const replay = verifyReplay(game.database, game.roomId, nextStart);
+    expect(
+      replay.steps
+        .flatMap((step) => step.actions)
+        .some((action) => action.text.endsWith("还牌")),
+    ).toBe(true);
     const nextTemplate = lookupChallenge(game.database, second.code)!.template;
     expect(setupSnapshot(challengeStart(initialTemplate))).toEqual(initial);
     expect(setupSnapshot(challengeStart(nextTemplate))).toEqual(subsequent);
@@ -434,6 +524,12 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     ).toHaveLength(2);
     const reopened = openDatabase(game.dbPath);
     try {
+      expect(
+        readHandReplay(
+          reopened,
+          readCompletedHand(reopened, game.roomId, nextStart)!,
+        ),
+      ).toEqual(replay);
       expect(lookupChallenge(reopened, second.code)!.template).toEqual(
         nextTemplate,
       );
@@ -789,6 +885,9 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
         },
       });
     const handUrl = `/api/rooms/${game.roomId}/hands/${game.initialStart}`;
+    const replayUrl = `${handUrl}/replay`;
+    expect((await request(replayUrl)).statusCode).toBe(401);
+    expect((await request(replayUrl, participant)).statusCode).toBe(404);
     expect((await request("/api/history")).statusCode).toBe(401);
     expect((await request(handUrl)).statusCode).toBe(401);
     expect(
@@ -908,6 +1007,7 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       ).statusCode,
     ).toBe(404);
     expect((await request(handUrl, newcomer)).statusCode).toBe(403);
+    expect((await request(replayUrl, newcomer)).statusCode).toBe(403);
     expect(
       HandHistoryResponseEnvelopeSchema.parse(
         (await request("/api/history", newcomer)).json(),
@@ -932,6 +1032,22 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     const shared = await request("/api/history/lookup", newcomer, { code });
     expect(shared.statusCode).toBe(200);
     expect(shared.headers["cache-control"]).toBe("no-store");
+    const replayResponse = await request("/api/replays/lookup", newcomer, {
+      code,
+    });
+    expect(replayResponse.statusCode).toBe(200);
+    expect(replayResponse.headers["cache-control"]).toBe("no-store");
+    const replay = HandReplayResponseEnvelopeSchema.parse(
+      replayResponse.json(),
+    ).data;
+    expect(
+      HandReplayResponseEnvelopeSchema.parse(
+        (await request(replayUrl, participant)).json(),
+      ).data,
+    ).toEqual(replay);
+    expect(JSON.stringify(replay)).not.toMatch(
+      /handSeed|template|randomnessVersion|shuffleVersion/,
+    );
     expect(
       CompletedHandResponseEnvelopeSchema.parse(shared.json()).data,
     ).toEqual({ ...first, challengeCode: code });
@@ -944,10 +1060,13 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       (await request("/api/history/lookup", newcomer, { code: "0".repeat(12) }))
         .statusCode,
     ).toBe(404);
-    for (let i = 0; i < 17; i++)
+    for (let i = 0; i < 16; i++)
       await request("/api/challenges/lookup", newcomer, { code });
     expect(
       (await request("/api/history/lookup", newcomer, { code })).statusCode,
+    ).toBe(429);
+    expect(
+      (await request("/api/replays/lookup", newcomer, { code })).statusCode,
     ).toBe(429);
 
     await app.close();
@@ -984,6 +1103,10 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       .run();
     expect((await request("/api/history", newcomer)).statusCode).toBe(401);
     expect((await request(handUrl, newcomer)).statusCode).toBe(401);
+    expect((await request(replayUrl, newcomer)).statusCode).toBe(401);
+    expect(
+      (await request("/api/replays/lookup", newcomer, { code })).statusCode,
+    ).toBe(401);
     expect(
       (await request("/api/history/lookup", newcomer, { code })).statusCode,
     ).toBe(401);
@@ -995,6 +1118,9 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     const incompatible = await request(handUrl, participant);
     expect(incompatible.statusCode).toBe(500);
     expect(incompatible.json()).toMatchObject({
+      error: { code: "unsupported-persisted-event" },
+    });
+    expect((await request(replayUrl, participant)).json()).toMatchObject({
       error: { code: "unsupported-persisted-event" },
     });
     expect((await request("/api/history", participant)).json()).toMatchObject({
@@ -1261,6 +1387,7 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       ({ event }) => event.type === "ChallengeHandStarted",
     )!.sequence;
     const completedHistory = listCompletedHands(game.database, target.ids[0]!);
+    verifyReplay(game.database, target.roomId, challengeStartSequence);
     const completedView = target.view().view;
     if (completedView.lifecycle !== "LOBBY")
       throw new Error("challenge-not-completed");
