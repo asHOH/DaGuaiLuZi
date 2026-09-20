@@ -88,7 +88,11 @@ describe("phase 1 HTTP slice", () => {
     );
     await writeFile(join(webRoot, "assets", "index-abcd.js"), "export {};");
     const app = await makeApp({ dbPath, webRoot, secureCookies: false });
-    for (const url of ["/", "/rooms/11111111-1111-4111-8111-111111111111"]) {
+    for (const url of [
+      "/",
+      "/history",
+      "/rooms/11111111-1111-4111-8111-111111111111",
+    ]) {
       const shell = await app.inject({ url });
       expect(shell.statusCode).toBe(200);
       expect(shell.body).toContain("大怪路子");

@@ -508,7 +508,9 @@ export async function createApp(
     if (
       options.webRoot !== undefined &&
       (request.method === "GET" || request.method === "HEAD") &&
-      (pathname === "/" || pathname.startsWith("/rooms/"))
+      (pathname === "/" ||
+        pathname === "/history" ||
+        pathname.startsWith("/rooms/"))
     ) {
       return reply.header("Cache-Control", "no-cache").sendFile("index.html");
     }

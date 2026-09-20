@@ -4,17 +4,25 @@ import {
   HandReplayResponseEnvelopeSchema,
   type HandReplay,
   type HandReplayStep,
+  type RulesetId,
 } from "@dglz/protocol";
 
 import { ApiError, api } from "./api";
 import { PLAY_FORM_LABELS } from "./play-feedback";
 import { cardLabel, RULE_LABELS, RULE_VALUES } from "./RoomTable";
+import { ChallengeShare } from "./ChallengeControls";
+import { type ReplaySource } from "./replay-links";
 
 import styles from "./ReplayViewer.module.css";
 
 type ReplayViewerProps = {
   accountId: string;
   onFailure: (reason: unknown) => void;
+  onSourceChange: (source: ReplaySource | undefined) => void;
+  initialSource?: ReplaySource | undefined;
+  invalidLink: boolean;
+  onChallenge: (code: string, rulesetId: RulesetId) => Promise<void>;
+  disabled: boolean;
 };
 
 const ACTIVITY_LABELS = {
@@ -251,20 +259,51 @@ function HandsState({
   );
 }
 
-export function ReplayViewer({ accountId, onFailure }: ReplayViewerProps) {
-  const [code, setCode] = useState("");
+export function ReplayViewer({
+  accountId,
+  onFailure,
+  onSourceChange,
+  initialSource,
+  invalidLink,
+  onChallenge,
+  disabled,
+}: ReplayViewerProps) {
+  const [code, setCode] = useState(
+    initialSource && "code" in initialSource ? initialSource.code : "",
+  );
   const [replay, setReplay] = useState<HandReplay | undefined>();
   const [stepIndex, setStepIndex] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const request = useRef(0);
-
-  useEffect(
-    () => () => {
-      request.current++;
-    },
-    [],
+  const [error, setError] = useState(
+    invalidLink ? "回放链接不正确，请重新输入同牌挑战码。" : "",
   );
+  const [playing, setPlaying] = useState(false);
+  const request = useRef(0);
+  const heading = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (replay !== undefined) heading.current?.focus();
+  }, [replay]);
+
+  // The parent remounts this viewer for each account/navigation, keeping positions local.
+  useEffect(() => {
+    if (initialSource !== undefined) void load(initialSource);
+    return () => {
+      request.current++;
+    };
+  }, []);
+  useEffect(() => {
+    if (!playing || replay === undefined) return;
+    if (stepIndex === replay.steps.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setStepIndex((value) => value + 1),
+      1200,
+    );
+    return () => window.clearTimeout(timer);
+  }, [playing, replay, stepIndex]);
 
   function clearReplay(value: string) {
     request.current++;
@@ -273,6 +312,8 @@ export function ReplayViewer({ accountId, onFailure }: ReplayViewerProps) {
     setStepIndex(0);
     setError("");
     setBusy(false);
+    setPlaying(false);
+    onSourceChange(undefined);
   }
 
   async function lookup(event: FormEvent<HTMLFormElement>) {
@@ -286,18 +327,28 @@ export function ReplayViewer({ accountId, onFailure }: ReplayViewerProps) {
       setError("请输入完整的 12 位回放挑战码。");
       return;
     }
+    await load({ code: parsed.data });
+  }
+
+  async function load(source: ReplaySource) {
     const generation = ++request.current;
     setBusy(true);
     setError("");
     setReplay(undefined);
     setStepIndex(0);
+    setPlaying(false);
     try {
       const response = await api(
-        "/replays/lookup",
+        "code" in source
+          ? "/replays/lookup"
+          : `/rooms/${source.roomId}/hands/${source.handStartSequence}/replay`,
         HandReplayResponseEnvelopeSchema,
-        { code: parsed.data },
+        "code" in source ? { code: source.code } : undefined,
       );
-      if (generation === request.current) setReplay(response.data);
+      if (generation === request.current) {
+        setReplay(response.data);
+        onSourceChange(source);
+      }
     } catch (reason) {
       if (generation !== request.current) return;
       if (
@@ -359,7 +410,7 @@ export function ReplayViewer({ accountId, onFailure }: ReplayViewerProps) {
           <header className={styles.replayHeader}>
             <div>
               <p className={styles.eyebrow}>只读牌局</p>
-              <h3>
+              <h3 ref={heading} tabIndex={-1}>
                 第 {replay.summary.handNumber} 局 ·{" "}
                 {ACTIVITY_LABELS[replay.summary.activity]}
               </h3>
@@ -379,19 +430,39 @@ export function ReplayViewer({ accountId, onFailure }: ReplayViewerProps) {
           </header>
 
           <RulesSummary replay={replay} />
+          <ChallengeShare
+            key={`${replay.summary.roomId}:${replay.summary.handStartSequence}`}
+            roomId={replay.summary.roomId}
+            handStartSequence={replay.summary.handStartSequence}
+            initialCode={replay.summary.challengeCode}
+            disabled={disabled}
+            onFailure={onFailure}
+            onChallenge={(challengeCode) =>
+              onChallenge(
+                challengeCode,
+                replay.summary.rulesConfiguration.rulesetId,
+              )
+            }
+          />
 
           <div className={styles.stepToolbar}>
             <button
               type="button"
               disabled={stepIndex === 0}
-              onClick={() => setStepIndex(0)}
+              onClick={() => {
+                setPlaying(false);
+                setStepIndex(0);
+              }}
             >
               回到发牌
             </button>
             <button
               type="button"
               disabled={stepIndex === 0}
-              onClick={() => setStepIndex((value) => Math.max(0, value - 1))}
+              onClick={() => {
+                setPlaying(false);
+                setStepIndex((value) => Math.max(0, value - 1));
+              }}
             >
               上一步
             </button>
@@ -401,21 +472,47 @@ export function ReplayViewer({ accountId, onFailure }: ReplayViewerProps) {
             <button
               type="button"
               disabled={stepIndex === replay.steps.length - 1}
-              onClick={() =>
+              onClick={() => {
+                setPlaying(false);
                 setStepIndex((value) =>
                   Math.min(replay.steps.length - 1, value + 1),
-                )
-              }
+                );
+              }}
             >
               下一步
             </button>
             <button
               type="button"
               disabled={stepIndex === replay.steps.length - 1}
-              onClick={() => setStepIndex(replay.steps.length - 1)}
+              onClick={() => {
+                setPlaying(false);
+                setStepIndex(replay.steps.length - 1);
+              }}
             >
               查看结算
             </button>
+          </div>
+          <div className={styles.playback}>
+            <button
+              type="button"
+              disabled={stepIndex === replay.steps.length - 1}
+              onClick={() => setPlaying((value) => !value)}
+            >
+              {playing ? "暂停回放" : "自动播放"}
+            </button>
+            <label>
+              回放进度
+              <input
+                type="range"
+                min={1}
+                max={replay.steps.length}
+                value={stepIndex + 1}
+                onChange={(event) => {
+                  setPlaying(false);
+                  setStepIndex(Number(event.target.value) - 1);
+                }}
+              />
+            </label>
           </div>
 
           <ActionList step={step} />

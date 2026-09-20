@@ -56,6 +56,9 @@
   gap: 0.55rem;
   font-size: 0.9rem;
 }
+:global(a) {
+  color: var(--brass);
+}
 :global(h1),
 :global(h2) {
   font-family: "Songti SC", "SimSun", serif;
@@ -106,6 +109,8 @@
 }
 .account {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 14px;
   min-width: 0;

@@ -131,6 +131,22 @@
   text-align: center;
 }
 
+.playback {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.playback label {
+  flex: 1;
+  min-width: 0;
+}
+
+.playback input {
+  padding: 0;
+  accent-color: var(--brass);
+}
+
 .actions ol {
   padding-left: 1.5rem;
   margin: 0.5rem 0;

@@ -1,0 +1,85 @@
+.history {
+  color: var(--ivory);
+  margin: 2rem auto 1rem;
+  max-width: 76rem;
+}
+.heading,
+.itemHeading,
+.error {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+.heading {
+  margin-bottom: 1rem;
+}
+.eyebrow,
+.status,
+.empty {
+  color: var(--muted);
+  margin: 0;
+}
+.error {
+  background: var(--felt);
+  border: 1px solid var(--brass);
+  margin-bottom: 1rem;
+  padding: 0.8rem 1rem;
+}
+.empty {
+  border: 1px solid var(--muted);
+  padding: 1.2rem;
+}
+.list {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.item {
+  background: var(--felt);
+  border: 1px solid var(--muted);
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+.itemHeading time,
+.details dt {
+  color: var(--muted);
+}
+.itemHeading time {
+  text-align: right;
+}
+.details {
+  border-top: 1px solid var(--muted);
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding-top: 0.75rem;
+}
+.details :is(dt, dd) {
+  margin: 0;
+}
+.openButton {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--felt);
+  justify-self: start;
+}
+@media (max-width: 520px) {
+  .heading,
+  .itemHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .itemHeading time {
+    text-align: left;
+  }
+  .list {
+    grid-template-columns: 1fr;
+  }
+}

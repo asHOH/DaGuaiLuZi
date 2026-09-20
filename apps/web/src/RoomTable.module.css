@@ -261,15 +261,15 @@
 .seatButton,
 .secondaryButton {
   background: transparent;
-  border: 1px solid var(--line);
-  color: var(--ivory-muted);
+  border: 1px solid var(--line, var(--muted));
+  color: var(--ivory-muted, var(--ivory));
 }
 
 .primaryButton,
 .readyButton {
   background: var(--brass);
-  border: 1px solid var(--brass-light);
-  color: var(--felt-deep);
+  border: 1px solid var(--brass-light, var(--brass));
+  color: var(--felt-deep, var(--felt));
   font-weight: 800;
 }
 

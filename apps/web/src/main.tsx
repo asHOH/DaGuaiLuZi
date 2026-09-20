@@ -11,6 +11,8 @@ import {
 import { api, ApiError, errorMessage } from "./api";
 import { createRoomConnection, initialRoomState } from "./room-connection";
 import { ReplayViewer } from "./ReplayViewer";
+import { HandHistory } from "./HandHistory";
+import { replayHash, replaySource, type ReplaySource } from "./replay-links";
 import { RoomTable } from "./RoomTable";
 import styles from "./shell.module.css";
 
@@ -29,6 +31,11 @@ function App() {
   const [error, setError] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
   const [roomId, setRoomId] = useState(roomFromLocation);
+  const [route, setRoute] = useState(() => ({
+    path: location.pathname,
+    hash: location.hash,
+    revision: 0,
+  }));
   const [roomState, setRoomState] = useState(initialRoomState);
   const [connectionKey, setConnectionKey] = useState(0);
   const connection = useRef<ReturnType<typeof createRoomConnection> | null>(
@@ -69,9 +76,16 @@ function App() {
   }, []);
   useEffect(() => {
     const onPop = () => {
+      operation.current++;
       connection.current?.close();
+      setConnectionKey((value) => value + 1);
       setRoomState(initialRoomState);
       setRoomId(roomFromLocation());
+      setRoute((previous) => ({
+        path: location.pathname,
+        hash: location.hash,
+        revision: previous.revision + 1,
+      }));
       setError("");
     };
     window.addEventListener("popstate", onPop);
@@ -98,12 +112,41 @@ function App() {
     };
   }, [account, roomId, connectionKey]);
 
-  function navigate(id: string) {
+  function navigatePath(path: string) {
+    operation.current++;
     connection.current?.close();
     setRoomState(initialRoomState);
-    history.pushState(null, "", id === "" ? "/" : `/rooms/${id}`);
-    setRoomId(id);
+    history.pushState(null, "", path);
+    setRoomId(roomFromLocation());
+    setRoute((previous) => ({
+      path: location.pathname,
+      hash: location.hash,
+      revision: previous.revision + 1,
+    }));
     setError("");
+  }
+  function navigate(id: string) {
+    navigatePath(id === "" ? "/" : `/rooms/${id}`);
+  }
+  function openReplay(source: ReplaySource) {
+    navigatePath(`/history${replayHash(source)}`);
+  }
+  async function createChallenge(code: string, rulesetId: RulesetId) {
+    const generation = ++operation.current;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await api("/rooms", RoomResponseEnvelopeSchema, {
+        rulesetId,
+        seatingPolicy: "fixed",
+      });
+      if (generation === operation.current)
+        navigatePath(`/rooms/${response.data.view.roomId}#challenge=${code}`);
+    } catch (reason) {
+      if (generation === operation.current) fail(reason);
+    } finally {
+      setBusy(false);
+    }
   }
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -190,6 +233,15 @@ function App() {
         {account && (
           <div className={styles.account}>
             <span>{account.username}</span>
+            <a
+              href="/history"
+              onClick={(event) => {
+                event.preventDefault();
+                navigatePath("/history");
+              }}
+            >
+              牌局记录
+            </a>
             <button
               disabled={busy}
               onClick={() => {
@@ -275,6 +327,36 @@ function App() {
               )}
             </form>
           </section>
+        ) : route.path === "/history" ? (
+          <section className={styles.home}>
+            <button onClick={() => navigate("")}>返回开桌</button>
+            <h1>牌局记录</h1>
+            <ReplayViewer
+              key={`${account.accountId}:${route.revision}`}
+              accountId={account.accountId}
+              initialSource={replaySource(route.hash)}
+              invalidLink={
+                route.hash !== "" && replaySource(route.hash) === undefined
+              }
+              onFailure={fail}
+              onSourceChange={(source) => {
+                history.replaceState(
+                  null,
+                  "",
+                  `/history${source === undefined ? "" : replayHash(source)}`,
+                );
+                setRoute((previous) => ({ ...previous, hash: location.hash }));
+              }}
+              onChallenge={createChallenge}
+              disabled={busy}
+            />
+            <HandHistory
+              key={account.accountId}
+              accountId={account.accountId}
+              onOpen={openReplay}
+              onFailure={fail}
+            />
+          </section>
         ) : roomId === "" ? (
           <section className={styles.home}>
             <div>
@@ -320,11 +402,15 @@ function App() {
                 <button disabled={busy}>加入房间</button>
               </form>
             </div>
-            <ReplayViewer
-              key={account.accountId}
-              accountId={account.accountId}
-              onFailure={fail}
-            />
+            <a
+              href="/history"
+              onClick={(event) => {
+                event.preventDefault();
+                navigatePath("/history");
+              }}
+            >
+              查看已完成的牌局与回放
+            </a>
           </section>
         ) : !validRoom ? (
           <section className={styles.panel}>

@@ -6,6 +6,7 @@ import {
   type RoomCommandPayload,
 } from "@dglz/protocol";
 import { api, ApiError, errorMessage } from "./api";
+import { replayLink } from "./replay-links";
 import styles from "./RoomTable.module.css";
 
 type ControlsProps = {
@@ -36,12 +37,15 @@ export function ChallengeEntry({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const request = useRef(0);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const parsed = ChallengeCodeSchema.safeParse(
+      new URLSearchParams(location.hash.slice(1)).get("challenge"),
+    );
+    if (parsed.success) setCode(parsed.data);
+    return () => {
       request.current++;
-    },
-    [],
-  );
+    };
+  }, []);
 
   async function lookup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -134,11 +138,15 @@ export function ChallengeShare({
   handStartSequence,
   disabled,
   onFailure,
+  initialCode,
+  onChallenge,
 }: ControlsProps & {
   roomId: string;
   handStartSequence: number;
+  initialCode?: string | undefined;
+  onChallenge?: ((code: string) => Promise<void>) | undefined;
 }) {
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -167,12 +175,16 @@ export function ChallengeShare({
       if (generation === request.current) setBusy(false);
     }
   }
-  async function copy() {
+  async function copy(link = false) {
+    const generation = request.current;
     try {
-      await navigator.clipboard.writeText(code);
-      setMessage("已复制，可分享给好友。");
+      await navigator.clipboard.writeText(
+        link ? `${location.origin}${replayLink(code)}` : code,
+      );
+      if (generation === request.current) setMessage("已复制，可分享给好友。");
     } catch {
-      setMessage("未能自动复制，请选中上方挑战码后手动复制。");
+      if (generation === request.current)
+        setMessage("未能自动复制，请选中挑战码或回放链接后手动复制。");
     }
   }
   return (
@@ -188,6 +200,14 @@ export function ChallengeShare({
               onFocus={(event) => event.target.select()}
             />
           </label>
+          <label>
+            回放分享链接
+            <input
+              readOnly
+              value={`${location.origin}${replayLink(code)}`}
+              onFocus={(event) => event.target.select()}
+            />
+          </label>
           <button
             type="button"
             className={styles.secondaryButton}
@@ -198,6 +218,26 @@ export function ChallengeShare({
           >
             复制同牌挑战码
           </button>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            disabled={disabled}
+            onClick={() => void copy(true)}
+          >
+            复制回放链接
+          </button>
+          {onChallenge ? (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={disabled}
+              onClick={() => void onChallenge(code)}
+            >
+              用此牌局开一桌
+            </button>
+          ) : (
+            <a href={replayLink(code)}>查看本局回放</a>
+          )}
           {message && <p role="status">{message}</p>}
         </>
       ) : (

@@ -34,7 +34,15 @@ import { provisionAccount } from "../../server/dist/auth.js";
 import { openDatabase } from "../../server/dist/db/index.js";
 
 const PASSWORD = "correct horse battery staple";
-const ACCOUNTS = ["alice", "bob", "charlie", "diana", "eve", "frank"] as const;
+const ACCOUNTS = [
+  "alice",
+  "bob",
+  "charlie",
+  "diana",
+  "eve",
+  "frank",
+  "grace",
+] as const;
 
 type Account = { accountId: string; username: string; password: string };
 type App = Awaited<ReturnType<typeof createApp>>;
@@ -971,7 +979,7 @@ async function runHappyPath(
       await ownerPage.getByRole("button", { name: "复制同牌挑战码" }).click();
       await expect(
         ownerPage.getByRole("status").filter({ hasText: "未能自动复制" }),
-      ).toHaveText("未能自动复制，请选中上方挑战码后手动复制。");
+      ).toHaveText("未能自动复制，请选中挑战码或回放链接后手动复制。");
       await codeField.focus();
       expect(
         await codeField.evaluate((input: HTMLInputElement) =>
@@ -1393,11 +1401,43 @@ async function runHappyPath(
         page.getByRole("region", { name: "同牌挑战结果", exact: true }),
       ).toHaveCount(0);
     }
+    // Same-Room fragment navigation must reconnect after closing the old socket.
+    await ownerPage.evaluate(() => {
+      location.hash = "room-navigation-check";
+    });
+    await expect(ownerPage.getByRole("status")).toHaveText(
+      "已连接 · 牌局已同步",
+    );
+    await expect(
+      ownerPage.getByRole("button", { name: "选择比赛", exact: true }),
+    ).toBeEnabled();
+    await ownerPage.goBack();
+    await expect(ownerPage.getByRole("status")).toHaveText(
+      "已连接 · 牌局已同步",
+    );
+    await expect(
+      ownerPage.getByRole("button", { name: "选择比赛", exact: true }),
+    ).toBeEnabled();
     // Replay is a separate read-only view; each browser owns its own position.
     for (const page of [ownerPage, joinerPage]) {
-      await page.getByRole("button", { name: "返回开桌", exact: true }).click();
-      await page.getByLabel("回放挑战码", { exact: true }).fill(challengeCode);
-      await page.getByRole("button", { name: "查看回放", exact: true }).click();
+      await page.getByRole("link", { name: "牌局记录", exact: true }).click();
+      await expect(page.getByTestId("history-hand")).toHaveCount(2);
+      if (page === ownerPage) {
+        await page
+          .getByTestId("history-hand")
+          .last()
+          .getByRole("button", { name: "查看回放", exact: true })
+          .click();
+        await expect(page).toHaveURL(/\/history#hand=/);
+      } else {
+        await page
+          .getByLabel("回放挑战码", { exact: true })
+          .fill(challengeCode);
+        await page
+          .getByRole("region", { name: "查看一手牌的回放", exact: true })
+          .getByRole("button", { name: "查看回放", exact: true })
+          .click();
+      }
       await expect(page.getByTestId("replay-position")).toHaveText(
         /^第 1 \/ \d+ 步$/,
       );
@@ -1409,9 +1449,41 @@ async function runHappyPath(
         page.getByRole("button", { name: "上一步", exact: true }),
       ).toBeDisabled();
     }
+    // Manual lookup must survive an auth remount without reloading or navigating.
+    const manualReplayUrl = joinerPage.url();
+    await joinerPage
+      .getByRole("button", { name: "退出登录", exact: true })
+      .click();
+    await expect(
+      joinerPage.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await joinerPage.getByLabel("用户名").fill(joiner.username);
+    await joinerPage.getByLabel("密码").fill(joiner.password);
+    await joinerPage.getByRole("button", { name: "登录", exact: true }).click();
+    await expect(joinerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    await expect(joinerPage.getByTestId("replay-card")).toHaveCount(
+      playerCount * 27,
+    );
+    expect(joinerPage.url()).toBe(manualReplayUrl);
     const originalCards = await ownerPage
       .getByTestId("replay-card")
       .allTextContents();
+    const privateReplayUrl = ownerPage.url();
+    const sharedReplayUrl = await ownerPage
+      .getByLabel("回放分享链接", { exact: true })
+      .inputValue();
+    expect(sharedReplayUrl).toBe(
+      `${server.url}/history#replay=${challengeCode}`,
+    );
+    await ownerContext.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await ownerPage
+      .getByRole("button", { name: "复制回放链接", exact: true })
+      .click();
+    expect(await ownerPage.evaluate(() => navigator.clipboard.readText())).toBe(
+      sharedReplayUrl,
+    );
     await ownerPage
       .getByRole("button", { name: "下一步", exact: true })
       .click();
@@ -1430,6 +1502,40 @@ async function runHappyPath(
     expect(
       await ownerPage.getByTestId("replay-card").allTextContents(),
     ).toEqual(originalCards);
+    await ownerPage.clock.install();
+    await ownerPage
+      .getByRole("button", { name: "自动播放", exact: true })
+      .click();
+    await ownerPage.clock.runFor(1200);
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 2 \/ \d+ 步$/,
+    );
+    await ownerPage
+      .getByRole("button", { name: "暂停回放", exact: true })
+      .click();
+    const pausedPosition = await ownerPage
+      .getByTestId("replay-position")
+      .textContent();
+    await ownerPage.clock.runFor(2400);
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      pausedPosition!,
+    );
+    await ownerPage
+      .getByRole("slider", { name: "回放进度", exact: true })
+      .focus();
+    await ownerPage.keyboard.press("Home");
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    await ownerPage.keyboard.press("End");
+    await expect(
+      ownerPage.getByRole("button", { name: "自动播放", exact: true }),
+    ).toBeDisabled();
+    await ownerPage.reload();
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    expect(ownerPage.url()).toBe(privateReplayUrl);
     await ownerPage
       .getByRole("button", { name: "查看结算", exact: true })
       .click();
@@ -1457,6 +1563,91 @@ async function runHappyPath(
         fullPage: true,
       });
     }
+    // A recipient can follow the shared link through login without joining the source Room.
+    await joinerPage
+      .getByRole("button", { name: "退出登录", exact: true })
+      .click();
+    await loginUi(joinerPage, server.url, server.accounts[6]!, sharedReplayUrl);
+    await expect(joinerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    await expect(
+      joinerPage.getByText("还没有完成的牌局。", { exact: true }),
+    ).toBeVisible();
+    await joinerPage.reload();
+    await expect(joinerPage.getByTestId("replay-card")).toHaveCount(
+      playerCount * 27,
+    );
+    expect(joinerPage.url()).toBe(sharedReplayUrl);
+    await joinerPage.goto(privateReplayUrl);
+    await expect(joinerPage.getByRole("alert")).toContainText(
+      "你无权查看这份回放。",
+    );
+    await expect(joinerPage.getByTestId("replay-card")).toHaveCount(0);
+    await joinerPage.goBack();
+    await expect(joinerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    // The existing Challenge selector receives the code in a fresh Room, including after reload.
+    await joinerPage
+      .getByRole("button", { name: "用此牌局开一桌", exact: true })
+      .click();
+    await expect(joinerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
+    const challengeRoomId = new URL(joinerPage.url()).pathname.slice(
+      "/rooms/".length,
+    );
+    expect(challengeRoomId).not.toBe(roomId);
+    await joinerPage.reload();
+    await expect(
+      joinerPage.getByLabel("同牌挑战码", { exact: true }),
+    ).toHaveValue(challengeCode);
+    await joinerPage
+      .getByRole("button", { name: "查看牌局", exact: true })
+      .click();
+    await joinerPage
+      .getByRole("button", { name: "使用此牌局", exact: true })
+      .click();
+    await expect(
+      joinerPage.getByText("已选择同牌挑战 · 只打一局"),
+    ).toBeVisible();
+    await chooseFirstSeat(joinerPage);
+    for (const [index, account] of server.accounts
+      .slice(0, playerCount - 1)
+      .entries()) {
+      const cookie = protocolCookies.get(account.accountId);
+      if (cookie === undefined)
+        throw new Error("missing-challenge-player-session");
+      const client = new ProtocolClient(server.url, cookie);
+      clients.push(client);
+      await client.connect();
+      await client.join(challengeRoomId);
+      await client.command(server.url, challengeRoomId, {
+        type: "AssignSeat",
+        seatIndex: index + 1,
+      });
+      await client.command(server.url, challengeRoomId, {
+        type: "SetReadiness",
+        ready: true,
+      });
+    }
+    await joinerPage
+      .getByRole("button", { name: "准备就绪", exact: true })
+      .click();
+    await expect(joinerPage.getByTestId("hand-card")).toHaveCount(27);
+    await expect(
+      joinerPage.getByRole("button", { name: "终止同牌挑战", exact: true }),
+    ).toBeVisible();
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
+    await joinerPage
+      .getByRole("button", { name: "终止同牌挑战", exact: true })
+      .click();
+    await expect(joinerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
+    await joinerPage.goto(sharedReplayUrl);
+    await expect(joinerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
     await ownerPage.getByLabel("回放挑战码", { exact: true }).fill("invalid");
     await expect(
       ownerPage.getByRole("region", { name: "牌局回放", exact: true }),
@@ -1485,6 +1676,7 @@ async function runHappyPath(
       .getByLabel("回放挑战码", { exact: true })
       .fill(challengeCode);
     await ownerPage
+      .getByRole("region", { name: "查看一手牌的回放", exact: true })
       .getByRole("button", { name: "查看回放", exact: true })
       .click();
     const staleReplayResponse = ownerPage.waitForResponse(
@@ -1508,7 +1700,9 @@ async function runHappyPath(
       ownerPage.getByRole("region", { name: "牌局回放", exact: true }),
     ).toHaveCount(0);
     await expect(
-      ownerPage.getByRole("button", { name: "查看回放", exact: true }),
+      ownerPage
+        .getByRole("region", { name: "查看一手牌的回放", exact: true })
+        .getByRole("button", { name: "查看回放", exact: true }),
     ).toBeEnabled();
     await ownerPage.route(
       "**/api/replays/lookup",
@@ -1520,6 +1714,7 @@ async function runHappyPath(
       .getByLabel("回放挑战码", { exact: true })
       .fill(challengeCode);
     await ownerPage
+      .getByRole("region", { name: "查看一手牌的回放", exact: true })
       .getByRole("button", { name: "查看回放", exact: true })
       .click();
     await expect(
