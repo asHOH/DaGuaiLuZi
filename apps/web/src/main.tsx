@@ -104,6 +104,7 @@ function App() {
       account.accountId,
       setRoomState,
       (code) => fail(new ApiError(code)),
+      () => navigatePath("/", true),
     );
     connection.current = next;
     return () => {
@@ -112,11 +113,12 @@ function App() {
     };
   }, [account, roomId, connectionKey]);
 
-  function navigatePath(path: string) {
+  function navigatePath(path: string, replace = false) {
     operation.current++;
     connection.current?.close();
     setRoomState(initialRoomState);
-    history.pushState(null, "", path);
+    if (replace) history.replaceState(null, "", path);
+    else history.pushState(null, "", path);
     setRoomId(roomFromLocation());
     setRoute((previous) => ({
       path: location.pathname,

@@ -292,7 +292,14 @@ export class RoomExecutor {
     } catch {
       return commandError(envelope.commandId, "internal-error");
     }
-    const view = deriveRoomView(candidate, accountId);
+    const view =
+      envelope.payload.type === "LeaveRoom"
+        ? {
+            roomId: candidate.roomId,
+            revision: candidate.revision,
+            left: true as const,
+          }
+        : deriveRoomView(candidate, accountId);
     if (view === undefined) {
       return commandError(envelope.commandId, "internal-error");
     }

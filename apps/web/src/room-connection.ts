@@ -3,9 +3,11 @@ import {
   PROTOCOL_VERSION,
   LoginResponseEnvelopeSchema,
   RoomCommandAckSchema,
+  RoomLeftEnvelopeSchema,
   RoomResponseEnvelopeSchema,
   RoomViewSyncEnvelopeSchema,
   SOCKET_ROOM_COMMAND_EVENT,
+  SOCKET_ROOM_LEFT_EVENT,
   SOCKET_ROOM_VIEW_EVENT,
   type RoomCommandEnvelope,
   type RoomCommandPayload,
@@ -37,6 +39,7 @@ export function createRoomConnection(
   accountId: string,
   update: (state: RoomState) => void,
   authFailure: (code: string) => void,
+  onLeave: () => void,
 ) {
   let state = { ...initialRoomState };
   let closed = false;
@@ -55,6 +58,11 @@ export function createRoomConnection(
     update(state);
   };
   const current = (generation: number) => !closed && epoch === generation;
+  const leave = () => {
+    patch({ ...initialRoomState });
+    close();
+    onLeave();
+  };
   const failure = (error: unknown) => {
     const code = error instanceof ApiError ? error.code : "internal-error";
     patch({
@@ -76,7 +84,11 @@ export function createRoomConnection(
       return;
     clearTimeout(syncTimer);
     joined = true;
-    socket.auth = { protocolVersion: PROTOCOL_VERSION, accountId, roomId };
+    socket.auth = {
+      protocolVersion: PROTOCOL_VERSION,
+      accountId,
+      ...(command?.payload.type === "LeaveRoom" ? {} : { roomId }),
+    };
     patch({ room: view, synced: true });
   };
   async function refresh(generation: number) {
@@ -87,7 +99,10 @@ export function createRoomConnection(
       );
       if (current(generation) && socket.connected) accept(response.data);
     } catch (error) {
-      if (current(generation)) failure(error);
+      if (current(generation)) {
+        if (error instanceof ApiError && error.code === "forbidden") leave();
+        else failure(error);
+      }
     }
   }
   function newCommand(
@@ -132,13 +147,22 @@ export function createRoomConnection(
               synced: false,
               error: "操作结果尚未确认，请同步后重试。",
             });
-            if (joined) void refresh(generation);
+            if (joined && sent.payload.type !== "LeaveRoom")
+              void refresh(generation);
             return;
           }
           const ack = parsed.data;
           command = undefined;
           patch({ pending: false, uncertain: false });
           if (ack.ok) {
+            if ("left" in ack.data) {
+              if (
+                ack.data.roomId === roomId &&
+                sent.payload.type === "LeaveRoom"
+              )
+                leave();
+              return;
+            }
             accept(ack.data);
             // Deduplicated acknowledgements may predate other commands.
             if (wasUncertain) {
@@ -158,6 +182,12 @@ export function createRoomConnection(
                 error: "房间状态变化较快，请重试加入。",
               });
           } else {
+            if (joined)
+              socket.auth = {
+                protocolVersion: PROTOCOL_VERSION,
+                accountId,
+                roomId,
+              };
             failure(new ApiError(ack.error.code, ack.error.reason));
             if (joined && ack.error.code === "stale-revision") {
               patch({ synced: false });
@@ -174,7 +204,8 @@ export function createRoomConnection(
       () => patch({ error: "同步超时，请重新连接。" }),
       10_000,
     );
-    if (!joined) {
+    if (command?.payload.type === "LeaveRoom") submit();
+    else if (!joined) {
       command ??= newCommand({ type: "JoinRoom" }, 1);
       submit();
     }
@@ -191,6 +222,20 @@ export function createRoomConnection(
       return;
     }
     accept(parsed.data.data);
+  });
+  socket.on(SOCKET_ROOM_LEFT_EVENT, (raw: unknown) => {
+    if (!socket.connected || closed) return;
+    if (incompatibleVersion(raw)) {
+      failure(new ApiError("reload-required"));
+      return;
+    }
+    const parsed = RoomLeftEnvelopeSchema.safeParse(raw);
+    if (
+      parsed.success &&
+      parsed.data.data.roomId === roomId &&
+      parsed.data.data.revision >= (state.room?.revision ?? 0)
+    )
+      leave();
   });
   socket.on("disconnect", (reason: string) => {
     epoch++;
@@ -213,6 +258,10 @@ export function createRoomConnection(
     }
   });
   socket.on("connect_error", (error: Error & { data?: { code?: string } }) => {
+    if (joined && error.data?.code === "forbidden") {
+      leave();
+      return;
+    }
     failure(new ApiError(error.data?.code ?? "internal-error"));
   });
 
@@ -253,12 +302,21 @@ export function createRoomConnection(
       )
         return;
       command = newCommand(payload, state.room.revision);
+      // An accepted departure may lose its acknowledgement. Reconnect without
+      // requiring membership so the same command can retrieve its durable receipt.
+      if (payload.type === "LeaveRoom")
+        socket.auth = { protocolVersion: PROTOCOL_VERSION, accountId };
       submit();
     },
     retry() {
+      if (closed) return;
       if (command !== undefined) {
         joinAttempts = 0;
-        if (socket.connected && (state.synced || !joined)) submit();
+        if (
+          socket.connected &&
+          (state.synced || !joined || command.payload.type === "LeaveRoom")
+        )
+          submit();
         else if (socket.connected) void refresh(epoch);
         else socket.connect();
       } else if (socket.connected) {

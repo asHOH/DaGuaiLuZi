@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +11,9 @@ import {
   PROTOCOL_VERSION_HEADER,
   SOCKET_ROOM_COMMAND_EVENT,
   SOCKET_ROOM_VIEW_EVENT,
+  SOCKET_ROOM_LEFT_EVENT,
+  RoomLeftEnvelopeSchema,
+  type RoomCommandPayload,
   type RoomCommandAck,
   type RoomViewSyncEnvelope,
 } from "@dglz/protocol";
@@ -17,6 +21,8 @@ import {
 import { createApp } from "../src/app.js";
 import { provisionAccount } from "../src/auth.js";
 import { openDatabase } from "../src/db/index.js";
+import { loadRoom, readRoomEvents } from "../src/rooms.js";
+import { derivePlayerView } from "@dglz/game-core";
 
 const paths: string[] = [];
 const sockets: Socket[] = [];
@@ -194,6 +200,166 @@ function sendCommand(
 }
 
 describe("phase 2 Socket.IO room slice", () => {
+  it("persists lobby controls, departure receipts and last-member archival across restart", async () => {
+    const { app, dbPath, roomId, ownerCookie, memberCookie } = await setup();
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const ownerConnection = await openSocket(
+      listenPort(app),
+      ownerCookie,
+      roomId,
+    );
+    const owner = ownerConnection.socket;
+    const initial = (await ownerConnection.firstView).data;
+    const ownerId = initial.view.ownerId;
+    let revision = initial.revision;
+    const member = (await openSocket(listenPort(app), memberCookie)).socket;
+    const command = (payload: RoomCommandPayload) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: randomUUID(),
+      roomId,
+      expectedRevision: revision,
+      payload,
+    });
+    const send = async (socket: Socket, payload: RoomCommandPayload) => {
+      const ack = await sendCommand(socket, command(payload));
+      if (ack.ok) revision = ack.data.revision;
+      return ack;
+    };
+    expect((await send(member, { type: "JoinRoom" })).ok).toBe(true);
+    expect(
+      await send(member, {
+        type: "ReplaceSeatingPolicy",
+        seatingPolicy: "randomized",
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { reason: "owner-only" },
+    });
+    await send(owner, { type: "AssignSeat", seatIndex: 0 });
+    await send(owner, { type: "SetReadiness", ready: true });
+    const policy = await send(owner, {
+      type: "ReplaceSeatingPolicy",
+      seatingPolicy: "randomized",
+    });
+    expect(policy).toMatchObject({
+      ok: true,
+      data: {
+        view: {
+          seatingPolicy: "randomized",
+          members: [{ playerId: ownerId, ready: true }, { ready: false }],
+        },
+      },
+    });
+    const otherTab = await openSocket(listenPort(app), ownerCookie, roomId);
+    await otherTab.firstView;
+    const departed = new Promise<unknown>((resolve) =>
+      otherTab.socket.once(SOCKET_ROOM_LEFT_EVENT, resolve),
+    );
+    const ownerChanged = new Promise<RoomViewSyncEnvelope>((resolve) => {
+      const changed = (value: RoomViewSyncEnvelope) => {
+        if (value.data.view.ownerId === ownerId) return;
+        member.off(SOCKET_ROOM_VIEW_EVENT, changed);
+        resolve(value);
+      };
+      member.on(SOCKET_ROOM_VIEW_EVENT, changed);
+    });
+    const exit = command({ type: "LeaveRoom" });
+    // A failed transaction must keep the member and the owner in the lobby.
+    const database = openDatabase(dbPath);
+    try {
+      database.sqlite.exec(
+        "CREATE TRIGGER fail_departure BEFORE INSERT ON room_events WHEN NEW.event_type = 'MemberLeft' BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+      );
+      expect(await sendCommand(owner, exit)).toMatchObject({
+        ok: false,
+        error: { code: "internal-error" },
+      });
+      expect(
+        derivePlayerView(loadRoom(database, roomId)!.state, ownerId).ownerId,
+      ).toBe(ownerId);
+      database.sqlite.exec("DROP TRIGGER fail_departure");
+    } finally {
+      database.close();
+    }
+    const receipt = await sendCommand(owner, exit);
+    expect(receipt).toEqual({
+      protocolVersion: PROTOCOL_VERSION,
+      ok: true,
+      commandId: exit.commandId,
+      data: { roomId, revision: revision + 2, left: true },
+    });
+    revision += 2;
+    expect(RoomLeftEnvelopeSchema.parse(await departed).data).toEqual({
+      roomId,
+      revision,
+      left: true,
+    });
+    const changed = (await ownerChanged).data;
+    expect(changed.view.members).toHaveLength(1);
+    expect(changed.view.ownerId).toBe(changed.view.members[0]!.playerId);
+    expect(
+      changed.view.seats.every((seat) => seat.playerId === undefined),
+    ).toBe(true);
+    expect(await sendCommand(owner, exit)).toEqual(receipt);
+    expect(
+      await send(owner, {
+        type: "ReplaceSeatingPolicy",
+        seatingPolicy: "fixed",
+      }),
+    ).toMatchObject({ ok: false, error: { reason: "not-a-member" } });
+    expect(
+      (
+        await app.inject({
+          url: `/api/rooms/${roomId}`,
+          headers: {
+            cookie: ownerCookie,
+            [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const closure = command({ type: "LeaveRoom" });
+    const closed = await sendCommand(member, closure);
+    expect(closed).toMatchObject({
+      ok: true,
+      data: { roomId, revision: revision + 2, left: true },
+    });
+    revision += 2;
+    for (const socket of [owner, member, otherTab.socket]) socket.close();
+    await app.close();
+    apps.splice(apps.indexOf(app), 1);
+    const restarted = await createApp({
+      dbPath,
+      allowedOrigin: "https://game.example",
+      secureCookies: false,
+    });
+    apps.push(restarted);
+    await restarted.listen({ host: "127.0.0.1", port: 0 });
+    const retry = (await openSocket(listenPort(restarted), memberCookie))
+      .socket;
+    expect(await sendCommand(retry, closure)).toEqual(closed);
+    expect(
+      await sendCommand(retry, command({ type: "JoinRoom" })),
+    ).toMatchObject({ ok: false, error: { reason: "room-not-in-lobby" } });
+    const recovered = openDatabase(dbPath);
+    try {
+      expect(
+        derivePlayerView(loadRoom(recovered, roomId)!.state, ownerId),
+      ).toMatchObject({
+        lifecycle: "ARCHIVED",
+        members: [],
+        seatingPolicy: "randomized",
+      });
+      expect(
+        [...readRoomEvents(recovered, roomId)].filter(
+          (row) => row.event.type === "RoomArchived",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      recovered.close();
+    }
+  });
+
   it("syncs a room, joins through the executor, and deduplicates accepted commands", async () => {
     const { app, dbPath, roomId, ownerCookie, memberCookie } = await setup();
     await app.listen({ host: "127.0.0.1", port: 0 });
@@ -223,6 +389,7 @@ describe("phase 2 Socket.IO room slice", () => {
       data: { revision: 2 },
     });
     if (!acknowledgement.ok) throw new Error("join-not-accepted");
+    if ("left" in acknowledgement.data) throw new Error("unexpected-departure");
     const [updatedOwner, updatedMember] = await Promise.all([
       ownerUpdate,
       memberUpdate,

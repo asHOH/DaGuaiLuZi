@@ -3437,7 +3437,10 @@ export function decide(state: State | undefined, command: Command): Decision {
   switch (command.type) {
     case "LeaveRoom": {
       if (current.members.length === 1) {
-        return rejected("sole-owner-cannot-leave");
+        return accepted([
+          { type: "MemberLeft", playerId: command.playerId },
+          { type: "RoomArchived" },
+        ]);
       }
 
       const events: Event[] = [

@@ -23,8 +23,10 @@ import {
   RoomCommandAckSchema,
   RoomCommandEnvelopeSchema,
   RoomIdSchema,
+  RoomLeftEnvelopeSchema,
   RoomViewSyncEnvelopeSchema,
   SOCKET_ROOM_COMMAND_EVENT,
+  SOCKET_ROOM_LEFT_EVENT,
   SOCKET_ROOM_VIEW_EVENT,
   type ProtocolErrorCode,
   type RoomCommandAck,
@@ -320,6 +322,15 @@ export async function createApp(
       }
       const view = executor.viewFor(account.accountId);
       if (view === undefined) {
+        connected.emit(
+          SOCKET_ROOM_LEFT_EVENT,
+          RoomLeftEnvelopeSchema.parse({
+            protocolVersion: PROTOCOL_VERSION,
+            type: SOCKET_ROOM_LEFT_EVENT,
+            data: { roomId, revision: executor.revision, left: true },
+          }),
+        );
+        connected.leave(roomId);
         continue;
       }
       connected.emit(

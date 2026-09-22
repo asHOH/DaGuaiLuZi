@@ -254,6 +254,7 @@ class ProtocolClient {
         type: "JoinRoom",
       });
       if (result.ok) {
+        if ("left" in result.data) throw new Error("unexpected-departure");
         this.latest = result.data;
         return result.data;
       }
@@ -282,6 +283,7 @@ class ProtocolClient {
           : await readRoom(url, roomId, this.cookie);
       const result = await this.emit(roomId, current.revision, payload);
       if (result.ok) {
+        if ("left" in result.data) throw new Error("unexpected-departure");
         this.latest = result.data;
         return result.data;
       }
@@ -747,6 +749,21 @@ async function runHappyPath(
       throw new Error("missing-test-accounts");
 
     await loginUi(ownerPage, server.url, owner);
+    // Closing a sole-member lobby is distinct from navigating away.
+    const closedInvite = await createRoom(ownerPage, server.url, rulesetId);
+    await ownerPage
+      .getByRole("button", { name: "退出并关闭房间", exact: true })
+      .click();
+    await expect(
+      ownerPage.getByRole("heading", { name: "今晚，怎么打？" }),
+    ).toBeVisible();
+    await ownerPage.goto(closedInvite);
+    await expect(ownerPage.getByRole("alert")).toContainText(
+      "房间已开局或关闭",
+    );
+    await ownerPage
+      .getByRole("button", { name: "返回开桌", exact: true })
+      .click();
     const inviteUrl = await createRoom(ownerPage, server.url, rulesetId);
     await chooseFirstSeat(ownerPage);
     const roomId = new URL(inviteUrl).pathname.slice("/rooms/".length);
@@ -765,6 +782,25 @@ async function runHappyPath(
     }
     await ownerPage.getByRole("button", { name: preset, exact: true }).click();
     const ownerCookie = await contextCookie(ownerContext);
+    const seating = ownerPage.getByLabel("座位安排", { exact: true });
+    const originalPolicy = playerCount === 4 ? "fixed" : "randomized";
+    await seating.selectOption(
+      originalPolicy === "fixed" ? "randomized" : "fixed",
+    );
+    await expect
+      .poll(
+        async () =>
+          (await readRoom(server.url, roomId, ownerCookie)).view.seatingPolicy,
+      )
+      .toBe(originalPolicy === "fixed" ? "randomized" : "fixed");
+    await expect(seating).toBeEnabled();
+    await seating.selectOption(originalPolicy);
+    await expect
+      .poll(
+        async () =>
+          (await readRoom(server.url, roomId, ownerCookie)).view.seatingPolicy,
+      )
+      .toBe(originalPolicy);
     await expect
       .poll(
         async () =>
@@ -794,6 +830,55 @@ async function runHappyPath(
     await loginUi(joinerPage, server.url, joiner, inviteUrl);
     await expect(joinerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
     await chooseFirstSeat(joinerPage);
+    await expect(
+      joinerPage.getByLabel("座位安排", { exact: true }),
+    ).toHaveCount(0);
+    const otherOwnerTab = await ownerContext.newPage();
+    await otherOwnerTab.goto(inviteUrl);
+    await expect(otherOwnerTab.getByTestId("room-lifecycle")).toHaveText(
+      "大厅",
+    );
+    await ownerPage.setViewportSize({ width: 390, height: 844 });
+    await assertNoHorizontalOverflow(ownerPage);
+    await ownerPage.screenshot({
+      path: `output/playwright/${rulesetId}-lobby-controls-mobile.png`,
+      fullPage: true,
+    });
+    const leave = ownerPage.getByRole("button", {
+      name: "退出房间",
+      exact: true,
+    });
+    await leave.focus();
+    await leave.press("Enter");
+    for (const page of [ownerPage, otherOwnerTab])
+      await expect(
+        page.getByRole("heading", { name: "今晚，怎么打？" }),
+      ).toBeVisible();
+    await otherOwnerTab.close();
+    await expect(
+      joinerPage.getByLabel("座位安排", { exact: true }),
+    ).toBeEnabled();
+    await expect(
+      joinerPage.getByRole("button", { name: "退出并关闭房间", exact: true }),
+    ).toBeVisible();
+    await ownerPage.goto(inviteUrl);
+    await chooseFirstSeat(ownerPage);
+    await joinerPage
+      .getByRole("button", { name: "退出房间", exact: true })
+      .click();
+    await expect(
+      joinerPage.getByRole("heading", { name: "今晚，怎么打？" }),
+    ).toBeVisible();
+    await expect(
+      ownerPage.getByLabel("座位安排", { exact: true }),
+    ).toBeEnabled();
+    await joinerPage.goto(inviteUrl);
+    await chooseFirstSeat(joinerPage);
+    await ownerPage.setViewportSize({ width: 1280, height: 900 });
+    await ownerPage.screenshot({
+      path: `output/playwright/${rulesetId}-lobby-controls-desktop.png`,
+      fullPage: true,
+    });
 
     for (const account of server.accounts.slice(2, playerCount)) {
       const session = await loginProtocol(server.url, account);
@@ -1008,6 +1093,7 @@ async function runHappyPath(
     await abort.press("Enter");
     for (const page of [ownerPage, joinerPage]) {
       await expect(page.getByTestId("room-lifecycle")).toHaveText("大厅");
+      await expect(page.getByLabel("座位安排", { exact: true })).toHaveCount(0);
       await expect(page.getByTestId("hand-card")).toHaveCount(0);
       await expect(
         page.getByRole("button", { name: "终止比赛", exact: true }),

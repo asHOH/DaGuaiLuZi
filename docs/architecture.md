@@ -177,6 +177,8 @@ Accounts require a unique username and password. Email is nullable. The VPS/appl
 
 Room membership, seat assignment, readiness, ownership, Rules Configuration, Seating Policy, and lifecycle state are durable room state. Each membership records a monotonic join order. When an owner leaves a `LOBBY`, the executor transfers ownership to the remaining membership with the lowest join order; a later rejoin creates a new membership and join order.
 
+The last member leaving a `LOBBY` archives it atomically with departure. Archived Rooms cannot be rejoined; completed-Hand history, Replay, and Challenge Codes remain available under their existing access rules. Page navigation or disconnection does not leave membership.
+
 Each Ruleset defines fixed seat indices `0..playerCount-1`. SQL stores occupied assignments as `(roomId, seatIndex, memberId)` rows with primary key `(roomId, seatIndex)` and unique `(roomId, memberId)`. The selected Match or Challenge Hand supplies the lobby's effective Ruleset.
 
 Only the owner may change the Rules Configuration or Seating Policy and choose a Match or Challenge Hand. An effective Ruleset change is allowed only in `LOBBY` and resets readiness. Changing 4p2d to 6p3d preserves seats `0..3`; changing 6p3d to 4p2d is rejected with five or more members, preserves assignments only when all use `0..3`, and otherwise clears assignments but retains membership.

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   RulesConfigurationSchema,
+  SeatingPolicySchema,
   rulesConfigurationPreset,
   type RoomCommandPayload,
   type RoomViewData,
@@ -398,6 +399,14 @@ function LobbyView({
         </ol>
 
         <div className={styles.lobbyActions}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            disabled={actionsDisabled}
+            onClick={() => onCommand({ type: "LeaveRoom" })}
+          >
+            {view.members.length === 1 ? "退出并关闭房间" : "退出房间"}
+          </button>
           {view.ownerId === accountId && view.selectedActivity !== "match" && (
             <button
               className={styles.primaryButton}
@@ -505,6 +514,36 @@ function LobbyView({
             ? { onCommand }
             : {})}
         />
+        <div className={styles.rulesBody}>
+          {view.ownerId === accountId && !view.seatingPolicyLocked && (
+            <label className={styles.ruleField}>
+              座位安排
+              <select
+                aria-label="座位安排"
+                value={view.seatingPolicy}
+                disabled={actionsDisabled}
+                onChange={(event) =>
+                  onCommand({
+                    type: "ReplaceSeatingPolicy",
+                    seatingPolicy: SeatingPolicySchema.parse(
+                      event.target.value,
+                    ),
+                  })
+                }
+              >
+                <option value="fixed">固定座位</option>
+                <option value="randomized">开局随机分配</option>
+              </select>
+            </label>
+          )}
+          <p className={styles.actionHint}>
+            {view.members.length === 1
+              ? "退出后房间关闭，已完成的牌局记录仍可查看。"
+              : view.ownerId === accountId
+                ? "退出后，房主由最早加入的其余成员接任。"
+                : "退出后将腾出座位，并取消你的准备状态。"}
+          </p>
+        </div>
       </aside>
     </div>
   );

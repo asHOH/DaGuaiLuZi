@@ -402,6 +402,7 @@ async function finishSetup(
     const ack = await game.send(index, command);
     if (!ack.ok)
       throw new Error(`${payload.type}:${ack.error.reason ?? ack.error.code}`);
+    if ("left" in ack.data) throw new Error("unexpected-departure");
     current = ack.data;
     expect(await game.send(index, command)).toEqual(ack);
   }
@@ -422,6 +423,7 @@ async function startAnotherMatch(
     game.envelope(lobby, { type: "SelectMatch" }),
   );
   if (!selected.ok) throw new Error(selected.error.code);
+  if ("left" in selected.data) throw new Error("unexpected-departure");
   let current = selected.data;
   for (let index = 0; index < game.accounts.length; index++) {
     const ready = await game.send(
@@ -429,6 +431,7 @@ async function startAnotherMatch(
       game.envelope(current, { type: "SetReadiness", ready: true }),
     );
     if (!ready.ok) throw new Error(ready.error.code);
+    if ("left" in ready.data) throw new Error("unexpected-departure");
     current = ready.data;
   }
   expect(active(current)).toMatchObject({
@@ -497,6 +500,16 @@ for (const { ruleset, preset, fixture, stage } of [
       await finishSetup(game, current, stage);
     current = await game.read(0);
     expect(active(current).setupStage).toBe(stage);
+    for (const payload of [
+      { type: "LeaveRoom" },
+      { type: "ReplaceSeatingPolicy", seatingPolicy: "randomized" },
+    ] as const)
+      expect(await game.send(0, game.envelope(current, payload))).toMatchObject(
+        {
+          ok: false,
+          error: { reason: "room-not-in-lobby" },
+        },
+      );
     const previous = active(current);
     const command = game.envelope(current, { type: "AbortMatch" });
     expect(await game.send(1, command)).toMatchObject({
@@ -516,6 +529,16 @@ for (const { ruleset, preset, fixture, stage } of [
     game.database.sqlite.exec("DROP TRIGGER fail_abort");
     const aborted = await game.send(0, command);
     if (!aborted.ok) throw new Error(aborted.error.code);
+    if ("left" in aborted.data) throw new Error("unexpected-departure");
+    expect(
+      await game.send(
+        0,
+        game.envelope(aborted.data, {
+          type: "ReplaceSeatingPolicy",
+          seatingPolicy: "randomized",
+        }),
+      ),
+    ).toMatchObject({ ok: false, error: { reason: "seating-policy-locked" } });
     expect(aborted.data.view).toMatchObject({
       lifecycle: "LOBBY",
       teamLevels: previous.teamLevels,
@@ -596,6 +619,7 @@ it("serializes an abort racing a setup choice without repeating a transfer", asy
       game.envelope(ended, { type: "AbortMatch" }),
     );
     if (!abort.ok) throw new Error(abort.error.code);
+    if ("left" in abort.data) throw new Error("unexpected-departure");
     ended = abort.data;
   }
   const history = game.rows();
@@ -698,6 +722,7 @@ for (const ruleset of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
         const accepted = await game.send(index, command);
         expect(accepted.ok).toBe(true);
         if (!accepted.ok) throw new Error(accepted.error.code);
+        if ("left" in accepted.data) throw new Error("unexpected-departure");
         current = accepted.data;
         const batch = game
           .rows()
@@ -806,6 +831,7 @@ it("keeps concurrent ballots private across restart and persists pairing/leader 
   const winner = raced.findIndex((ack) => ack.ok);
   const accepted = raced[winner]!;
   if (!accepted.ok) throw new Error("missing-accepted-ballot");
+  if ("left" in accepted.data) throw new Error("unexpected-departure");
   current = accepted.data;
   expect(active(current)).toHaveProperty("tieOwnBallot", null);
   expect(active(await game.read(indices[1 - winner]!))).not.toHaveProperty(
@@ -998,6 +1024,7 @@ for (const matchEnding of [
     const ack = await game.send(index, command);
     if (!ack.ok) throw new Error(ack.error.reason ?? ack.error.code);
     const limited = matchEnding === "three-failure-limit-at-5";
+    if ("left" in ack.data) throw new Error("unexpected-departure");
     expect(ack.data.view).toMatchObject(
       limited
         ? {
@@ -1123,6 +1150,7 @@ it("serializes natural Match completion and replays its lobby summary", async ()
     );
     const ack = await game.send(index, lastCommand);
     if (!ack.ok) throw new Error(ack.error.code);
+    if ("left" in ack.data) throw new Error("unexpected-departure");
     current = ack.data;
     lastActor = index;
     lastAck = ack;

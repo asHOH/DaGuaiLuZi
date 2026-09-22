@@ -426,12 +426,29 @@ describe("game-core lobby seam", () => {
     expect(view.seatingPolicy).toBe("randomized");
   });
 
+  it("archives the last member's lobby atomically and prevents rejoining", () => {
+    const initial = createFourPlayerLobby();
+    expect(decide(initial, { type: "LeaveRoom", playerId: "p1" })).toEqual({
+      ok: true,
+      events: [
+        { type: "MemberLeft", playerId: "p1" },
+        { type: "RoomArchived" },
+      ],
+    });
+    const closed = decideAndFold(initial, {
+      type: "LeaveRoom",
+      playerId: "p1",
+    });
+    expect(derivePlayerView(closed, "p1")).toMatchObject({
+      lifecycle: "ARCHIVED",
+      members: [],
+      selectedActivity: undefined,
+    });
+    expect(decide(closed, { type: "JoinRoom", playerId: "p1" }).ok).toBe(false);
+  });
+
   it("rejects invalid authority, membership, capacity, and no-change commands", () => {
     let state = createFourPlayerLobby();
-    expect(decide(state, { type: "LeaveRoom", playerId: "p1" })).toEqual({
-      ok: false,
-      rejection: { reason: "sole-owner-cannot-leave" },
-    });
     expect(decide(state, { type: "JoinRoom", playerId: "p1" })).toEqual({
       ok: false,
       rejection: { reason: "already-a-member" },

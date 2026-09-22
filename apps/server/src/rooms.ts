@@ -68,6 +68,15 @@ const MemberLeftPayloadSchema = z
 const OwnerTransferredPayloadSchema = z
   .object({ type: z.literal("OwnerTransferred"), ownerId: PlayerIdSchema })
   .strict();
+const RoomArchivedPayloadSchema = z
+  .object({ type: z.literal("RoomArchived") })
+  .strict();
+const SeatingPolicyReplacedPayloadSchema = z
+  .object({
+    type: z.literal("SeatingPolicyReplaced"),
+    seatingPolicy: SeatingPolicySchema,
+  })
+  .strict();
 
 const MatchSelectedPayloadSchema = z
   .object({ type: z.literal("MatchSelected") })
@@ -505,6 +514,8 @@ const PersistedRoomEventRowSchema = z
       "MemberJoined",
       "MemberLeft",
       "OwnerTransferred",
+      "RoomArchived",
+      "SeatingPolicyReplaced",
       "MatchSelected",
       "ChallengeHandSelected",
       "ChallengeHandStarted",
@@ -665,6 +676,10 @@ function eventPayload(event: Event): string {
     return JSON.stringify(MemberLeftPayloadSchema.parse(event));
   if (event.type === "OwnerTransferred")
     return JSON.stringify(OwnerTransferredPayloadSchema.parse(event));
+  if (event.type === "RoomArchived")
+    return JSON.stringify(RoomArchivedPayloadSchema.parse(event));
+  if (event.type === "SeatingPolicyReplaced")
+    return JSON.stringify(SeatingPolicyReplacedPayloadSchema.parse(event));
   if (event.type === "MatchSelected") {
     return JSON.stringify(MatchSelectedPayloadSchema.parse(event));
   }
@@ -925,6 +940,10 @@ function parsePersistedRoomEvent(
         return MemberLeftPayloadSchema.safeParse(decoded);
       case "OwnerTransferred":
         return OwnerTransferredPayloadSchema.safeParse(decoded);
+      case "RoomArchived":
+        return RoomArchivedPayloadSchema.safeParse(decoded);
+      case "SeatingPolicyReplaced":
+        return SeatingPolicyReplacedPayloadSchema.safeParse(decoded);
       case "MatchSelected":
         return MatchSelectedPayloadSchema.safeParse(decoded);
       case "MatchRulesConfigurationReplaced":

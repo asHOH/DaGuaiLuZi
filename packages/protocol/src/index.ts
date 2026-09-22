@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 6 as const;
+export const PROTOCOL_VERSION = 7 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
@@ -102,6 +102,16 @@ export const JoinRoomPayloadSchema = z
   .object({ type: z.literal("JoinRoom") })
   .strict();
 export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
+
+export const LeaveRoomPayloadSchema = z
+  .object({ type: z.literal("LeaveRoom") })
+  .strict();
+export const ReplaceSeatingPolicyPayloadSchema = z
+  .object({
+    type: z.literal("ReplaceSeatingPolicy"),
+    seatingPolicy: SeatingPolicySchema,
+  })
+  .strict();
 
 export const SelectMatchPayloadSchema = z
   .object({ type: z.literal("SelectMatch") })
@@ -259,6 +269,8 @@ export type SubmitTieChoiceBallotPayload = z.infer<
 
 export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
   JoinRoomPayloadSchema,
+  LeaveRoomPayloadSchema,
+  ReplaceSeatingPolicyPayloadSchema,
   SelectMatchPayloadSchema,
   SelectChallengeHandPayloadSchema,
   AbortChallengeHandPayloadSchema,
@@ -329,7 +341,16 @@ export const RoomCommandErrorSchema = z
   })
   .strict();
 
-export const RoomCommandSuccessDataSchema = z.lazy(() => RoomViewDataSchema);
+export const RoomLeftDataSchema = z
+  .object({
+    roomId: RoomIdSchema,
+    revision: RoomRevisionSchema,
+    left: z.literal(true),
+  })
+  .strict();
+export const RoomCommandSuccessDataSchema = z.lazy(() =>
+  z.union([RoomViewDataSchema, RoomLeftDataSchema]),
+);
 export type RoomCommandSuccessData = z.infer<
   typeof RoomCommandSuccessDataSchema
 >;
@@ -360,6 +381,14 @@ export type RoomCommandAck = z.infer<typeof RoomCommandAckSchema>;
 
 export const SOCKET_ROOM_COMMAND_EVENT = "room:command" as const;
 export const SOCKET_ROOM_VIEW_EVENT = "room:view" as const;
+export const SOCKET_ROOM_LEFT_EVENT = "room:left" as const;
+export const RoomLeftEnvelopeSchema = z
+  .object({
+    protocolVersion: z.literal(PROTOCOL_VERSION),
+    type: z.literal(SOCKET_ROOM_LEFT_EVENT),
+    data: RoomLeftDataSchema,
+  })
+  .strict();
 
 export const ErrorEnvelopeSchema = z
   .object({

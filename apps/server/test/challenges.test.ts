@@ -949,6 +949,9 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     });
     game.send({ type: "LeaveRoom", playerId: participant });
     game.send({ type: "JoinRoom", playerId: newcomer });
+    // Close the source lobby; completed history, Replay and Code creation survive.
+    for (const member of derivePlayerView(game.state(), participant).members)
+      game.send({ type: "LeaveRoom", playerId: member.playerId });
     const beforeReads = game.database.db.select().from(roomEvents).all();
 
     const listed = await request("/api/history", participant);
@@ -1231,7 +1234,7 @@ async function socketTarget(
     const ack = RoomCommandAckSchema.parse(
       await sockets[index]!.timeout(5000).emitWithAck("room:command", command),
     );
-    if (ack.ok) latest = ack.data;
+    if (ack.ok && "view" in ack.data) latest = ack.data;
     return ack;
   }
   async function accept(index: number, payload: RoomCommandPayload) {
@@ -1476,6 +1479,15 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     await target.restart();
     const restored = target.view().view;
     expect(restored.lifecycle).toBe("LOBBY");
+    expect(
+      await target.send(
+        0,
+        target.envelope({
+          type: "ReplaceSeatingPolicy",
+          seatingPolicy: "randomized",
+        }),
+      ),
+    ).toMatchObject({ ok: false, error: { reason: "seating-policy-locked" } });
     expect(restored.members.every(({ ready }) => !ready)).toBe(true);
     for (const field of [
       "challengeSummary",

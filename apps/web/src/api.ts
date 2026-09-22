@@ -38,6 +38,10 @@ const playErrors: Record<string, string> = {
   "hand-setup-incomplete": "请先完成开局选牌。",
   "room-not-active": "当前没有正在进行的牌局。",
   "match-rules-configuration-locked": "比赛规则已锁定，无法修改。",
+  "seating-policy-locked": "座位安排已锁定，无法修改。",
+  "seating-policy-unchanged": "座位安排未改变。",
+  "room-not-in-lobby": "房间已开局或关闭，无法执行大厅操作。",
+  "not-a-member": "你已不在这个房间。",
   "tribute-card-not-eligible": "请选择可进贡的最高牌。",
   "not-pending-setup-actor": "当前无需你选择，请等待其他玩家。",
   "return-candidates-invalid": "小王需提供两张、大王需提供三张不同点数的手牌。",
@@ -47,7 +51,7 @@ const playErrors: Record<string, string> = {
   "tie-choice-stale": "选择轮次已更新，请查看本轮选项。",
   "challenge-ruleset-too-small": "房间人数超过此挑战所需人数，请另开一个房间。",
   "challenge-already-selected": "已选择这个同牌挑战，请入座并准备。",
-  "owner-only": "只有房主可以选择或终止牌局。",
+  "owner-only": "只有房主可以执行此操作。",
 };
 
 export const errorMessage = (code: string, reason?: string): string =>

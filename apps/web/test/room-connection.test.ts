@@ -4,6 +4,7 @@ import {
   PROTOCOL_VERSION,
   SOCKET_ROOM_COMMAND_EVENT,
   SOCKET_ROOM_VIEW_EVENT,
+  SOCKET_ROOM_LEFT_EVENT,
   type RoomCommandEnvelope,
   type RoomViewData,
 } from "@dglz/protocol";
@@ -196,12 +197,14 @@ function latest(updates: RoomState[]): RoomState {
 function openConnection(
   updates: RoomState[],
   authFailure: (code: string) => void,
+  onLeave: () => void = () => undefined,
 ): ReturnType<typeof createRoomConnection> {
   const connection = createRoomConnection(
     ROOM_ID,
     ACCOUNT_ID,
     (state) => updates.push(state),
     authFailure,
+    onLeave,
   );
   connections.push(connection);
   return connection;
@@ -220,6 +223,73 @@ afterEach(() => {
 });
 
 describe("createRoomConnection", () => {
+  it.each([false, true])(
+    "retries a lost departure receipt without membership (reconnect: %s)",
+    async (reconnect) => {
+      const socket = makeSocketHarness();
+      socketModule.io.mockReturnValue(socket.socket);
+      fetchMock.mockResolvedValue(response(successEnvelope(roomView(3))));
+      const updates: RoomState[] = [];
+      const onLeave = vi.fn<() => void>();
+      const connection = openConnection(updates, () => undefined, onLeave);
+      await settle();
+      socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(roomView(3)));
+      connection.send({ type: "LeaveRoom" });
+      const first = socket.commands[0]!;
+      expect(socket.socket.auth).not.toHaveProperty("roomId");
+      first.acknowledge(new Error("timeout"));
+      if (reconnect) {
+        socket.disconnect("transport close");
+        socket.socket.connect();
+      } else connection.retry();
+      const retry = socket.commands[1]!;
+      expect(retry.payload).toEqual(first.payload);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      retry.acknowledge(null, {
+        protocolVersion: PROTOCOL_VERSION,
+        ok: true,
+        commandId: retry.payload.commandId,
+        data: { roomId: ROOM_ID, revision: 5, left: true },
+      });
+      expect(onLeave).toHaveBeenCalledTimes(1);
+      expect(latest(updates)).toMatchObject({
+        room: null,
+        synced: false,
+        connected: false,
+        pending: false,
+      });
+      connection.retry();
+      expect(socket.commands).toHaveLength(2);
+    },
+  );
+
+  it("clears other tabs on departure and ignores unrelated or older receipts", async () => {
+    const socket = makeSocketHarness();
+    socketModule.io.mockReturnValue(socket.socket);
+    fetchMock.mockResolvedValue(response(successEnvelope(roomView(3))));
+    const onLeave = vi.fn<() => void>();
+    const updates: RoomState[] = [];
+    openConnection(updates, () => undefined, onLeave);
+    await settle();
+    socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(roomView(3)));
+    const event = (roomId: string, revision: number) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      type: SOCKET_ROOM_LEFT_EVENT,
+      data: { roomId, revision, left: true },
+    });
+    socket.emit(
+      SOCKET_ROOM_LEFT_EVENT,
+      event("22222222-2222-4222-8222-222222222222", 4),
+    );
+    socket.emit(SOCKET_ROOM_LEFT_EVENT, event(ROOM_ID, 2));
+    expect(onLeave).not.toHaveBeenCalled();
+    socket.emit(SOCKET_ROOM_LEFT_EVENT, event(ROOM_ID, 4));
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    expect(latest(updates).room).toBeNull();
+    socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(roomView(5)));
+    expect(latest(updates).room).toBeNull();
+  });
+
   it("locks actions until the socket view arrives and rejects older revisions", async () => {
     const socket = makeSocketHarness();
     socketModule.io.mockReturnValue(socket.socket);
