@@ -1,6 +1,6 @@
 # MVP Roadmap
 
-Status: [Challenge Hand integration](challenge-integration-plan.md), all [history/Replay phases](hand-history-plan.md), and [Room controls](room-controls-plan.md) Phase 1 verified; interrupted-Room archival/replacement is next.
+Status: [Challenge Hand integration](challenge-integration-plan.md), all [history/Replay phases](hand-history-plan.md), and both [Room-control phases](room-controls-plan.md) verified; remaining account administration is next.
 
 Delivery order only. [Product requirements](product-spec.md), [architecture](architecture.md), and [Challenge Hand policy](challenge-hand-sharing.md) remain authoritative. Inspect existing implementation before planning each phase; reuse completed work.
 

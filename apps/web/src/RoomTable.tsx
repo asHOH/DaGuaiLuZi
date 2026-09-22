@@ -1142,8 +1142,12 @@ export function RoomTable({
   onCommand,
   onFailure,
 }: RoomTableProps) {
-  const lifecycleLabel =
-    room.view.lifecycle === "LOBBY" ? "大厅" : "牌局进行中";
+  const lifecycleLabel = {
+    LOBBY: "大厅",
+    ACTIVE: "牌局进行中",
+    INTERRUPTED: "房间已中断",
+    ARCHIVED: "房间已归档",
+  }[room.view.lifecycle];
 
   return (
     <section className={styles.roomTable}>
@@ -1192,7 +1196,7 @@ export function RoomTable({
           onCommand={onCommand}
           onFailure={onFailure}
         />
-      ) : (
+      ) : room.view.lifecycle === "ACTIVE" ? (
         <ActiveView
           key={`${room.view.roomId}:${accountId}:${room.view.handNumber ?? (room.view.completedHandCount ?? 0) + (room.view.handResult === undefined ? 1 : 0)}`}
           accountId={accountId}
@@ -1201,6 +1205,41 @@ export function RoomTable({
           pending={pending}
           onCommand={onCommand}
         />
+      ) : (
+        <section className={styles.lobbyMain} aria-label="房间恢复">
+          <h2>{lifecycleLabel}</h2>
+          <p>
+            {room.view.lifecycle === "INTERRUPTED"
+              ? "当前牌局无法恢复。房主可以归档房间，或沿用比赛规则另开一桌。"
+              : "此房间已关闭，无法继续游戏。"}
+          </p>
+          <p>
+            新房间仅沿用比赛规则，其他玩家需重新加入、入座并准备。原房间与牌局记录保留；不兼容的回放可能无法查看。
+          </p>
+          <RulesDetails view={room.view} disabled />
+          {room.view.lifecycle === "INTERRUPTED" &&
+            room.view.ownerId === accountId && (
+              <div className={styles.lobbyActions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={locked || pending}
+                  onClick={() => onCommand({ type: "ReplaceInterruptedRoom" })}
+                >
+                  沿用规则开新房间
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={locked || pending}
+                  onClick={() => onCommand({ type: "ArchiveRoom" })}
+                >
+                  归档房间
+                </button>
+              </div>
+            )}
+          <a href="/history">查看牌局记录</a>
+        </section>
       )}
     </section>
   );

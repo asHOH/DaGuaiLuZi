@@ -42,6 +42,8 @@ const playErrors: Record<string, string> = {
   "seating-policy-unchanged": "座位安排未改变。",
   "room-not-in-lobby": "房间已开局或关闭，无法执行大厅操作。",
   "not-a-member": "你已不在这个房间。",
+  "room-not-interrupted": "只有已中断的房间可以归档或另开新房间。",
+  "room-archived": "房间已归档，无法执行此操作。",
   "tribute-card-not-eligible": "请选择可进贡的最高牌。",
   "not-pending-setup-actor": "当前无需你选择，请等待其他玩家。",
   "return-candidates-invalid": "小王需提供两张、大王需提供三张不同点数的手牌。",

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 7 as const;
+export const PROTOCOL_VERSION = 8 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
@@ -268,6 +268,8 @@ export type SubmitTieChoiceBallotPayload = z.infer<
 >;
 
 export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ArchiveRoom") }).strict(),
+  z.object({ type: z.literal("ReplaceInterruptedRoom") }).strict(),
   JoinRoomPayloadSchema,
   LeaveRoomPayloadSchema,
   ReplaceSeatingPolicyPayloadSchema,
@@ -771,11 +773,16 @@ const activeChallengePlayerViewSchema = activePlayerViewSchema.extend({
   matchSummary: z.never().optional(),
 });
 
+export const TerminalPlayerViewSchema = lobbyPlayerViewSchema.extend({
+  lifecycle: z.enum(["INTERRUPTED", "ARCHIVED"]),
+});
+
 export const PlayerViewSchema = z
   .union([
     lobbyPlayerViewSchema,
     activePlayerViewSchema,
     activeChallengePlayerViewSchema,
+    TerminalPlayerViewSchema,
   ])
   .superRefine((view, context) => {
     if (

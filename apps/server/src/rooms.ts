@@ -21,6 +21,7 @@ import {
   RoomIdSchema,
   RulesConfigurationSchema,
   RoomViewDataSchema,
+  TerminalPlayerViewSchema,
   rulesConfigurationPreset,
   SeatingPolicySchema,
   type RulesetId,
@@ -31,7 +32,7 @@ import { z } from "zod";
 
 import { ChallengeTemplateSchema } from "./challenge-template.js";
 import type { AppDatabase } from "./db/index.js";
-import { roomEvents } from "./db/schema.js";
+import { roomControls, roomEvents } from "./db/schema.js";
 
 const ROOM_EVENT_SCHEMA_VERSION = 1;
 const PlayerIdSchema = z.string().min(1).max(128);
@@ -70,6 +71,9 @@ const OwnerTransferredPayloadSchema = z
   .strict();
 const RoomArchivedPayloadSchema = z
   .object({ type: z.literal("RoomArchived") })
+  .strict();
+const RoomInterruptedPayloadSchema = z
+  .object({ type: z.literal("RoomInterrupted") })
   .strict();
 const SeatingPolicyReplacedPayloadSchema = z
   .object({
@@ -515,6 +519,7 @@ const PersistedRoomEventRowSchema = z
       "MemberLeft",
       "OwnerTransferred",
       "RoomArchived",
+      "RoomInterrupted",
       "SeatingPolicyReplaced",
       "MatchSelected",
       "ChallengeHandSelected",
@@ -570,18 +575,28 @@ export function appendRoomCreated(
   event: RoomCreated,
 ): void {
   const payload = RoomCreatedPayloadSchema.parse(event);
-  database.db
-    .insert(roomEvents)
-    .values({
-      roomId: event.roomId,
-      sequence: 1,
-      eventType: event.type,
-      eventSchemaVersion: ROOM_EVENT_SCHEMA_VERSION,
-      causationCommandId: null,
-      recordedAt: Date.now(),
-      payload: JSON.stringify(payload),
-    })
-    .run();
+  database.sqlite.transaction(() => {
+    database.db
+      .insert(roomEvents)
+      .values({
+        roomId: event.roomId,
+        sequence: 1,
+        eventType: event.type,
+        eventSchemaVersion: ROOM_EVENT_SCHEMA_VERSION,
+        causationCommandId: null,
+        recordedAt: Date.now(),
+        payload: JSON.stringify(payload),
+      })
+      .run();
+    saveRoomControl(
+      database,
+      roomControl({
+        roomId: event.roomId,
+        revision: 1,
+        state: evolve(undefined, event),
+      }),
+    );
+  })();
 }
 
 export type AcceptedCommandRecord = Readonly<{
@@ -655,6 +670,8 @@ export type CommittedRoomCommand = Readonly<{
   acknowledgement: RoomCommandAck;
   expectedRevision: number;
   events: readonly Event[];
+  control?: RoomControl;
+  replacement?: RoomCreated;
 }>;
 
 function eventPayload(event: Event): string {
@@ -678,6 +695,8 @@ function eventPayload(event: Event): string {
     return JSON.stringify(OwnerTransferredPayloadSchema.parse(event));
   if (event.type === "RoomArchived")
     return JSON.stringify(RoomArchivedPayloadSchema.parse(event));
+  if (event.type === "RoomInterrupted")
+    return JSON.stringify(RoomInterruptedPayloadSchema.parse(event));
   if (event.type === "SeatingPolicyReplaced")
     return JSON.stringify(SeatingPolicyReplacedPayloadSchema.parse(event));
   if (event.type === "MatchSelected") {
@@ -762,6 +781,8 @@ export type CommittedRoomEvents = Readonly<{
   expectedRevision: number;
   causationCommandId: string | null;
   events: readonly Event[];
+  control?: RoomControl;
+  replacement?: RoomCreated;
 }>;
 
 function appendEventRows(
@@ -791,7 +812,9 @@ export function appendRoomEvents(
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
   database.sqlite.transaction(() => {
+    checkRoomRevision(database, events.roomId, events.expectedRevision);
     appendEventRows(insertEvent, events);
+    updateRoomControl(database, events);
   })();
 }
 
@@ -811,6 +834,7 @@ export function commitRoomCommand(
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
   const commit = database.sqlite.transaction(() => {
+    checkRoomRevision(database, command.roomId, command.expectedRevision);
     insertCommand.run(
       command.commandId,
       command.accountId,
@@ -824,6 +848,9 @@ export function commitRoomCommand(
       causationCommandId: command.commandId,
       events: command.events,
     });
+    updateRoomControl(database, command);
+    if (command.replacement !== undefined)
+      appendRoomCreated(database, command.replacement);
   });
   commit();
 }
@@ -836,6 +863,163 @@ export type LoadedRoom = Readonly<{
   handStartSequence?: number;
   challengeParticipantIds?: readonly PlayerAccountId[];
 }>;
+
+// Recovery controls contain no gameplay state, cards, results, or Seeds.
+const RoomControlSchema = z
+  .object({
+    revision: z.number().int().positive(),
+    view: TerminalPlayerViewSchema.pick({
+      roomId: true,
+      ownerId: true,
+      members: true,
+      seats: true,
+      rulesConfiguration: true,
+      seatingPolicy: true,
+      matchRulesConfigurationLocked: true,
+      seatingPolicyLocked: true,
+    }).extend({
+      lifecycle: z.enum(["LOBBY", "ACTIVE", "INTERRUPTED", "ARCHIVED"]),
+    }),
+  })
+  .strict()
+  .superRefine(({ view }, ctx) => {
+    const ids = new Set(view.members.map((member) => member.playerId));
+    if (
+      ids.size !== view.members.length ||
+      (view.members.length === 0
+        ? view.lifecycle !== "ARCHIVED"
+        : !ids.has(view.ownerId)) ||
+      view.seats.some(
+        (seat) => seat.playerId !== undefined && !ids.has(seat.playerId),
+      )
+    )
+      ctx.addIssue({ code: "custom", message: "invalid-room-authority" });
+  });
+export type RoomControl = z.infer<typeof RoomControlSchema>;
+export type UnrecoverableRoom = {
+  roomId: string;
+  revision: number;
+  recovery: z.infer<typeof TerminalPlayerViewSchema>;
+};
+
+export function roomControl(room: LoadedRoom): RoomControl {
+  const view = derivePlayerView(room.state, "__room_control__");
+  return RoomControlSchema.parse({
+    revision: room.revision,
+    view: {
+      roomId: room.roomId,
+      lifecycle: view.lifecycle,
+      ownerId: view.ownerId,
+      members: view.members,
+      seats: view.seats,
+      rulesConfiguration: view.rulesConfiguration,
+      seatingPolicy: view.seatingPolicy,
+      matchRulesConfigurationLocked: view.matchRulesConfigurationLocked,
+      seatingPolicyLocked: view.seatingPolicyLocked,
+    },
+  });
+}
+
+function checkRoomRevision(
+  database: AppDatabase,
+  roomId: string,
+  revision: number,
+): void {
+  const row = database.sqlite
+    .prepare(
+      "SELECT MAX(sequence) AS revision FROM room_events WHERE room_id = ?",
+    )
+    .get(roomId) as { revision: number | null };
+  if (row.revision !== revision) throw new UnsupportedPersistedEventError();
+}
+
+export function saveRoomControl(
+  database: AppDatabase,
+  control: RoomControl,
+): void {
+  const validated = RoomControlSchema.parse(control);
+  checkRoomRevision(database, validated.view.roomId, validated.revision);
+  database.db
+    .insert(roomControls)
+    .values({
+      roomId: validated.view.roomId,
+      schemaVersion: 1,
+      payload: JSON.stringify(validated),
+    })
+    .onConflictDoUpdate({
+      target: roomControls.roomId,
+      set: { schemaVersion: 1, payload: JSON.stringify(validated) },
+    })
+    .run();
+}
+
+function updateRoomControl(
+  database: AppDatabase,
+  command: Omit<CommittedRoomEvents, "causationCommandId">,
+): void {
+  if (command.control !== undefined) {
+    if (
+      command.control.view.roomId !== command.roomId ||
+      command.control.revision !==
+        command.expectedRevision + command.events.length
+    )
+      throw new UnsupportedPersistedEventError();
+    saveRoomControl(database, command.control);
+  } else if (command.events.length > 0) {
+    // Non-executor imports/fixtures must never leave an older authority record usable.
+    database.db
+      .delete(roomControls)
+      .where(eq(roomControls.roomId, command.roomId))
+      .run();
+  }
+}
+
+export function recoverRoomControls(
+  database: AppDatabase,
+  roomId: string,
+): UnrecoverableRoom {
+  const row = database.db
+    .select()
+    .from(roomControls)
+    .where(eq(roomControls.roomId, roomId))
+    .get();
+  if (row?.schemaVersion !== 1) throw new UnsupportedPersistedEventError();
+  let control: RoomControl;
+  try {
+    control = RoomControlSchema.parse(JSON.parse(row.payload));
+  } catch {
+    throw new UnsupportedPersistedEventError();
+  }
+  if (control.view.roomId !== roomId || control.view.lifecycle === "LOBBY")
+    throw new UnsupportedPersistedEventError();
+  checkRoomRevision(database, roomId, control.revision);
+  const count = database.sqlite
+    .prepare("SELECT COUNT(*) AS count FROM room_events WHERE room_id = ?")
+    .get(roomId) as { count: number };
+  if (count.count !== control.revision)
+    throw new UnsupportedPersistedEventError();
+  const recovery = TerminalPlayerViewSchema.parse({
+    ...control.view,
+    lifecycle:
+      control.view.lifecycle === "ARCHIVED" ? "ARCHIVED" : "INTERRUPTED",
+    members: control.view.members.map((member) => ({
+      ...member,
+      ready: false,
+    })),
+  });
+  let revision = control.revision;
+  if (control.view.lifecycle === "ACTIVE") {
+    revision++;
+    appendRoomEvents(database, {
+      roomId,
+      expectedRevision: control.revision,
+      causationCommandId: null,
+      events: [{ type: "RoomInterrupted" }],
+      control: { revision, view: recovery },
+    });
+  }
+  return { roomId, revision, recovery };
+}
 
 function captureLastHandResult(
   state: State,
@@ -942,6 +1126,8 @@ function parsePersistedRoomEvent(
         return OwnerTransferredPayloadSchema.safeParse(decoded);
       case "RoomArchived":
         return RoomArchivedPayloadSchema.safeParse(decoded);
+      case "RoomInterrupted":
+        return RoomInterruptedPayloadSchema.safeParse(decoded);
       case "SeatingPolicyReplaced":
         return SeatingPolicyReplacedPayloadSchema.safeParse(decoded);
       case "MatchSelected":
@@ -1069,6 +1255,13 @@ export function deriveRoomView(
   const view: CorePlayerView = derivePlayerView(loadedRoom.state, playerId);
   if (!view.members.some((member) => member.playerId === playerId)) {
     return undefined;
+  }
+  if (view.lifecycle === "INTERRUPTED" || view.lifecycle === "ARCHIVED") {
+    const control = roomControl(loadedRoom);
+    return {
+      revision: loadedRoom.revision,
+      view: TerminalPlayerViewSchema.parse(control.view),
+    };
   }
   const lastHandResult =
     loadedRoom.lastHandResult === undefined

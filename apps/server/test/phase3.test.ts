@@ -368,7 +368,7 @@ describe("phase 3 room lifecycle", () => {
       secureCookies: false,
     });
     apps.push(afterCorruption);
-    const rejected = await afterCorruption.inject({
+    const interrupted = await afterCorruption.inject({
       method: "GET",
       url: `/api/rooms/${roomId}`,
       headers: {
@@ -376,11 +376,13 @@ describe("phase 3 room lifecycle", () => {
         cookie: cookies[0],
       },
     });
-    expect(rejected.statusCode).toBe(500);
-    expect(rejected.json()).toMatchObject({
-      ok: false,
-      error: { code: "unsupported-persisted-event" },
+    expect(interrupted.statusCode).toBe(200);
+    expect(interrupted.json()).toMatchObject({
+      ok: true,
+      data: { revision: 15, view: { lifecycle: "INTERRUPTED" } },
     });
+    expect(interrupted.json().data.view).not.toHaveProperty("hand");
+    expect(JSON.stringify(interrupted.json())).not.toContain("handSeed");
   });
 
   it("authorizes rule changes before start, locks them afterwards, and starts on reconnect", async () => {

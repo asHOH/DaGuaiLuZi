@@ -205,6 +205,7 @@ function openConnection(
     (state) => updates.push(state),
     authFailure,
     onLeave,
+    () => undefined,
   );
   connections.push(connection);
   return connection;

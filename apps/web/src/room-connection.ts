@@ -40,6 +40,7 @@ export function createRoomConnection(
   update: (state: RoomState) => void,
   authFailure: (code: string) => void,
   onLeave: () => void,
+  onReplace: (roomId: string) => void,
 ) {
   let state = { ...initialRoomState };
   let closed = false;
@@ -155,6 +156,14 @@ export function createRoomConnection(
           command = undefined;
           patch({ pending: false, uncertain: false });
           if (ack.ok) {
+            if (
+              sent.payload.type === "ReplaceInterruptedRoom" &&
+              "view" in ack.data
+            ) {
+              close();
+              onReplace(ack.data.view.roomId);
+              return;
+            }
             if ("left" in ack.data) {
               if (
                 ack.data.roomId === roomId &&

@@ -189,6 +189,10 @@ An `ACTIVE` Room locks membership, seats, Rules Configuration, and Seating Polic
 
 Natural Match or Challenge Hand completion likewise resets readiness and returns the Room to `LOBBY`. An unrecoverable active Room becomes `INTERRUPTED`. Its terminal actions either archive it or create a new Room containing only the copied Rules Configuration; the source Room, members, readiness, and history are not copied or mutated.
 
+Only the owner can archive or replace an Interrupted Room. Replacement copies the Room's Match Rules Configuration and otherwise uses fresh-Room defaults: fixed seating, only the owner as an unseated/unready member, no selected activity, and unlocked settings. Creation and its command receipt are atomic; retries return the same new Room. Archival retains membership for read-only access.
+
+Recovery controls require a versioned record of current membership, ownership, configuration, locks, seats, lifecycle, and event revision, committed with Room events. This record contains no gameplay state or hidden cards. After a decode/reconstruction failure, an exact-revision active record permits the executor to persist interruption and expose terminal controls; missing, invalid, or stale records fail closed. Compatible existing Rooms acquire the record on access; unreadable older Rooms without one require administrator assistance. Unsupported gameplay/history is never reinterpreted.
+
 ### Room-level configuration
 
 Every Room selects one Seating Policy and a complete Rules Configuration for Matches. The app-local [Rules Configuration Presets](rules-configuration-presets.md) initialize every variant supported by its Ruleset; a Challenge Hand instead uses its Challenge Template's configuration without changing or permanently locking the Match configuration. `game-core` receives only the active resolved settings and has no preset concept. The Match configuration becomes immutable when the first Match starts; the Seating Policy becomes immutable when the first Match or Challenge Hand starts. A Hand records `rulesetId`, resolved variants, Seating Policy, and resolved seat ordering, so later default changes cannot reinterpret history.

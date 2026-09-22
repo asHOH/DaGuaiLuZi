@@ -36,6 +36,7 @@ import {
 } from "../src/rooms.js";
 import { readCompletedHand } from "../src/hand-history.js";
 import { readHandReplay } from "../src/hand-replay.js";
+import { RoomExecutorRegistry } from "../src/room-executor.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -302,6 +303,231 @@ function active(data: RoomViewData) {
   if (data.view.lifecycle !== "ACTIVE") throw new Error("expected-active-hand");
   return data.view;
 }
+
+it.each(["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const)(
+  "%s recovers terminal controls, replaces atomically, and archives without rewriting history",
+  async (rulesetId) => {
+    const game = await table(rulesetId, false, "自主", {
+      initialSeed: "recovery-source",
+      nextSeed: "recovery-next",
+    });
+    const before = await game.read(0);
+    const roomId = before.view.roomId;
+    const ownerId = game.accounts[0]!.accountId;
+    const start = [...readRoomEvents(game.database, roomId)].find(
+      ({ event }) => event.type === "MatchStarted",
+    )!.sequence;
+    const hand = readCompletedHand(game.database, roomId, start)!;
+    const replay = readHandReplay(game.database, hand);
+    const sourceRows = () =>
+      game.database.sqlite
+        .prepare(
+          "SELECT * FROM room_events WHERE room_id = ? ORDER BY sequence",
+        )
+        .all(roomId);
+    game.database.sqlite
+      .prepare(
+        "UPDATE room_events SET event_schema_version = 999 WHERE room_id = ? AND sequence = ?",
+      )
+      .run(roomId, before.revision);
+    const damaged = sourceRows();
+    await game.restart();
+    const interrupted = await game.read(0);
+    expect(interrupted.revision).toBe(before.revision + 1);
+    expect(interrupted.view).toMatchObject({
+      lifecycle: "INTERRUPTED",
+      ownerId,
+      rulesConfiguration: before.view.rulesConfiguration,
+    });
+    expect(interrupted.view.members.every((member) => !member.ready)).toBe(
+      true,
+    );
+    for (const field of [
+      "hand",
+      "handSizes",
+      "handSeed",
+      "template",
+      "lastHandResult",
+      "handResult",
+      "selectedActivity",
+    ])
+      expect(interrupted.view).not.toHaveProperty(field);
+    expect(sourceRows().slice(0, -1)).toEqual(damaged);
+    expect(
+      readHandReplay(
+        game.database,
+        readCompletedHand(game.database, roomId, start)!,
+      ),
+    ).toEqual(replay);
+    const immutable = sourceRows();
+    const replacement = game.envelope(interrupted, {
+      type: "ReplaceInterruptedRoom",
+    });
+    expect(await game.send(1, replacement)).toMatchObject({
+      ok: false,
+      error: { reason: "owner-only" },
+    });
+    expect(
+      await game.send(1, game.envelope(interrupted, { type: "ArchiveRoom" })),
+    ).toMatchObject({ ok: false, error: { reason: "owner-only" } });
+    expect(
+      await game.send(
+        0,
+        game.envelope(interrupted, { type: "Play", cards: ["AS#1"] }),
+      ),
+    ).toMatchObject({ ok: false });
+    const roomCount = () =>
+      (
+        game.database.sqlite
+          .prepare(
+            "SELECT COUNT(*) AS count FROM room_events WHERE event_type = 'RoomCreated'",
+          )
+          .get() as { count: number }
+      ).count;
+    const count = roomCount();
+    game.database.sqlite.exec(
+      "CREATE TRIGGER fail_replacement BEFORE INSERT ON room_controls BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+    );
+    expect(await game.send(0, replacement)).toMatchObject({
+      ok: false,
+      error: { code: "internal-error" },
+    });
+    expect(roomCount()).toBe(count);
+    expect(sourceRows()).toEqual(immutable);
+    game.database.sqlite.exec("DROP TRIGGER fail_replacement");
+    const created = await game.send(0, replacement);
+    if (!created.ok || !("view" in created.data))
+      throw new Error("replacement-failed");
+    expect(created.data.revision).toBe(1);
+    expect(created.data.view).toMatchObject({
+      lifecycle: "LOBBY",
+      ownerId,
+      rulesConfiguration: before.view.rulesConfiguration,
+      seatingPolicy: "fixed",
+      matchRulesConfigurationLocked: false,
+      seatingPolicyLocked: false,
+      members: [{ playerId: ownerId, joinOrder: 0, ready: false }],
+    });
+    expect(created.data.view.roomId).not.toBe(roomId);
+    expect(
+      created.data.view.seats.every((seat) => seat.playerId === undefined),
+    ).toBe(true);
+    expect(created.data.view).not.toHaveProperty("selectedActivity");
+    expect(sourceRows()).toEqual(immutable);
+    expect(await game.send(0, replacement)).toEqual(created);
+    await game.restart();
+    expect(await game.read(0)).toEqual(interrupted);
+    expect(await game.send(0, replacement)).toEqual(created);
+    expect(roomCount()).toBe(count + 1);
+    const archive = game.envelope(interrupted, { type: "ArchiveRoom" });
+    const archived = await game.send(0, archive);
+    expect(archived).toMatchObject({
+      ok: true,
+      data: { view: { lifecycle: "ARCHIVED" } },
+    });
+    expect((await game.read(1)).view.lifecycle).toBe("ARCHIVED");
+    expect(sourceRows().slice(0, -1)).toEqual(immutable);
+    await game.restart();
+    expect(await game.send(0, archive)).toEqual(archived);
+    expect((await game.read(0)).view.lifecycle).toBe("ARCHIVED");
+    expect(
+      readHandReplay(
+        game.database,
+        readCompletedHand(game.database, roomId, start)!,
+      ),
+    ).toEqual(replay);
+    const registry = new RoomExecutorRegistry(game.database);
+    const executor = (await registry.getOrCreate(roomId))!;
+    expect(executor.viewFor("unrelated-account")).toBeUndefined();
+    expect(
+      await executor.execute(
+        ownerId,
+        game.envelope(await game.read(0), { type: "ReplaceInterruptedRoom" }),
+      ),
+    ).toMatchObject({ ok: false });
+  },
+  30000,
+);
+
+it("refuses recovery when control authority is missing, stale, malformed or unsupported", async () => {
+  const game = await table("dglz-4p-2d-v1");
+  const current = await game.read(0);
+  const roomId = current.view.roomId;
+  const row = game.database.sqlite
+    .prepare("SELECT * FROM room_controls WHERE room_id = ?")
+    .get(roomId) as { payload: string; schema_version: number };
+  game.database.sqlite
+    .prepare(
+      "UPDATE room_events SET event_schema_version = 999 WHERE room_id = ? AND sequence = ?",
+    )
+    .run(roomId, current.revision);
+  const metadata = JSON.parse(row.payload);
+  for (const [version, payload] of [
+    [2, row.payload],
+    [1, "{}"],
+    [1, JSON.stringify({ ...metadata, revision: current.revision - 1 })],
+    [
+      1,
+      JSON.stringify({
+        ...metadata,
+        view: { ...metadata.view, ownerId: "outsider" },
+      }),
+    ],
+  ] as const) {
+    game.database.sqlite
+      .prepare(
+        "UPDATE room_controls SET schema_version = ?, payload = ? WHERE room_id = ?",
+      )
+      .run(version, payload, roomId);
+    await expect(
+      new RoomExecutorRegistry(game.database).getOrCreate(roomId),
+    ).rejects.toThrow("unsupported-persisted-event");
+  }
+  game.database.sqlite
+    .prepare("DELETE FROM room_controls WHERE room_id = ?")
+    .run(roomId);
+  await expect(
+    new RoomExecutorRegistry(game.database).getOrCreate(roomId),
+  ).rejects.toThrow("unsupported-persisted-event");
+  expect(
+    game.rows().filter((row) => row.type === "RoomInterrupted"),
+  ).toHaveLength(0);
+});
+
+it("archives a compatible recorded interruption and preserves its members across restart", async () => {
+  const game = await table("dglz-4p-2d-v1");
+  const before = await game.read(0);
+  expect(
+    await game.send(
+      0,
+      game.envelope(before, { type: "ReplaceInterruptedRoom" }),
+    ),
+  ).toMatchObject({ ok: false, error: { reason: "room-not-interrupted" } });
+  appendRoomEvents(game.database, {
+    roomId: before.view.roomId,
+    expectedRevision: before.revision,
+    causationCommandId: null,
+    events: [{ type: "RoomInterrupted" }],
+  });
+  await game.restart();
+  const interrupted = await game.read(0);
+  expect(interrupted.view.lifecycle).toBe("INTERRUPTED");
+  const command = game.envelope(interrupted, { type: "ArchiveRoom" });
+  expect(await game.send(1, command)).toMatchObject({
+    ok: false,
+    error: { reason: "owner-only" },
+  });
+  const archived = await game.send(0, command);
+  expect(archived).toMatchObject({
+    ok: true,
+    data: {
+      view: { lifecycle: "ARCHIVED", members: interrupted.view.members },
+    },
+  });
+  await game.restart();
+  expect(await game.send(0, command)).toEqual(archived);
+  expect((await game.read(1)).view.lifecycle).toBe("ARCHIVED");
+});
 
 /* oxlint-disable vitest/no-conditional-expect -- Shared setup driver checks the reached rule branch; preset cases and the required candidate-offer fixture cover those branches. */
 async function finishSetup(

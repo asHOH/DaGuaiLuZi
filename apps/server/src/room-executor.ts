@@ -1,14 +1,16 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import {
   decide,
   derivePlayerView,
   deriveStartRequirements,
+  evolve,
   RANDOMNESS_VERSION,
   SHUFFLE_VERSION,
   type Command,
   type PlayerAccountId,
   type State,
+  type RoomCreated,
 } from "@dglz/game-core";
 import {
   PROTOCOL_VERSION,
@@ -30,7 +32,12 @@ import {
   findAcceptedCommand,
   foldRoomEvents,
   loadRoom,
+  recoverRoomControls,
+  roomControl,
+  saveRoomControl,
+  UnsupportedPersistedEventError,
   type LoadedRoom,
+  type UnrecoverableRoom,
 } from "./rooms.js";
 
 export type RoomPresence = () => Promise<ReadonlySet<PlayerAccountId>>;
@@ -64,7 +71,10 @@ export function roomCommandFingerprint(envelope: RoomCommandEnvelope): string {
 
 function toDomainCommand(
   accountId: PlayerAccountId,
-  payload: Exclude<RoomCommandPayload, { type: "SelectChallengeHand" }>,
+  payload: Exclude<
+    RoomCommandPayload,
+    { type: "SelectChallengeHand" | "ReplaceInterruptedRoom" }
+  >,
 ): Command {
   return { ...payload, playerId: accountId };
 }
@@ -88,12 +98,12 @@ function activityStartCommand(state: State): Command {
 }
 
 export class RoomExecutor {
-  private current: LoadedRoom;
+  private current: LoadedRoom | UnrecoverableRoom;
   private queue: Promise<void> = Promise.resolve();
 
   public constructor(
     private readonly database: AppDatabase,
-    loadedRoom: LoadedRoom,
+    loadedRoom: LoadedRoom | UnrecoverableRoom,
     private readonly challenges: ChallengeLookup = new ChallengeLookup(
       database,
     ),
@@ -106,6 +116,12 @@ export class RoomExecutor {
   }
 
   public viewFor(accountId: PlayerAccountId): RoomViewData | undefined {
+    if ("recovery" in this.current)
+      return this.current.recovery.members.some(
+        (member) => member.playerId === accountId,
+      )
+        ? { revision: this.current.revision, view: this.current.recovery }
+        : undefined;
     return deriveRoomView(this.current, accountId);
   }
 
@@ -135,6 +151,7 @@ export class RoomExecutor {
 
   public resumeSettledHand(accountId: PlayerAccountId): Promise<void> {
     const result = this.queue.then(() => {
+      if ("recovery" in this.current) return;
       const view = this.viewFor(accountId)?.view;
       if (
         view?.lifecycle !== "ACTIVE" ||
@@ -153,6 +170,7 @@ export class RoomExecutor {
         expectedRevision: this.current.revision,
         causationCommandId: null,
         events: decision.events,
+        control: roomControl(candidate),
       });
       this.current = candidate;
     });
@@ -204,6 +222,75 @@ export class RoomExecutor {
       return commandError(envelope.commandId, "stale-revision", {
         currentRevision: this.current.revision,
       });
+    }
+
+    if (
+      envelope.payload.type === "ReplaceInterruptedRoom" ||
+      "recovery" in this.current
+    ) {
+      const view = this.viewFor(accountId)?.view;
+      const reject = (reason: string) =>
+        commandError(envelope.commandId, "domain-rejected", { reason });
+      if (view === undefined) return reject("not-a-member");
+      if (view.lifecycle !== "INTERRUPTED")
+        return reject("room-not-interrupted");
+      if (view.ownerId !== accountId) return reject("owner-only");
+      if (
+        envelope.payload.type !== "ReplaceInterruptedRoom" &&
+        envelope.payload.type !== "ArchiveRoom"
+      )
+        return reject("room-not-in-lobby");
+      let replacement: RoomCreated | undefined;
+      let next: LoadedRoom | UnrecoverableRoom = this.current;
+      let data: RoomViewData;
+      if (envelope.payload.type === "ReplaceInterruptedRoom") {
+        replacement = {
+          type: "RoomCreated",
+          roomId: randomUUID(),
+          ownerId: accountId,
+          rulesConfiguration: view.rulesConfiguration,
+          seatingPolicy: "fixed",
+        };
+        data = deriveRoomView(
+          {
+            roomId: replacement.roomId,
+            revision: 1,
+            state: evolve(undefined, replacement),
+          },
+          accountId,
+        )!;
+      } else {
+        next = {
+          roomId: this.current.roomId,
+          revision: this.current.revision + 1,
+          recovery: { ...view, lifecycle: "ARCHIVED" },
+        };
+        data = { revision: next.revision, view: next.recovery };
+      }
+      const acknowledgement = RoomCommandAckSchema.parse({
+        protocolVersion: PROTOCOL_VERSION,
+        ok: true,
+        commandId: envelope.commandId,
+        data,
+      });
+      try {
+        commitRoomCommand(this.database, {
+          roomId: envelope.roomId,
+          expectedRevision: this.current.revision,
+          accountId,
+          commandId: envelope.commandId,
+          requestFingerprint: fingerprint,
+          acknowledgement,
+          events: replacement === undefined ? [{ type: "RoomArchived" }] : [],
+          ...(replacement === undefined && "recovery" in next
+            ? { control: { revision: next.revision, view: next.recovery } }
+            : { replacement: replacement! }),
+        });
+      } catch {
+        return commandError(envelope.commandId, "internal-error");
+      }
+      this.current = next;
+      return acknowledgement;
     }
 
     let decision;
@@ -319,6 +406,7 @@ export class RoomExecutor {
         acknowledgement,
         expectedRevision: this.current.revision,
         events,
+        control: roomControl(candidate),
       });
     } catch {
       const raced = findAcceptedCommand(this.database, envelope.commandId);
@@ -341,6 +429,7 @@ export class RoomExecutor {
   }
 
   private async autoStartSerialized(presence: RoomPresence): Promise<void> {
+    if ("recovery" in this.current) return;
     const requirements = deriveStartRequirements(this.current.state);
     if (requirements === undefined) {
       return;
@@ -377,6 +466,7 @@ export class RoomExecutor {
         expectedRevision: this.current.revision,
         causationCommandId: null,
         events: decision.events,
+        control: roomControl(candidate),
       });
     } catch {
       return;
@@ -399,7 +489,15 @@ export class RoomExecutorRegistry {
       return existing;
     }
 
-    const loaded = loadRoom(this.database, roomId);
+    let loaded: LoadedRoom | UnrecoverableRoom | undefined;
+    try {
+      loaded = loadRoom(this.database, roomId);
+      if (loaded !== undefined)
+        saveRoomControl(this.database, roomControl(loaded));
+    } catch (error) {
+      if (!(error instanceof UnsupportedPersistedEventError)) throw error;
+      loaded = recoverRoomControls(this.database, roomId);
+    }
     if (loaded === undefined) return undefined;
     const executor = new RoomExecutor(this.database, loaded, this.challenges);
     this.executors.set(roomId, executor);

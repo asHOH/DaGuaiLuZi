@@ -53,7 +53,7 @@ describe("persisted room acknowledgements", () => {
     expect(decoded.commandId).toBe(commandId);
   });
 
-  it.each([1, 2, 3, 4, 5, 6, 8])(
+  it.each([1, 2, 3, 4, 5, 6, 7, 9])(
     "rejects unsupported persisted output version %i",
     (protocolVersion) => {
       expect(() =>

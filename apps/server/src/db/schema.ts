@@ -89,7 +89,14 @@ export const acceptedCommands = sqliteTable("accepted_commands", {
   acknowledgement: text("acknowledgement").notNull(),
 });
 
+export const roomControls = sqliteTable("room_controls", {
+  roomId: text("room_id").primaryKey(),
+  schemaVersion: integer("schema_version").notNull(),
+  payload: text("payload").notNull(),
+});
+
 export const schema = {
+  roomControls,
   accounts,
   sessions,
   roomEvents,

@@ -51,6 +51,7 @@ type TestServer = {
   app: App;
   url: string;
   accounts: Account[];
+  interruptRoom: (roomId: string) => Promise<void>;
 };
 
 async function reservePort(): Promise<number> {
@@ -92,18 +93,36 @@ async function startServer(): Promise<
   }
 
   const port = await reservePort();
-  const app = await createApp({
+  const options = {
     allowedOrigin: `http://127.0.0.1:${port}`,
     dbPath,
     secureCookies: false,
     webRoot: fileURLToPath(new URL("../dist/", import.meta.url)),
-  });
+  };
+  let app = await createApp(options);
   await app.listen({ host: "127.0.0.1", port });
   const url = `http://127.0.0.1:${port}`;
   return {
-    app,
+    get app() {
+      return app;
+    },
     url,
     accounts,
+    async interruptRoom(roomId: string) {
+      const damaged = openDatabase(dbPath);
+      try {
+        damaged.sqlite
+          .prepare(
+            "UPDATE room_events SET event_schema_version = 999 WHERE room_id = ? AND sequence = (SELECT MAX(sequence) FROM room_events WHERE room_id = ?)",
+          )
+          .run(roomId, roomId);
+      } finally {
+        damaged.close();
+      }
+      await app.close();
+      app = await createApp(options);
+      await app.listen({ host: "127.0.0.1", port });
+    },
     close: async () => {
       await app.close();
       await rm(directory, {
@@ -1726,10 +1745,81 @@ async function runHappyPath(
     await expect(ownerPage.getByTestId("replay-position")).toHaveText(
       /^第 1 \/ \d+ 步$/,
     );
-    await joinerPage
-      .getByRole("button", { name: "终止同牌挑战", exact: true })
-      .click();
+    const challengeOwnerCookie = await contextCookie(joinerContext);
+    const sourceRoom = await readRoom(
+      server.url,
+      challengeRoomId,
+      challengeOwnerCookie,
+    );
+    await server.interruptRoom(challengeRoomId);
+    await joinerPage.reload();
+    await expect(joinerPage.getByTestId("room-lifecycle")).toHaveText(
+      "房间已中断",
+    );
+    await expect(joinerPage.getByTestId("hand-card")).toHaveCount(0);
+    await ownerPage.goto(`${server.url}/rooms/${challengeRoomId}`);
+    await expect(ownerPage.getByTestId("room-lifecycle")).toHaveText(
+      "房间已中断",
+    );
+    await expect(
+      ownerPage.getByRole("button", { name: "归档房间", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      ownerPage.getByRole("button", { name: "沿用规则开新房间", exact: true }),
+    ).toHaveCount(0);
+    for (const width of [390, 1280]) {
+      await joinerPage.setViewportSize({ width, height: 900 });
+      await assertNoHorizontalOverflow(joinerPage);
+      await joinerPage.screenshot({
+        path: `output/playwright/${rulesetId}-interrupted-${width}.png`,
+        fullPage: true,
+      });
+    }
+    const replace = joinerPage.getByRole("button", {
+      name: "沿用规则开新房间",
+      exact: true,
+    });
+    await replace.focus();
+    await replace.press("Enter");
     await expect(joinerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
+    const replacementId = new URL(joinerPage.url()).pathname.slice(
+      "/rooms/".length,
+    );
+    expect(replacementId).not.toBe(challengeRoomId);
+    const replacement = await readRoom(
+      server.url,
+      replacementId,
+      challengeOwnerCookie,
+    );
+    expect(replacement.view.rulesConfiguration).toEqual(
+      sourceRoom.view.rulesConfiguration,
+    );
+    expect(replacement.view).toMatchObject({
+      seatingPolicy: "fixed",
+      matchRulesConfigurationLocked: false,
+      seatingPolicyLocked: false,
+      members: [{ playerId: server.accounts[6]!.accountId, ready: false }],
+    });
+    expect(
+      replacement.view.seats.every((seat) => seat.playerId === undefined),
+    ).toBe(true);
+    await joinerPage.goto(`${server.url}/rooms/${challengeRoomId}`);
+    await joinerPage
+      .getByRole("button", { name: "归档房间", exact: true })
+      .click();
+    for (const page of [ownerPage, joinerPage])
+      await expect(page.getByTestId("room-lifecycle")).toHaveText("房间已归档");
+    await joinerPage.reload();
+    await expect(joinerPage.getByTestId("room-lifecycle")).toHaveText(
+      "房间已归档",
+    );
+    await expect(
+      joinerPage.getByRole("button", { name: "归档房间", exact: true }),
+    ).toHaveCount(0);
+    await ownerPage.goto(sharedReplayUrl);
+    await expect(ownerPage.getByTestId("replay-position")).toHaveText(
+      /^第 1 \/ \d+ 步$/,
+    );
     await joinerPage.goto(sharedReplayUrl);
     await expect(joinerPage.getByTestId("replay-position")).toHaveText(
       /^第 1 \/ \d+ 步$/,

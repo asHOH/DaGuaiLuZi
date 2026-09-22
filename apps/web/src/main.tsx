@@ -105,6 +105,7 @@ function App() {
       setRoomState,
       (code) => fail(new ApiError(code)),
       () => navigatePath("/", true),
+      (replacementRoomId) => navigatePath(`/rooms/${replacementRoomId}`, true),
     );
     connection.current = next;
     return () => {
