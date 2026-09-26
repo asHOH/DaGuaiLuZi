@@ -31,6 +31,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "provision-account": "node dist/provision-account.js",
+    "reset-password": "node dist/provision-account.js reset-password",
+    "revoke-sessions": "node dist/provision-account.js revoke-sessions",
+    "account-audit": "node dist/provision-account.js audit",
     "test": "vitest run test",
     "typecheck": "tsc -p tsconfig.test.json"
   },

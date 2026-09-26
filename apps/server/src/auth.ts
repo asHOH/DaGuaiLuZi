@@ -1,9 +1,14 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { userInfo } from "node:os";
 import argon2 from "argon2";
-import { and, eq, isNull } from "drizzle-orm";
-import { LoginCommandSchema, UsernameSchema } from "@dglz/protocol";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import {
+  LoginCommandSchema,
+  PasswordSchema,
+  UsernameSchema,
+} from "@dglz/protocol";
 
-import { accounts, sessions } from "./db/schema.js";
+import { accountAudit, accounts, sessions } from "./db/schema.js";
 import type { AppDatabase } from "./db/index.js";
 
 export const SESSION_COOKIE_NAME = "dglz_session";
@@ -43,6 +48,22 @@ export class AccountAlreadyExistsError extends Error {
   }
 }
 
+export class UnauthorizedSessionError extends Error {
+  public constructor() {
+    super("unauthorized");
+    this.name = "UnauthorizedSessionError";
+  }
+}
+
+export function assertSession(
+  database: AppDatabase,
+  token: string | undefined,
+  accountId: string,
+): void {
+  if (resolveSession(database, token)?.accountId !== accountId)
+    throw new UnauthorizedSessionError();
+}
+
 export function normalizeUsername(value: string): string {
   return value.trim().normalize("NFKC").toLowerCase();
 }
@@ -79,7 +100,21 @@ export async function provisionAccount(
   };
 
   try {
-    database.db.insert(accounts).values(account).run();
+    database.db.transaction(
+      (tx) => {
+        tx.insert(accounts).values(account).run();
+        tx.insert(accountAudit)
+          .values({
+            action: "provision",
+            actor: userInfo().username,
+            source: "cli",
+            accountId: account.id,
+            recordedAt: account.createdAt,
+          })
+          .run();
+      },
+      { behavior: "immediate" },
+    );
   } catch (error) {
     if (
       error instanceof Error &&
@@ -118,15 +153,32 @@ export async function authenticate(
 
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
-  database.db
-    .insert(sessions)
-    .values({
-      tokenHash: hashSessionToken(token),
-      accountId: account.id,
-      createdAt: now,
-      expiresAt: now + SESSION_TTL_MS,
-    })
-    .run();
+  // A CLI reset/revocation may commit while Argon2 is verifying.
+  const inserted = database.db.transaction(
+    (tx) => {
+      const current = tx
+        .select()
+        .from(accounts)
+        .where(eq(accounts.id, account.id))
+        .get();
+      if (
+        current?.authVersion !== account.authVersion ||
+        current.passwordHash !== passwordHash
+      )
+        return false;
+      tx.insert(sessions)
+        .values({
+          tokenHash: hashSessionToken(token),
+          accountId: account.id,
+          createdAt: now,
+          expiresAt: now + SESSION_TTL_MS,
+        })
+        .run();
+      return true;
+    },
+    { behavior: "immediate" },
+  );
+  if (!inserted) return undefined;
   return {
     account: { accountId: account.id, username: account.username },
     token,
@@ -169,11 +221,121 @@ export function revokeSession(
   if (token === undefined || token.length === 0) {
     return;
   }
-  database.db
-    .update(sessions)
-    .set({ revokedAt: Date.now() })
-    .where(eq(sessions.tokenHash, hashSessionToken(token)))
-    .run();
+  database.db.transaction(
+    (tx) => {
+      const now = Date.now();
+      const revoked = tx
+        .update(sessions)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(sessions.tokenHash, hashSessionToken(token)),
+            isNull(sessions.revokedAt),
+          ),
+        )
+        .returning({ accountId: sessions.accountId })
+        .get();
+      if (revoked === undefined) return;
+      tx.insert(accountAudit)
+        .values({
+          action: "logout",
+          actor: revoked.accountId,
+          source: "session",
+          accountId: revoked.accountId,
+          recordedAt: now,
+        })
+        .run();
+    },
+    { behavior: "immediate" },
+  );
+}
+
+function accountByUsername(
+  database: AppDatabase,
+  username: string,
+): typeof accounts.$inferSelect {
+  const parsed = UsernameSchema.safeParse(normalizeUsername(username));
+  if (!parsed.success) throw new Error("invalid-account-input");
+  const account = database.db
+    .select()
+    .from(accounts)
+    .where(eq(accounts.username, parsed.data))
+    .get();
+  if (account === undefined) throw new Error("account-not-found");
+  return account;
+}
+
+function revokeAccountSessions(
+  database: AppDatabase,
+  accountId: string,
+  action: "reset-password" | "revoke-sessions",
+  passwordHash?: string,
+): void {
+  database.db.transaction(
+    (tx) => {
+      const now = Date.now();
+      tx.update(accounts)
+        .set({
+          authVersion: sql`${accounts.authVersion} + 1`,
+          ...(passwordHash === undefined ? {} : { passwordHash }),
+        })
+        .where(eq(accounts.id, accountId))
+        .run();
+      tx.update(sessions)
+        .set({ revokedAt: now })
+        .where(
+          and(eq(sessions.accountId, accountId), isNull(sessions.revokedAt)),
+        )
+        .run();
+      tx.insert(accountAudit)
+        .values({
+          action,
+          actor: userInfo().username,
+          source: "cli",
+          accountId,
+          recordedAt: now,
+        })
+        .run();
+    },
+    { behavior: "immediate" },
+  );
+}
+
+export async function resetPassword(
+  database: AppDatabase,
+  username: string,
+  password: string,
+): Promise<void> {
+  if (!PasswordSchema.safeParse(password).success)
+    throw new Error("invalid-account-input");
+  const account = accountByUsername(database, username);
+  const passwordHash = await argon2.hash(password, ARGON2_OPTIONS);
+  revokeAccountSessions(database, account.id, "reset-password", passwordHash);
+}
+
+export function revokeAllSessions(
+  database: AppDatabase,
+  username: string,
+): void {
+  revokeAccountSessions(
+    database,
+    accountByUsername(database, username).id,
+    "revoke-sessions",
+  );
+}
+
+export function readAccountAudit(
+  database: AppDatabase,
+  username: string,
+): (typeof accountAudit.$inferSelect)[] {
+  const account = accountByUsername(database, username);
+  return database.db
+    .select()
+    .from(accountAudit)
+    .where(eq(accountAudit.accountId, account.id))
+    .orderBy(desc(accountAudit.id))
+    .limit(100)
+    .all();
 }
 
 export function hashSessionToken(token: string): string {

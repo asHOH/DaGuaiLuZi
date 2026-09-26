@@ -40,6 +40,18 @@ pnpm --filter @dglz/server start
 
 `provision-account` requires `DGLZ_PASSWORD`; `DGLZ_USERNAME`, `DGLZ_EMAIL`, and `DGLZ_DB_PATH` are optional. Clear the password variable afterwards.
 
+Account administration (build first; all commands use `DGLZ_DB_PATH` and accept `DGLZ_USERNAME`, otherwise prompt):
+
+| Command | Behavior |
+| --- | --- |
+| `pnpm --filter @dglz/server reset-password` | Set `DGLZ_PASSWORD` as the new password and revoke every session for that account. |
+| `pnpm --filter @dglz/server revoke-sessions` | Revoke every session without changing the password; subsequent logins remain available. |
+| `pnpm --filter @dglz/server account-audit` | Print the account's latest 100 audit records, newest first, as Chinese-labeled JSON lines. |
+
+Supply passwords through a non-echoing shell prompt into `DGLZ_PASSWORD`, never command arguments or saved shell commands; clear the variable in the invoking shell afterwards. Administrative authority is VPS access, not an app role. Audit actors are the OS username for CLI actions and the Player Account ID for logout. Migration `0004_account_administration` preserves existing accounts/sessions and starts audit recording without inventing historical records. Provisioning, reset, account-wide revocation, and logout commit atomically with append-only audit records; secrets are excluded.
+
+Revocation takes effect on subsequent authorization checks, including queued work and private-view delivery; idle sockets are not polled. Room membership, seats, and history remain intact. Resets/revocations also reject logins whose password verification began before the operation committed. Ordinary logout revokes only its session. Player password changes remain [Phase 2](account-administration-plan.md).
+
 `start` requires `DGLZ_ALLOWED_ORIGIN`. `DGLZ_DB_PATH`, `DGLZ_HOST`, and `DGLZ_PORT` are optional. Cookies are secure by default; set `DGLZ_SECURE_COOKIES=false` only for local HTTP development.
 
 Run the server tests with `pnpm --filter @dglz/server test`; they use temporary SQLite databases and real Socket.IO clients.

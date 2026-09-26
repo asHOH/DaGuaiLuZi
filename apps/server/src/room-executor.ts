@@ -24,6 +24,7 @@ import {
 } from "@dglz/protocol";
 
 import type { AppDatabase } from "./db/index.js";
+import { UnauthorizedSessionError } from "./auth.js";
 import { ChallengeLookup, createChallengeCode } from "./challenges.js";
 import {
   appendRoomEvents,
@@ -129,9 +130,10 @@ export class RoomExecutor {
     accountId: PlayerAccountId,
     envelope: RoomCommandEnvelope,
     presence?: RoomPresence,
+    authorize?: () => void,
   ): Promise<RoomCommandAck> {
     const result = this.queue.then(() =>
-      this.executeSerialized(accountId, envelope, presence),
+      this.executeSerialized(accountId, envelope, presence, authorize),
     );
     this.queue = result.then(
       () => undefined,
@@ -149,8 +151,12 @@ export class RoomExecutor {
     return result;
   }
 
-  public resumeSettledHand(accountId: PlayerAccountId): Promise<void> {
+  public resumeSettledHand(
+    accountId: PlayerAccountId,
+    authorize?: () => void,
+  ): Promise<void> {
     const result = this.queue.then(() => {
+      authorize?.();
       if ("recovery" in this.current) return;
       const view = this.viewFor(accountId)?.view;
       if (
@@ -165,13 +171,17 @@ export class RoomExecutor {
       );
       if (!decision.ok) throw new Error(decision.rejection.reason);
       const candidate = foldRoomEvents(this.current, decision.events);
-      appendRoomEvents(this.database, {
-        roomId: this.current.roomId,
-        expectedRevision: this.current.revision,
-        causationCommandId: null,
-        events: decision.events,
-        control: roomControl(candidate),
-      });
+      appendRoomEvents(
+        this.database,
+        {
+          roomId: this.current.roomId,
+          expectedRevision: this.current.revision,
+          causationCommandId: null,
+          events: decision.events,
+          control: roomControl(candidate),
+        },
+        authorize,
+      );
       this.current = candidate;
     });
     this.queue = result.then(
@@ -184,14 +194,20 @@ export class RoomExecutor {
   public createChallengeCode(
     accountId: PlayerAccountId,
     handStartSequence: number,
+    authorize?: () => void,
   ): Promise<ChallengePreview | "not-found" | "forbidden"> {
     const result = this.queue.then(() =>
-      createChallengeCode(
-        this.database,
-        this.current.roomId,
-        handStartSequence,
-        accountId,
-      ),
+      this.database.sqlite
+        .transaction(() => {
+          authorize?.();
+          return createChallengeCode(
+            this.database,
+            this.current.roomId,
+            handStartSequence,
+            accountId,
+          );
+        })
+        .immediate(),
     );
     this.queue = result.then(
       () => undefined,
@@ -204,7 +220,9 @@ export class RoomExecutor {
     accountId: PlayerAccountId,
     envelope: RoomCommandEnvelope,
     presence: RoomPresence | undefined,
+    authorize: (() => void) | undefined,
   ): Promise<RoomCommandAck> {
+    authorize?.();
     const fingerprint = roomCommandFingerprint(envelope);
     const stored = findAcceptedCommand(this.database, envelope.commandId);
     if (stored !== undefined) {
@@ -274,19 +292,25 @@ export class RoomExecutor {
         data,
       });
       try {
-        commitRoomCommand(this.database, {
-          roomId: envelope.roomId,
-          expectedRevision: this.current.revision,
-          accountId,
-          commandId: envelope.commandId,
-          requestFingerprint: fingerprint,
-          acknowledgement,
-          events: replacement === undefined ? [{ type: "RoomArchived" }] : [],
-          ...(replacement === undefined && "recovery" in next
-            ? { control: { revision: next.revision, view: next.recovery } }
-            : { replacement: replacement! }),
-        });
-      } catch {
+        commitRoomCommand(
+          this.database,
+          {
+            roomId: envelope.roomId,
+            expectedRevision: this.current.revision,
+            accountId,
+            commandId: envelope.commandId,
+            requestFingerprint: fingerprint,
+            acknowledgement,
+            events: replacement === undefined ? [{ type: "RoomArchived" }] : [],
+            ...(replacement === undefined && "recovery" in next
+              ? { control: { revision: next.revision, view: next.recovery } }
+              : { replacement: replacement! }),
+          },
+          authorize,
+        );
+      } catch (error) {
+        if (error instanceof UnauthorizedSessionError)
+          return commandError(envelope.commandId, "unauthorized");
         return commandError(envelope.commandId, "internal-error");
       }
       this.current = next;
@@ -398,17 +422,23 @@ export class RoomExecutor {
     });
 
     try {
-      commitRoomCommand(this.database, {
-        commandId: envelope.commandId,
-        accountId,
-        roomId: envelope.roomId,
-        requestFingerprint: fingerprint,
-        acknowledgement,
-        expectedRevision: this.current.revision,
-        events,
-        control: roomControl(candidate),
-      });
-    } catch {
+      commitRoomCommand(
+        this.database,
+        {
+          commandId: envelope.commandId,
+          accountId,
+          roomId: envelope.roomId,
+          requestFingerprint: fingerprint,
+          acknowledgement,
+          expectedRevision: this.current.revision,
+          events,
+          control: roomControl(candidate),
+        },
+        authorize,
+      );
+    } catch (error) {
+      if (error instanceof UnauthorizedSessionError)
+        return commandError(envelope.commandId, "unauthorized");
       const raced = findAcceptedCommand(this.database, envelope.commandId);
       if (
         raced !== undefined &&

@@ -29,6 +29,13 @@
       "when": 1788692403000,
       "tag": "0003_room_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788692404000,
+      "tag": "0004_account_administration",
+      "breakpoints": true
     }
   ]
 }

@@ -36,12 +36,14 @@ import {
 } from "@dglz/protocol";
 
 import {
+  assertSession,
   authenticate,
   createDummyPasswordHash,
   normalizeUsername,
   resolveSession,
   revokeSession,
   SESSION_COOKIE_NAME,
+  UnauthorizedSessionError,
 } from "./auth.js";
 import { openDatabase } from "./db/index.js";
 import {
@@ -375,10 +377,16 @@ export async function createApp(
         if (executor === undefined) {
           return;
         }
-        await executor.resumeSettledHand(account.accountId);
+        await executor.resumeSettledHand(account.accountId, () =>
+          assertSession(database, data.sessionToken, account.accountId),
+        );
         await executor.autoStart(connectedRoomAccounts(initialRoomId));
         await publishRoomViews(initialRoomId, executor);
       })().catch((error: unknown) => {
+        if (error instanceof UnauthorizedSessionError) {
+          socket.disconnect(true);
+          return;
+        }
         app.log.error(
           { err: error, roomId: initialRoomId },
           "room sync failed",
@@ -427,8 +435,14 @@ export async function createApp(
               account.accountId,
               parsed.data,
               connectedRoomAccounts(parsed.data.roomId),
+              () => assertSession(database, token, account.accountId),
             );
-            respond(result);
+            // A committed acknowledgement can also contain a private view.
+            const authorized =
+              resolveSession(database, token)?.accountId === account.accountId;
+            respond(
+              authorized ? result : commandErrorAck(commandId, "unauthorized"),
+            );
             if (result.ok) {
               try {
                 await publishRoomViews(parsed.data.roomId, executor);
@@ -442,7 +456,16 @@ export async function createApp(
               await Promise.resolve(socket.leave(parsed.data.roomId));
             }
           })
-          .catch(() => respond(commandErrorAck(commandId, "internal-error")));
+          .catch((error: unknown) =>
+            respond(
+              commandErrorAck(
+                commandId,
+                error instanceof UnauthorizedSessionError
+                  ? "unauthorized"
+                  : "internal-error",
+              ),
+            ),
+          );
       },
     );
   });
@@ -486,6 +509,10 @@ export async function createApp(
 
   app.setErrorHandler((error, _request, reply) => {
     if (reply.sent) {
+      return;
+    }
+    if (error instanceof UnauthorizedSessionError) {
+      sendError(reply, "unauthorized");
       return;
     }
     if (error instanceof UnsupportedPersistedEventError) {
@@ -602,7 +629,9 @@ export async function createApp(
       seatingPolicy: parsed.data.seatingPolicy,
     };
     const state = evolve(undefined, event);
-    appendRoomCreated(database, event);
+    appendRoomCreated(database, event, () =>
+      assertSession(database, requestCookieToken(request), account.accountId),
+    );
     const data = deriveRoomView(
       { roomId: event.roomId, state, revision: 1 },
       account.accountId,
@@ -641,8 +670,11 @@ export async function createApp(
         return sendError(reply, "forbidden");
       }
       const revision = room.revision;
-      await room.resumeSettledHand(account.accountId);
+      const authorize = () =>
+        assertSession(database, requestCookieToken(request), account.accountId);
+      await room.resumeSettledHand(account.accountId, authorize);
       if (room.revision !== revision) await publishRoomViews(roomId.data, room);
+      authorize();
       return reply.send(successEnvelope(room.viewFor(account.accountId)!));
     },
   );
@@ -750,7 +782,14 @@ export async function createApp(
       const result = await room.createChallengeCode(
         account.accountId,
         parsed.data.handStartSequence,
+        () =>
+          assertSession(
+            database,
+            requestCookieToken(request),
+            account.accountId,
+          ),
       );
+      assertSession(database, requestCookieToken(request), account.accountId);
       return typeof result === "string"
         ? sendError(reply, result)
         : reply.send(successEnvelope(result));

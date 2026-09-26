@@ -13,7 +13,21 @@ export const accounts = sqliteTable("accounts", {
   username: text("username").notNull().unique(),
   email: text("email"),
   passwordHash: text("password_hash").notNull(),
+  authVersion: integer("auth_version").notNull().default(0),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
+});
+
+export const accountAudit = sqliteTable("account_audit", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  action: text("action", {
+    enum: ["provision", "reset-password", "revoke-sessions", "logout"],
+  }).notNull(),
+  actor: text("actor").notNull(),
+  source: text("source", { enum: ["cli", "session"] }).notNull(),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => accounts.id),
+  recordedAt: integer("recorded_at").notNull(),
 });
 
 export const sessions = sqliteTable(
@@ -96,6 +110,7 @@ export const roomControls = sqliteTable("room_controls", {
 });
 
 export const schema = {
+  accountAudit,
   roomControls,
   accounts,
   sessions,

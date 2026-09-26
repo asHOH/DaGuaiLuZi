@@ -573,30 +573,34 @@ export function defaultRoomRulesConfiguration(
 export function appendRoomCreated(
   database: AppDatabase,
   event: RoomCreated,
+  authorize?: () => void,
 ): void {
   const payload = RoomCreatedPayloadSchema.parse(event);
-  database.sqlite.transaction(() => {
-    database.db
-      .insert(roomEvents)
-      .values({
-        roomId: event.roomId,
-        sequence: 1,
-        eventType: event.type,
-        eventSchemaVersion: ROOM_EVENT_SCHEMA_VERSION,
-        causationCommandId: null,
-        recordedAt: Date.now(),
-        payload: JSON.stringify(payload),
-      })
-      .run();
-    saveRoomControl(
-      database,
-      roomControl({
-        roomId: event.roomId,
-        revision: 1,
-        state: evolve(undefined, event),
-      }),
-    );
-  })();
+  database.sqlite
+    .transaction(() => {
+      authorize?.();
+      database.db
+        .insert(roomEvents)
+        .values({
+          roomId: event.roomId,
+          sequence: 1,
+          eventType: event.type,
+          eventSchemaVersion: ROOM_EVENT_SCHEMA_VERSION,
+          causationCommandId: null,
+          recordedAt: Date.now(),
+          payload: JSON.stringify(payload),
+        })
+        .run();
+      saveRoomControl(
+        database,
+        roomControl({
+          roomId: event.roomId,
+          revision: 1,
+          state: evolve(undefined, event),
+        }),
+      );
+    })
+    .immediate();
 }
 
 export type AcceptedCommandRecord = Readonly<{
@@ -805,22 +809,27 @@ function appendEventRows(
 export function appendRoomEvents(
   database: AppDatabase,
   events: CommittedRoomEvents,
+  authorize?: () => void,
 ): void {
   const insertEvent = database.sqlite.prepare(
     `INSERT INTO room_events
        (room_id, sequence, event_type, event_schema_version, causation_command_id, recorded_at, payload)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
-  database.sqlite.transaction(() => {
-    checkRoomRevision(database, events.roomId, events.expectedRevision);
-    appendEventRows(insertEvent, events);
-    updateRoomControl(database, events);
-  })();
+  database.sqlite
+    .transaction(() => {
+      authorize?.();
+      checkRoomRevision(database, events.roomId, events.expectedRevision);
+      appendEventRows(insertEvent, events);
+      updateRoomControl(database, events);
+    })
+    .immediate();
 }
 
 export function commitRoomCommand(
   database: AppDatabase,
   command: CommittedRoomCommand,
+  authorize?: () => void,
 ): void {
   const acknowledgement = RoomCommandAckSchema.parse(command.acknowledgement);
   const insertCommand = database.sqlite.prepare(
@@ -834,6 +843,7 @@ export function commitRoomCommand(
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
   const commit = database.sqlite.transaction(() => {
+    authorize?.();
     checkRoomRevision(database, command.roomId, command.expectedRevision);
     insertCommand.run(
       command.commandId,
@@ -852,7 +862,7 @@ export function commitRoomCommand(
     if (command.replacement !== undefined)
       appendRoomCreated(database, command.replacement);
   });
-  commit();
+  commit.immediate();
 }
 
 export type LoadedRoom = Readonly<{

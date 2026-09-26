@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { io as connect, type Socket } from "socket.io-client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   PROTOCOL_VERSION,
@@ -19,9 +19,14 @@ import {
 } from "@dglz/protocol";
 
 import { createApp } from "../src/app.js";
-import { provisionAccount } from "../src/auth.js";
+import {
+  provisionAccount,
+  resetPassword,
+  revokeAllSessions,
+} from "../src/auth.js";
 import { openDatabase } from "../src/db/index.js";
 import { loadRoom, readRoomEvents } from "../src/rooms.js";
+import { RoomExecutor } from "../src/room-executor.js";
 import { derivePlayerView } from "@dglz/game-core";
 
 const paths: string[] = [];
@@ -29,6 +34,7 @@ const sockets: Socket[] = [];
 const apps: Awaited<ReturnType<typeof createApp>>[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const socket of sockets.splice(0)) {
     socket.close();
   }
@@ -698,63 +704,204 @@ describe("phase 2 Socket.IO room slice", () => {
     });
   });
 
-  it("revalidates connected socket sessions for commands and views", async () => {
-    const { app, dbPath, roomId, memberCookie, thirdCookie } = await setup();
+  it("withholds an acknowledgement view if its session is revoked after commit", async () => {
+    const { app, dbPath, roomId, memberCookie } = await setup();
     await app.listen({ host: "127.0.0.1", port: 0 });
     const member = (await openSocket(listenPort(app), memberCookie)).socket;
-    const joined = await sendCommand(member, {
+    // oxlint-disable-next-line typescript/unbound-method -- Invoked with the original receiver below.
+    const execute = RoomExecutor.prototype.execute;
+    const executeSpy = vi.spyOn(RoomExecutor.prototype, "execute");
+    executeSpy.mockImplementationOnce(async function (
+      this: RoomExecutor,
+      ...args
+    ) {
+      const result = await execute.apply(this, args);
+      const administrator = openDatabase(dbPath);
+      try {
+        revokeAllSessions(administrator, "bob");
+      } finally {
+        administrator.close();
+      }
+      return result;
+    });
+    const result = await sendCommand(member, {
       protocolVersion: PROTOCOL_VERSION,
-      commandId: "a5aaf355-e585-493c-aed3-bbefce2018ef",
+      commandId: randomUUID(),
       roomId,
       expectedRevision: 1,
       payload: { type: "JoinRoom" },
     });
-    expect(joined).toMatchObject({ ok: true, data: { revision: 2 } });
-    const logout = await app.inject({
-      method: "POST",
-      url: "/api/logout",
-      headers: {
-        [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
-        cookie: memberCookie,
-      },
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "unauthorized" },
     });
-    expect(logout.statusCode).toBe(200);
-    expect(
-      await sendCommand(member, {
-        protocolVersion: PROTOCOL_VERSION,
-        commandId: "87852989-7bdf-43cc-98f3-88a456019a8b",
-        roomId,
-        expectedRevision: 2,
-        payload: { type: "JoinRoom" },
-      }),
-    ).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+    expect(result).not.toHaveProperty("data");
     expect(databaseCounts(dbPath)).toEqual({
       acceptedCommands: 1,
       roomEvents: 2,
     });
-
-    let revokedViewReceived = false;
-    member.once(SOCKET_ROOM_VIEW_EVENT, () => {
-      revokedViewReceived = true;
-    });
-    const disconnected = new Promise<void>((resolve) => {
-      member.once("disconnect", () => resolve());
-    });
-    const third = (await openSocket(listenPort(app), thirdCookie)).socket;
-    expect(
-      await sendCommand(third, {
-        protocolVersion: PROTOCOL_VERSION,
-        commandId: "ab2b062a-d148-44c6-9c5c-973dea28f6ad",
-        roomId,
-        expectedRevision: 2,
-        payload: { type: "JoinRoom" },
-      }),
-    ).toMatchObject({ ok: true, data: { revision: 3 } });
-    await disconnected;
-    expect(revokedViewReceived).toBe(false);
-    expect(databaseCounts(dbPath)).toEqual({
-      acceptedCommands: 2,
-      roomEvents: 3,
-    });
   });
+
+  it.each(["room", "challenge"])(
+    "rechecks a queued HTTP %s operation",
+    async (operation) => {
+      const { app, dbPath, roomId, ownerCookie } = await setup();
+      const revoke = () => {
+        const administrator = openDatabase(dbPath);
+        try {
+          revokeAllSessions(administrator, "alice");
+        } finally {
+          administrator.close();
+        }
+      };
+      if (operation === "room") {
+        // oxlint-disable-next-line typescript/unbound-method -- Invoked with the original receiver below.
+        const resume = RoomExecutor.prototype.resumeSettledHand;
+        const resumeSpy = vi.spyOn(RoomExecutor.prototype, "resumeSettledHand");
+        resumeSpy.mockImplementationOnce(function (
+          this: RoomExecutor,
+          ...args
+        ) {
+          const result = resume.apply(this, args);
+          revoke();
+          return result;
+        });
+      } else {
+        // oxlint-disable-next-line typescript/unbound-method -- Invoked with the original receiver below.
+        const create = RoomExecutor.prototype.createChallengeCode;
+        const createSpy = vi.spyOn(
+          RoomExecutor.prototype,
+          "createChallengeCode",
+        );
+        createSpy.mockImplementationOnce(function (
+          this: RoomExecutor,
+          ...args
+        ) {
+          const result = create.apply(this, args);
+          revoke();
+          return result;
+        });
+      }
+      const response = await app.inject({
+        method: operation === "room" ? "GET" : "POST",
+        url: `/api/rooms/${roomId}${operation === "room" ? "" : "/challenges"}`,
+        headers: {
+          [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+          cookie: ownerCookie,
+        },
+        ...(operation === "room" ? {} : { payload: { handStartSequence: 1 } }),
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({
+        ok: false,
+        error: { code: "unauthorized" },
+      });
+      expect(databaseCounts(dbPath)).toEqual({
+        acceptedCommands: 0,
+        roomEvents: 1,
+      });
+    },
+  );
+
+  it.each(["logout", "reset", "revoke"])(
+    "revalidates HTTP and connected sockets after %s",
+    async (operation) => {
+      const { app, dbPath, roomId, memberCookie, thirdCookie } = await setup();
+      await app.listen({ host: "127.0.0.1", port: 0 });
+      const member = (await openSocket(listenPort(app), memberCookie)).socket;
+      const joined = await sendCommand(member, {
+        protocolVersion: PROTOCOL_VERSION,
+        commandId: "a5aaf355-e585-493c-aed3-bbefce2018ef",
+        roomId,
+        expectedRevision: 1,
+        payload: { type: "JoinRoom" },
+      });
+      expect(joined).toMatchObject({ ok: true, data: { revision: 2 } });
+      const otherTab = await openSocket(listenPort(app), memberCookie, roomId);
+      await otherTab.firstView;
+      if (operation === "logout") {
+        await app.inject({
+          method: "POST",
+          url: "/api/logout",
+          headers: {
+            [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+            cookie: memberCookie,
+          },
+        });
+      } else {
+        const administrator = openDatabase(dbPath);
+        try {
+          if (operation === "reset")
+            await resetPassword(administrator, "bob", "new-secret");
+          else revokeAllSessions(administrator, "bob");
+        } finally {
+          administrator.close();
+        }
+      }
+      for (const url of [
+        "/api/session",
+        `/api/rooms/${roomId}`,
+        "/api/history",
+      ]) {
+        expect(
+          (
+            await app.inject({
+              url,
+              headers: {
+                [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+                cookie: memberCookie,
+              },
+            })
+          ).statusCode,
+        ).toBe(401);
+      }
+      expect(
+        (await connectError(listenPort(app), { cookie: memberCookie })).message,
+      ).toBe("unauthorized");
+      expect(
+        await sendCommand(member, {
+          protocolVersion: PROTOCOL_VERSION,
+          commandId: "87852989-7bdf-43cc-98f3-88a456019a8b",
+          roomId,
+          expectedRevision: 2,
+          payload: { type: "JoinRoom" },
+        }),
+      ).toMatchObject({ ok: false, error: { code: "unauthorized" } });
+      expect(databaseCounts(dbPath)).toEqual({
+        acceptedCommands: 1,
+        roomEvents: 2,
+      });
+
+      let revokedViewReceived = false;
+      member.once(SOCKET_ROOM_VIEW_EVENT, () => {
+        revokedViewReceived = true;
+      });
+      const disconnected = new Promise<void>((resolve) => {
+        member.once("disconnect", () => resolve());
+      });
+      otherTab.socket.once(SOCKET_ROOM_VIEW_EVENT, () => {
+        revokedViewReceived = true;
+      });
+      const otherDisconnected = new Promise<void>((resolve) => {
+        otherTab.socket.once("disconnect", () => resolve());
+      });
+      const third = (await openSocket(listenPort(app), thirdCookie)).socket;
+      expect(
+        await sendCommand(third, {
+          protocolVersion: PROTOCOL_VERSION,
+          commandId: "ab2b062a-d148-44c6-9c5c-973dea28f6ad",
+          roomId,
+          expectedRevision: 2,
+          payload: { type: "JoinRoom" },
+        }),
+      ).toMatchObject({ ok: true, data: { revision: 3 } });
+      await disconnected;
+      await otherDisconnected;
+      expect(revokedViewReceived).toBe(false);
+      expect(databaseCounts(dbPath)).toEqual({
+        acceptedCommands: 2,
+        roomEvents: 3,
+      });
+    },
+  );
 });
