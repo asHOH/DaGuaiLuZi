@@ -57,6 +57,7 @@ try {
       const labels = {
         provision: "创建账户",
         "reset-password": "重置密码",
+        "change-password": "修改密码",
         "revoke-sessions": "撤销全部会话",
         logout: "退出登录",
       };

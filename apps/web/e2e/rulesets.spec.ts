@@ -1954,3 +1954,233 @@ test("另一标签页切换账号后，重连清除原账号状态", async ({
     await context.close();
   }
 });
+
+test("修改密码后清除各标签页手牌并可用新密码返回牌局", async ({
+  browser,
+  testServer,
+}) => {
+  const context = await browser.newContext();
+  const device = await browser.newContext();
+  const clients: ProtocolClient[] = [];
+  try {
+    const page = await context.newPage();
+    const otherTab = await context.newPage();
+    const devicePage = await device.newPage();
+    const owner = testServer.accounts[0]!;
+    await loginUi(page, testServer.url, owner);
+    const invite = await createRoom(page, testServer.url, "dglz-4p-2d-v1");
+    const roomId = new URL(invite).pathname.slice(7);
+    await chooseFirstSeat(page);
+    await page.getByRole("button", { name: "选择比赛", exact: true }).click();
+    for (const [index, account] of testServer.accounts.slice(1, 4).entries()) {
+      const session = await loginProtocol(testServer.url, account);
+      const client = new ProtocolClient(testServer.url, session.cookie);
+      clients.push(client);
+      await client.connect();
+      await client.join(roomId);
+      await client.command(testServer.url, roomId, {
+        type: "AssignSeat",
+        seatIndex: index + 1,
+      });
+      await client.command(testServer.url, roomId, {
+        type: "SetReadiness",
+        ready: true,
+      });
+    }
+    await page.getByRole("button", { name: "准备就绪" }).click();
+    await expect(page.getByTestId("hand-card")).toHaveCount(27);
+    await otherTab.goto(invite);
+    await expect(otherTab.getByTestId("hand-card")).toHaveCount(27);
+    await loginUi(devicePage, testServer.url, owner, invite);
+    await expect(devicePage.getByTestId("hand-card")).toHaveCount(27);
+    const cards = await otherTab
+      .getByTestId("hand-card")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("data-card")),
+      );
+    await page.getByRole("link", { name: "修改密码" }).click();
+    await page.reload();
+    await expect(page.getByRole("form", { name: "修改密码" })).toBeVisible();
+    await mkdir("output/playwright", { recursive: true });
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await assertNoHorizontalOverflow(page);
+      await page.screenshot({
+        path: `output/playwright/password-change-${width}.png`,
+        fullPage: true,
+      });
+    }
+    const current = page.getByLabel("当前密码", { exact: true });
+    const next = page.getByLabel("新密码", { exact: true });
+    const confirmation = page.getByLabel("确认新密码", { exact: true });
+    const password = "new correct horse battery staple";
+    await current.fill("wrong");
+    await next.fill(password);
+    await confirmation.fill("mismatch");
+    await page.getByRole("button", { name: "确认修改" }).click();
+    expect(
+      await confirmation.evaluate(
+        (node: HTMLInputElement) => node.validationMessage,
+      ),
+    ).toBe("两次输入的新密码不一致。");
+    await confirmation.fill(password);
+    await page.getByRole("button", { name: "确认修改" }).click();
+    await expect(page.getByRole("alert")).toHaveText("当前密码不正确。");
+    await expect(otherTab.getByTestId("hand-card")).toHaveCount(27);
+    await current.fill(PASSWORD);
+    await confirmation.focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "确认修改" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("status")).toContainText("密码已修改");
+    await expect(
+      page.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(
+      otherTab.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(otherTab.getByTestId("hand-card")).toHaveCount(0);
+    await devicePage
+      .getByRole("button", { name: "终止比赛", exact: true })
+      .click();
+    await expect(
+      devicePage.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(devicePage.getByTestId("hand-card")).toHaveCount(0);
+    await page.getByLabel("用户名").fill(owner.username);
+    await page.getByLabel("密码", { exact: true }).fill(PASSWORD);
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("用户名或密码不正确");
+    await page.getByLabel("密码", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await expect(page.getByRole("form", { name: "修改密码" })).toBeVisible();
+    await expect(page.getByLabel("当前密码", { exact: true })).toHaveValue("");
+    await page.goto(invite);
+    await expect(page.getByTestId("hand-card")).toHaveCount(27);
+    expect(
+      await page
+        .getByTestId("hand-card")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute("data-card")),
+        ),
+    ).toEqual(cards);
+    await otherTab.reload();
+    await expect(otherTab.getByTestId("hand-card")).toHaveCount(27);
+  } finally {
+    for (const client of clients) client.close();
+    await Promise.all([context.close(), device.close()]);
+  }
+});
+
+test("修改密码拒绝过期账户页面并处理响应丢失", async ({
+  browser,
+  testServer,
+}) => {
+  const context = await browser.newContext();
+  const clients: ProtocolClient[] = [];
+  let releaseResponse = () => {};
+  try {
+    const page = await context.newPage();
+    const other = await context.newPage();
+    const alice = testServer.accounts[0]!;
+    const bob = testServer.accounts[1]!;
+    await loginUi(page, testServer.url, alice, `${testServer.url}/account`);
+    await other.goto(testServer.url);
+    await other.getByRole("button", { name: "退出登录" }).click();
+    await expect(
+      other.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await loginUi(other, testServer.url, bob);
+    await page.getByLabel("当前密码", { exact: true }).fill(PASSWORD);
+    await page
+      .getByLabel("新密码", { exact: true })
+      .fill("must-not-change-bob");
+    await page
+      .getByLabel("确认新密码", { exact: true })
+      .fill("must-not-change-bob");
+    await page.getByRole("button", { name: "确认修改" }).click();
+    await expect(page.getByRole("alert")).toContainText("登录已失效");
+    await expect(page.getByRole("form", { name: "修改密码" })).toHaveCount(0);
+    expect((await loginProtocol(testServer.url, bob)).accountId).toBe(
+      bob.accountId,
+    );
+
+    await other.getByRole("button", { name: "退出登录" }).click();
+    await expect(
+      other.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await loginUi(page, testServer.url, alice);
+    const invite = await createRoom(page, testServer.url, "dglz-4p-2d-v1");
+    const roomId = new URL(invite).pathname.slice(7);
+    await chooseFirstSeat(page);
+    await page.getByRole("button", { name: "选择比赛", exact: true }).click();
+    for (const [index, account] of testServer.accounts.slice(1, 4).entries()) {
+      const session = await loginProtocol(testServer.url, account);
+      const client = new ProtocolClient(testServer.url, session.cookie);
+      clients.push(client);
+      await client.connect();
+      await client.join(roomId);
+      await client.command(testServer.url, roomId, {
+        type: "AssignSeat",
+        seatIndex: index + 1,
+      });
+      await client.command(testServer.url, roomId, {
+        type: "SetReadiness",
+        ready: true,
+      });
+    }
+    await page.getByRole("button", { name: "准备就绪" }).click();
+    await expect(page.getByTestId("hand-card")).toHaveCount(27);
+    await other.goto(invite);
+    await expect(other.getByTestId("hand-card")).toHaveCount(27);
+    await page.getByRole("link", { name: "修改密码" }).click();
+    const password = "password-after-lost-response";
+    let committed = false;
+    const held = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    await page.route("**/api/account/password", async (route) => {
+      const response = await route.fetch();
+      committed = response.status() === 200;
+      await held;
+      await route.abort("failed");
+    });
+    await page.getByLabel("当前密码", { exact: true }).fill(PASSWORD);
+    await page.getByLabel("新密码", { exact: true }).fill(password);
+    await page.getByLabel("确认新密码", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "确认修改" }).click();
+    await expect.poll(() => committed).toBe(true);
+    // Keep the same App mounted, but change its operation generation before failure.
+    await page.getByRole("link", { name: "大怪路子 好友牌局" }).click();
+    await expect(
+      page.getByRole("heading", { name: "今晚，怎么打？" }),
+    ).toBeVisible();
+    await expect(other.getByTestId("hand-card")).toHaveCount(27);
+    releaseResponse();
+    await expect(
+      page.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("未能确认修改结果");
+    expect(committed).toBe(true);
+    await expect(page.getByRole("form", { name: "修改密码" })).toHaveCount(0);
+    await expect(
+      other.getByRole("button", { name: "登录", exact: true }),
+    ).toBeVisible();
+    await expect(other.getByTestId("hand-card")).toHaveCount(0);
+    await expect(other.getByRole("status")).toContainText(
+      "请重新登录确认账户状态",
+    );
+    await page.getByLabel("用户名").fill(alice.username);
+    await page.getByLabel("密码", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "今晚，怎么打？" }),
+    ).toBeVisible();
+    await page.goto(invite);
+    await expect(page.getByTestId("hand-card")).toHaveCount(27);
+  } finally {
+    releaseResponse();
+    for (const client of clients) client.close();
+    await context.close();
+  }
+});

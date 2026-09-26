@@ -118,6 +118,11 @@
 .account span {
   overflow-wrap: anywhere;
 }
+.account a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
 .welcome {
   min-height: 70vh;
   display: grid;
@@ -180,6 +185,13 @@
 }
 .home {
   padding: 40px 0;
+}
+.passwordPage {
+  max-width: 480px;
+  margin: 36px auto;
+}
+.passwordPage h1 {
+  font-size: 2rem;
 }
 .forms {
   display: grid;

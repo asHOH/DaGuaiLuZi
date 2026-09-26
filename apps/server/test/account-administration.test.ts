@@ -18,6 +18,7 @@ import {
 import {
   assertSession,
   authenticate,
+  changePassword,
   hashSessionToken,
   provisionAccount,
   readAccountAudit,
@@ -158,6 +159,13 @@ it("rolls back every account mutation if its audit insert fails", async () => {
   );
   expect(() => revokeAllSessions(database, "alice")).toThrow("audit-failed");
   expect(() => revokeSession(database, session.token)).toThrow("audit-failed");
+  await expect(
+    changePassword(database, session.token, {
+      accountId: session.account.accountId,
+      currentPassword: "old-secret",
+      newPassword: "new-secret",
+    }),
+  ).rejects.toThrow("audit-failed");
   expect(database.db.select().from(accounts).all()).toEqual(before);
   expect(resolveSession(database, session.token)).toEqual(session.account);
   expect(readAccountAudit(database, "alice")).toHaveLength(1);
@@ -166,10 +174,11 @@ it("rolls back every account mutation if its audit insert fails", async () => {
   ).toBeDefined();
 });
 
-it.each(["reset", "revoke"])(
+it.each(["reset", "revoke", "change"])(
   "rejects a login that was still verifying during %s",
   async (operation) => {
-    const { path, database } = await setup();
+    const { path, database, login } = await setup();
+    const session = await login();
     const verified = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const verify = argon2.verify;
@@ -185,13 +194,25 @@ it.each(["reset", "revoke"])(
     try {
       if (operation === "reset")
         await resetPassword(administrator, "alice", "new-secret");
+      else if (operation === "change")
+        await changePassword(administrator, session.token, {
+          accountId: session.account.accountId,
+          currentPassword: "old-secret",
+          newPassword: "new-secret",
+        });
       else revokeAllSessions(administrator, "alice");
     } finally {
       administrator.close();
       release.resolve();
     }
     expect(await pending).toBeUndefined();
-    expect(database.db.select().from(sessions).all()).toHaveLength(0);
+    expect(
+      database.db
+        .select()
+        .from(sessions)
+        .all()
+        .filter((row) => row.revokedAt === null),
+    ).toHaveLength(0);
   },
 );
 
@@ -410,6 +431,174 @@ it("rechecks authorization inside the commit after asynchronous presence checks"
   expect(room.revision).toBe(revision);
   expect(room.viewFor(account.accountId)?.view.lifecycle).toBe("LOBBY");
 });
+
+it("changes passwords through HTTP with account binding, atomic audit, and revocation", async () => {
+  const { path, database, account, login } = await setup();
+  const first = await login();
+  const second = await login();
+  const bob = await provisionAccount(database, {
+    username: "bob",
+    password: "old-secret",
+  });
+  const bobSession = (await authenticate(
+    database,
+    "bob",
+    "old-secret",
+    "unused",
+  ))!;
+  const app = await createApp({
+    dbPath: path,
+    allowedOrigin: "https://game.example",
+    secureCookies: false,
+  });
+  cleanups.push(() => app.close());
+  const headers = {
+    [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+    cookie: `dglz_session=${first.token}`,
+    origin: "https://game.example",
+  };
+  const payload = {
+    accountId: account.accountId,
+    currentPassword: "old-secret",
+    newPassword: "new-secret",
+  };
+  const request = (body: typeof payload, extraHeaders = {}) =>
+    app.inject({
+      method: "POST",
+      url: "/api/account/password",
+      headers: { ...headers, ...extraHeaders },
+      payload: body,
+    });
+  expect(
+    (await request(payload, { origin: "https://attacker.example" })).statusCode,
+  ).toBe(403);
+  expect(
+    (await request({ ...payload, currentPassword: "wrong" })).json(),
+  ).toMatchObject({ error: { code: "invalid-credentials" } });
+  expect(
+    (
+      await request(payload, { cookie: `dglz_session=${bobSession.token}` })
+    ).json(),
+  ).toMatchObject({ error: { code: "unauthorized" } });
+  expect((await request({ ...payload, newPassword: "" })).statusCode).toBe(400);
+  expect(readAccountAudit(database, "alice")).toHaveLength(1);
+  expect(resolveSession(database, first.token)).toEqual(account);
+
+  const changed = await request(payload);
+  expect(changed.statusCode).toBe(200);
+  expect(changed.json()).toEqual({
+    protocolVersion: PROTOCOL_VERSION,
+    ok: true,
+    data: {},
+  });
+  expect(changed.headers["cache-control"]).toBe("no-store");
+  expect(changed.headers["set-cookie"]).toContain("dglz_session=;");
+  expect(changed.headers["set-cookie"]).toContain("HttpOnly");
+  expect(readAccountAudit(database, "alice")[0]).toMatchObject({
+    action: "change-password",
+    actor: account.accountId,
+    source: "session",
+    accountId: account.accountId,
+  });
+  for (const token of [first.token, second.token]) {
+    expect(resolveSession(database, token)).toBeUndefined();
+    expect(
+      (
+        await app.inject({
+          url: "/api/session",
+          headers: { ...headers, cookie: `dglz_session=${token}` },
+        })
+      ).statusCode,
+    ).toBe(401);
+  }
+  expect(resolveSession(database, bobSession.token)).toEqual(bob);
+  expect(
+    await authenticate(database, "alice", "old-secret", "unused"),
+  ).toBeUndefined();
+  expect((await login("new-secret")).account).toEqual(account);
+  expect((await request(payload)).statusCode).toBe(401);
+});
+
+it("throttles password guesses by account across sessions", async () => {
+  const { path, database, account, login } = await setup();
+  const session = await login();
+  const other = await login();
+  const app = await createApp({ dbPath: path, secureCookies: false });
+  cleanups.push(() => app.close());
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/account/password",
+      headers: {
+        [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
+        cookie: `dglz_session=${attempt % 2 ? other.token : session.token}`,
+      },
+      payload: {
+        accountId: account.accountId,
+        currentPassword: "wrong",
+        newPassword: "new-secret",
+      },
+    });
+    expect(response.statusCode).toBe(attempt === 5 ? 429 : 401);
+  }
+  expect(readAccountAudit(database, "alice")).toHaveLength(1);
+  expect(resolveSession(database, session.token)).toEqual(account);
+});
+
+it.each(["reset", "revoke", "logout", "change"])(
+  "rejects an in-flight password change after %s",
+  async (operation) => {
+    const { path, database, account, login } = await setup();
+    const session = await login();
+    const other = await login();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const hash = argon2.hash;
+    vi.spyOn(argon2, "hash").mockImplementationOnce(async (...args) => {
+      const encoded = await hash(...args);
+      entered.resolve();
+      await release.promise;
+      return encoded;
+    });
+    const pending = changePassword(database, session.token, {
+      accountId: account.accountId,
+      currentPassword: "old-secret",
+      newPassword: "losing-secret",
+    });
+    await entered.promise;
+    const concurrent = openDatabase(path);
+    try {
+      if (operation === "reset")
+        await resetPassword(concurrent, "alice", "winning-secret");
+      else if (operation === "change")
+        await changePassword(concurrent, other.token, {
+          accountId: account.accountId,
+          currentPassword: "old-secret",
+          newPassword: "winning-secret",
+        });
+      else if (operation === "logout") revokeSession(concurrent, session.token);
+      else revokeAllSessions(concurrent, "alice");
+    } finally {
+      concurrent.close();
+      release.resolve();
+    }
+    await expect(pending).rejects.toBeInstanceOf(UnauthorizedSessionError);
+    expect(
+      await authenticate(database, "alice", "losing-secret", "unused"),
+    ).toBeUndefined();
+    expect(
+      await authenticate(
+        database,
+        "alice",
+        operation === "reset" || operation === "change"
+          ? "winning-secret"
+          : "old-secret",
+        "unused",
+      ),
+    ).toBeDefined();
+    expect(readAccountAudit(database, "alice")).toHaveLength(2);
+  },
+);
 
 it("rejects room creation waiting on an administrator's uncommitted revocation", async () => {
   const { path, database, account, login } = await setup();

@@ -1,6 +1,6 @@
 # Account Administration
 
-Status: Phase 1 verified, 2026-09-26. Phase 2 not started.
+Status: Phase 1 verified, 2026-09-26; Phase 2 verified, 2026-09-27.
 
 Reuse existing provisioning, Argon2id, cookie sessions, HTTP/socket authorization, and client reauthentication. Follow [account policy](architecture.md#account-access).
 
@@ -18,8 +18,10 @@ Proposed defaults:
 - Commit credential/session mutations and their audit record together. Guard against stale in-flight login/password checks and recheck authorization when queued work executes. Reuse session checks before private-view delivery; no periodic socket polling.
 - Reuse validation, origin protection, and throttling for password changes. CLI secrets stay out of command arguments and output; all UI/CLI messages are Chinese.
 
-Verification: focused SQLite, CLI, HTTP, and socket checks for rollback, concurrent reset/login/change, queued revocation, multiple sessions, restart persistence, and secret exclusion; then [phase verification](development.md#phase-verification). Apply the required Luna reviewer step whenever a Luna worker changes code.
+Verification: focused SQLite, CLI, HTTP, and socket checks for rollback, concurrent reset/login/change, queued revocation, multiple sessions, restart persistence, and secret exclusion; then [phase verification](development.md#phase-verification).
 
 Keep administration CLI-only. Defer an admin dashboard, email recovery, roles, and a device/session inventory.
 
 Phase 1 verification: `pnpm check` passed (284 tests); all three browser journeys passed. Coverage includes audit rollback, migration/reopen, CLI secret exclusion, multiple sessions, in-flight login, queued operations, and private acknowledgements. Astra review found one valid room-creation race while waiting for SQLite's write lock; a different Astra worker fixed it, and the coordinator reviewed the result. Its regression fails without the guard and passes with it. No other actionable review findings or new dependencies.
+
+Phase 2 verification: `pnpm check` passed (291 tests); all five browser journeys passed, with mobile/desktop form inspection and keyboard submission. Coverage includes account binding, password validation/throttling, atomic audit/revocation, concurrent credential changes, multiple tabs/devices, and return to the same Hand. Astra found one valid lost-response/navigation cleanup gap; a different Astra worker fixed it, and the coordinator reviewed the result. The regression reproduces stale authentication without the fix and passes with it. No other actionable findings or new dependencies.

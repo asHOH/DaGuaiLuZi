@@ -20,7 +20,13 @@ export const accounts = sqliteTable("accounts", {
 export const accountAudit = sqliteTable("account_audit", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   action: text("action", {
-    enum: ["provision", "reset-password", "revoke-sessions", "logout"],
+    enum: [
+      "provision",
+      "reset-password",
+      "revoke-sessions",
+      "logout",
+      "change-password",
+    ],
   }).notNull(),
   actor: text("actor").notNull(),
   source: text("source", { enum: ["cli", "session"] }).notNull(),

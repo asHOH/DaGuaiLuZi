@@ -11,6 +11,7 @@ import fastifyStatic from "@fastify/static";
 import { Server as SocketIOServer, type Socket } from "socket.io";
 import { evolve } from "@dglz/game-core";
 import {
+  ChangePasswordCommandSchema,
   CommandIdSchema,
   CompletedHandReferenceSchema,
   CreateChallengeCodeSchema,
@@ -38,6 +39,7 @@ import {
 import {
   assertSession,
   authenticate,
+  changePassword,
   createDummyPasswordHash,
   normalizeUsername,
   resolveSession,
@@ -547,6 +549,7 @@ export async function createApp(
       options.webRoot !== undefined &&
       (request.method === "GET" || request.method === "HEAD") &&
       (pathname === "/" ||
+        pathname === "/account" ||
         pathname === "/history" ||
         pathname.startsWith("/rooms/"))
     ) {
@@ -593,6 +596,43 @@ export async function createApp(
         cookieOptions(secureCookies),
       );
       return reply.send(successEnvelope(data));
+    },
+  );
+
+  app.post(
+    "/api/account/password",
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "1 minute",
+          keyGenerator: (request) => {
+            const account = requestAccount(database, request);
+            return account === undefined
+              ? `ip:${request.ip}`
+              : `password-change:${account.accountId}`;
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      reply.header("Cache-Control", "no-store");
+      const account = requestAccount(database, request);
+      if (account === undefined) return sendError(reply, "unauthorized");
+      const parsed = ChangePasswordCommandSchema.safeParse(request.body);
+      if (!parsed.success) return sendError(reply, "malformed-input");
+      if (parsed.data.accountId !== account.accountId)
+        return sendError(reply, "unauthorized");
+      if (
+        !(await changePassword(
+          database,
+          requestCookieToken(request),
+          parsed.data,
+        ))
+      )
+        return sendError(reply, "invalid-credentials");
+      reply.clearCookie(SESSION_COOKIE_NAME, cookieOptions(secureCookies));
+      return reply.send(successEnvelope(LogoutResponseDataSchema.parse({})));
     },
   );
 

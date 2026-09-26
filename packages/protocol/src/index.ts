@@ -308,6 +308,15 @@ export const LoginCommandSchema = z
   .strict();
 export type LoginCommand = z.infer<typeof LoginCommandSchema>;
 
+export const ChangePasswordCommandSchema = z
+  .object({
+    accountId: identifier,
+    currentPassword: PasswordSchema,
+    newPassword: PasswordSchema,
+  })
+  .strict();
+export type ChangePasswordCommand = z.infer<typeof ChangePasswordCommandSchema>;
+
 export const CreateRoomCommandSchema = z
   .object({
     rulesetId: RulesetIdSchema,

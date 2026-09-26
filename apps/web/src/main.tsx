@@ -29,6 +29,7 @@ function App() {
   const [booting, setBooting] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
   const [roomId, setRoomId] = useState(roomFromLocation);
   const [route, setRoute] = useState(() => ({
@@ -42,15 +43,31 @@ function App() {
     null,
   );
   const operation = useRef(0);
+  const currentAccount = useRef(account);
+  currentAccount.current = account;
+  const accountChannel = useRef<BroadcastChannel | null>(null);
+
+  function clearAccount() {
+    operation.current++;
+    connection.current?.close();
+    setRoomState(initialRoomState);
+    setAccount(null);
+  }
+
+  function invalidatePasswordAccount(accountId: string, message: string) {
+    accountChannel.current?.postMessage(accountId);
+    // A response can arrive after navigation or a login as another account.
+    if (currentAccount.current?.accountId !== accountId) return;
+    clearAccount();
+    setError("");
+    setNotice(message);
+  }
 
   function fail(reason: unknown) {
     const code = reason instanceof ApiError ? reason.code : "internal-error";
     setError(errorMessage(code));
     if (code === "reload-required" || code === "unauthorized") {
-      operation.current++;
-      connection.current?.close();
-      setRoomState(initialRoomState);
-      setAccount(null);
+      clearAccount();
       setReloadRequired(code === "reload-required");
     }
   }
@@ -75,6 +92,24 @@ function App() {
     void restore();
   }, []);
   useEffect(() => {
+    const channel = new BroadcastChannel("dglz-password-change");
+    accountChannel.current = channel;
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (
+        typeof event.data === "string" &&
+        event.data === currentAccount.current?.accountId
+      ) {
+        clearAccount();
+        setError("");
+        setNotice("其他页面已提交密码修改，请重新登录确认账户状态。");
+      }
+    };
+    return () => {
+      channel.close();
+      accountChannel.current = null;
+    };
+  }, []);
+  useEffect(() => {
     const onPop = () => {
       operation.current++;
       connection.current?.close();
@@ -87,6 +122,7 @@ function App() {
         revision: previous.revision + 1,
       }));
       setError("");
+      setNotice("");
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -127,6 +163,7 @@ function App() {
       revision: previous.revision + 1,
     }));
     setError("");
+    setNotice("");
   }
   function navigate(id: string) {
     navigatePath(id === "" ? "/" : `/rooms/${id}`);
@@ -162,7 +199,10 @@ function App() {
         username: data.get("username"),
         password: data.get("password"),
       });
-      if (generation === operation.current) setAccount(response.data);
+      if (generation === operation.current) {
+        setAccount(response.data);
+        setNotice("");
+      }
     } catch (reason) {
       if (generation === operation.current) fail(reason);
     } finally {
@@ -181,6 +221,50 @@ function App() {
     } catch (reason) {
       fail(reason);
       setConnectionKey((value) => value + 1);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function submitPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (account === null || busy) return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const confirmation = form.elements.namedItem(
+      "confirmPassword",
+    ) as HTMLInputElement;
+    if (data.get("newPassword") !== data.get("confirmPassword")) {
+      confirmation.setCustomValidity("两次输入的新密码不一致。");
+      confirmation.reportValidity();
+      return;
+    }
+    const accountId = account.accountId;
+    const generation = ++operation.current;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api("/account/password", LogoutResponseEnvelopeSchema, {
+        accountId,
+        currentPassword: data.get("currentPassword"),
+        newPassword: data.get("newPassword"),
+      });
+      form.reset();
+      invalidatePasswordAccount(
+        accountId,
+        "密码已修改，所有设备已退出登录。请使用新密码登录。",
+      );
+    } catch (reason) {
+      if (!(reason instanceof ApiError)) {
+        invalidatePasswordAccount(
+          accountId,
+          "未能确认修改结果，请重新登录；若新密码无效，请使用原密码。",
+        );
+        return;
+      }
+      if (generation !== operation.current) return;
+      if (reason.code === "invalid-credentials") setError("当前密码不正确。");
+      else fail(reason);
     } finally {
       setBusy(false);
     }
@@ -237,6 +321,15 @@ function App() {
           <div className={styles.account}>
             <span>{account.username}</span>
             <a
+              href="/account"
+              onClick={(event) => {
+                event.preventDefault();
+                navigatePath("/account");
+              }}
+            >
+              修改密码
+            </a>
+            <a
               href="/history"
               onClick={(event) => {
                 event.preventDefault();
@@ -257,6 +350,11 @@ function App() {
         )}
       </header>
       <main>
+        {notice && (
+          <p className={styles.connection} role="status">
+            {notice}
+          </p>
+        )}
         {(error || reloadRequired) && (
           <div className={styles.notice} role="alert">
             {error}
@@ -268,7 +366,7 @@ function App() {
         {booting ? (
           <p role="status">正在恢复登录…</p>
         ) : reloadRequired ? null : account === null ? (
-          <section className={styles.welcome}>
+          <section key="login" className={styles.welcome}>
             <div className={styles.intro}>
               <p className={styles.eyebrow}>一桌好友 · 一手好牌</p>
               <h1>
@@ -328,6 +426,77 @@ function App() {
                   重试恢复登录
                 </button>
               )}
+            </form>
+          </section>
+        ) : route.path === "/account" ? (
+          <section key={account.accountId} className={styles.passwordPage}>
+            <h1>修改密码</h1>
+            <form
+              className={styles.panel}
+              aria-label="修改密码"
+              onSubmit={(event) => {
+                void submitPassword(event);
+              }}
+            >
+              <p>修改后，所有设备都需要重新登录。</p>
+              <input
+                type="hidden"
+                name="username"
+                autoComplete="username"
+                value={account.username}
+              />
+              <label>
+                当前密码
+                <input
+                  name="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  maxLength={1024}
+                  disabled={busy}
+                  autoFocus
+                />
+              </label>
+              <label>
+                新密码
+                <input
+                  name="newPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  maxLength={1024}
+                  disabled={busy}
+                  onInput={(event) => {
+                    const confirmation =
+                      event.currentTarget.form?.elements.namedItem(
+                        "confirmPassword",
+                      ) as HTMLInputElement | null;
+                    confirmation?.setCustomValidity("");
+                  }}
+                />
+              </label>
+              <label>
+                确认新密码
+                <input
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  maxLength={1024}
+                  disabled={busy}
+                  onInput={(event) => event.currentTarget.setCustomValidity("")}
+                />
+              </label>
+              <button className={styles.primary} disabled={busy}>
+                {busy ? "正在修改…" : "确认修改"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => navigate("")}
+              >
+                返回开桌
+              </button>
             </form>
           </section>
         ) : route.path === "/history" ? (

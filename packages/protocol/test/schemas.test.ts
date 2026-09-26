@@ -14,6 +14,7 @@ import {
   JoinRoomCommandEnvelopeSchema,
   ErrorEnvelopeSchema,
   LoginCommandSchema,
+  ChangePasswordCommandSchema,
   LoginResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   RulesConfigurationSchema,
@@ -116,6 +117,22 @@ it("keeps Replay frames explicit and rejects raw or private event fields", () =>
 
 describe("protocol schemas", () => {
   it("accepts the supported commands and rejects unknown fields", () => {
+    const change = {
+      accountId: "alice",
+      currentPassword: "old",
+      newPassword: " new ",
+    };
+    expect(ChangePasswordCommandSchema.parse(change)).toEqual(change);
+    for (const invalid of [
+      { ...change, newPassword: "" },
+      { ...change, newPassword: "x".repeat(1025) },
+      { ...change, currentPassword: 123 },
+      { ...change, accountId: "" },
+      { ...change, username: "bob" },
+    ])
+      expect(ChangePasswordCommandSchema.safeParse(invalid).success).toBe(
+        false,
+      );
     expect(
       LoginCommandSchema.safeParse({ username: "alice", password: "pass" })
         .success,

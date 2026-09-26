@@ -91,6 +91,7 @@ describe("phase 1 HTTP slice", () => {
     for (const url of [
       "/",
       "/history",
+      "/account",
       "/rooms/11111111-1111-4111-8111-111111111111",
     ]) {
       const shell = await app.inject({ url });

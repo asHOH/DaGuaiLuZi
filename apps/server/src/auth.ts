@@ -6,6 +6,7 @@ import {
   LoginCommandSchema,
   PasswordSchema,
   UsernameSchema,
+  type ChangePasswordCommand,
 } from "@dglz/protocol";
 
 import { accountAudit, accounts, sessions } from "./db/schema.js";
@@ -268,11 +269,13 @@ function accountByUsername(
 function revokeAccountSessions(
   database: AppDatabase,
   accountId: string,
-  action: "reset-password" | "revoke-sessions",
+  action: "reset-password" | "revoke-sessions" | "change-password",
   passwordHash?: string,
+  authorize?: () => void,
 ): void {
   database.db.transaction(
     (tx) => {
+      authorize?.();
       const now = Date.now();
       tx.update(accounts)
         .set({
@@ -290,8 +293,8 @@ function revokeAccountSessions(
       tx.insert(accountAudit)
         .values({
           action,
-          actor: userInfo().username,
-          source: "cli",
+          actor: action === "change-password" ? accountId : userInfo().username,
+          source: action === "change-password" ? "session" : "cli",
           accountId,
           recordedAt: now,
         })
@@ -322,6 +325,36 @@ export function revokeAllSessions(
     accountByUsername(database, username).id,
     "revoke-sessions",
   );
+}
+
+export async function changePassword(
+  database: AppDatabase,
+  token: string | undefined,
+  input: ChangePasswordCommand,
+): Promise<boolean> {
+  assertSession(database, token, input.accountId);
+  const account = database.db
+    .select()
+    .from(accounts)
+    .where(eq(accounts.id, input.accountId))
+    .get()!;
+  let matches = false;
+  try {
+    matches = await argon2.verify(account.passwordHash, input.currentPassword);
+  } catch {
+    matches = false;
+  }
+  if (!matches) return false;
+  const passwordHash = await argon2.hash(input.newPassword, ARGON2_OPTIONS);
+  // Every credential change revokes sessions; recheck after async hashing under the write lock.
+  revokeAccountSessions(
+    database,
+    input.accountId,
+    "change-password",
+    passwordHash,
+    () => assertSession(database, token, input.accountId),
+  );
+  return true;
 }
 
 export function readAccountAudit(
