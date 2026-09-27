@@ -554,31 +554,36 @@ describe("game-core Match settlement", () => {
     },
   );
 
-  it("preserves settlement invariants across generated first Hands", () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom<RulesConfiguration>(
-          FOUR_PLAYER_CONFIGURATION,
-          SIX_PLAYER_CONFIGURATION,
+  // Twenty complete Hands plus replay take longer than the default five seconds.
+  it(
+    "preserves settlement invariants across generated first Hands",
+    { timeout: 15_000 },
+    () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom<RulesConfiguration>(
+            FOUR_PLAYER_CONFIGURATION,
+            SIX_PLAYER_CONFIGURATION,
+          ),
+          fc.string({ minLength: 1, maxLength: 24 }),
+          (configuration, handSeed) => {
+            const started = start(configuration, handSeed);
+            const final = playHand(started.state, started.history);
+            const settled = started.history.filter(
+              (event): event is Extract<Event, { type: "HandSettled" }> =>
+                event.type === "HandSettled",
+            );
+            expect(settled).toHaveLength(1);
+            expect(settled[0]?.handNumber).toBe(1);
+            expect(view(final).completedHandCount).toBe(1);
+            expect(view(final).lifecycle).toBe("ACTIVE");
+            expect(view(final).matchSummary).toBeUndefined();
+            const replayed = fold(undefined, started.history);
+            expect(view(replayed)).toEqual(view(final));
+          },
         ),
-        fc.string({ minLength: 1, maxLength: 24 }),
-        (configuration, handSeed) => {
-          const started = start(configuration, handSeed);
-          const final = playHand(started.state, started.history);
-          const settled = started.history.filter(
-            (event): event is Extract<Event, { type: "HandSettled" }> =>
-              event.type === "HandSettled",
-          );
-          expect(settled).toHaveLength(1);
-          expect(settled[0]?.handNumber).toBe(1);
-          expect(view(final).completedHandCount).toBe(1);
-          expect(view(final).lifecycle).toBe("ACTIVE");
-          expect(view(final).matchSummary).toBeUndefined();
-          const replayed = fold(undefined, started.history);
-          expect(view(replayed)).toEqual(view(final));
-        },
-      ),
-      { numRuns: 20 },
-    );
-  });
+        { numRuns: 20 },
+      );
+    },
+  );
 });

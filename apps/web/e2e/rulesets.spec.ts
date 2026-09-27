@@ -103,8 +103,14 @@ async function startServer(): Promise<
   let app = await createApp(options);
   await app.listen({ host: "127.0.0.1", port });
   const url = `http://127.0.0.1:${port}`;
-  async function restart(whileStopped?: () => Promise<void>) {
+  async function stop() {
+    // Simulated shutdown drops browser preconnects; app.close still cleans up sockets and SQLite.
+    app.server.close();
+    app.server.closeAllConnections();
     await app.close();
+  }
+  async function restart(whileStopped?: () => Promise<void>) {
+    await stop();
     await whileStopped?.();
     app = await createApp(options);
     await app.listen({ host: "127.0.0.1", port });
@@ -130,7 +136,7 @@ async function startServer(): Promise<
       await restart();
     },
     close: async () => {
-      await app.close();
+      await stop();
       await rm(directory, {
         force: true,
         maxRetries: 3,
@@ -374,7 +380,9 @@ async function chooseFirstSeat(page: Page): Promise<void> {
   const button = page.getByRole("button", { name: "选择此座" }).first();
   await expect(button).toBeEnabled();
   await button.click();
-  await expect(page.getByText("你的座位")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "离座", exact: true }),
+  ).toBeVisible();
 }
 
 async function assertNoHorizontalOverflow(page: Page): Promise<void> {
@@ -864,7 +872,9 @@ async function runHappyPath(
 
     await ownerPage.reload();
     await expect(ownerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
-    await expect(ownerPage.getByText("你的座位")).toBeVisible();
+    await expect(
+      ownerPage.getByRole("button", { name: "离座", exact: true }),
+    ).toBeVisible();
 
     await ownerContext.setOffline(true);
     await expect(ownerPage.getByRole("status")).toContainText("正在同步牌局…");
@@ -1974,7 +1984,9 @@ test("另一标签页切换账号后，重连清除原账号状态", async ({
     await expect(first.getByTestId("room-lifecycle")).toHaveText("大厅");
     await expect(first.locator("header").first()).toContainText("bob");
     await chooseFirstSeat(first);
-    await expect(second.getByText("你的座位")).toBeVisible();
+    await expect(
+      second.getByRole("button", { name: "离座", exact: true }),
+    ).toBeVisible();
   } finally {
     await context.close();
   }
