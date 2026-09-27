@@ -58,6 +58,7 @@ import { RoomExecutorRegistry, type RoomPresence } from "./room-executor.js";
 import { challengePreview } from "./challenges.js";
 import { listCompletedHands, readCompletedHand } from "./hand-history.js";
 import { readHandReplay } from "./hand-replay.js";
+import { logUnexpectedError } from "./error-logging.js";
 
 export type ServerOptions = Readonly<{
   webRoot?: string;
@@ -233,7 +234,7 @@ export async function createApp(
     },
   });
   await app.register(rateLimit, { global: false, hook: "preHandler" });
-  const roomExecutors = new RoomExecutorRegistry(database);
+  const roomExecutors = new RoomExecutorRegistry(database, app.log);
   const io = new SocketIOServer(app.server, {
     cors: {
       origin: allowedOrigin ?? false,
@@ -307,7 +308,14 @@ export async function createApp(
         }
         next();
       })
-      .catch(() => next(socketError("internal-error")));
+      .catch((error: unknown) => {
+        logUnexpectedError(app.log, error, {
+          operation: "socket-handshake",
+          roomId: parsedRoomId.data,
+          accountId: account.accountId,
+        });
+        next(socketError("internal-error"));
+      });
   });
 
   async function publishRoomViews(
@@ -389,10 +397,11 @@ export async function createApp(
           socket.disconnect(true);
           return;
         }
-        app.log.error(
-          { err: error, roomId: initialRoomId },
-          "room sync failed",
-        );
+        logUnexpectedError(app.log, error, {
+          operation: "room-sync",
+          roomId: initialRoomId,
+          accountId: data.accountId,
+        });
       });
     }
 
@@ -449,16 +458,28 @@ export async function createApp(
               try {
                 await publishRoomViews(parsed.data.roomId, executor);
               } catch (error) {
-                app.log.error(
-                  { err: error, roomId: parsed.data.roomId },
-                  "room view publication failed",
-                );
+                logUnexpectedError(app.log, error, {
+                  operation: "publish-room-views",
+                  roomId: parsed.data.roomId,
+                  revision: executor.revision,
+                  commandId,
+                });
               }
             } else if (executor.viewFor(account.accountId) === undefined) {
               await Promise.resolve(socket.leave(parsed.data.roomId));
             }
           })
-          .catch((error: unknown) =>
+          .catch((error: unknown) => {
+            if (!(error instanceof UnauthorizedSessionError)) {
+              logUnexpectedError(app.log, error, {
+                operation: "socket-command",
+                roomId: parsed.data.roomId,
+                accountId: account.accountId,
+                commandId,
+                commandType: parsed.data.payload.type,
+                expectedRevision: parsed.data.expectedRevision,
+              });
+            }
             respond(
               commandErrorAck(
                 commandId,
@@ -466,8 +487,8 @@ export async function createApp(
                   ? "unauthorized"
                   : "internal-error",
               ),
-            ),
-          );
+            );
+          });
       },
     );
   });
@@ -509,7 +530,7 @@ export async function createApp(
     }
   });
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     if (reply.sent) {
       return;
     }
@@ -537,6 +558,11 @@ export async function createApp(
       sendError(reply, "malformed-input");
       return;
     }
+    logUnexpectedError(request.log, error, {
+      operation: "http-request",
+      method: request.method,
+      route: request.routeOptions.url,
+    });
     sendError(reply, "internal-error");
   });
 
@@ -677,6 +703,13 @@ export async function createApp(
       account.accountId,
     );
     if (data === undefined) {
+      logUnexpectedError(request.log, undefined, {
+        operation: "create-room",
+        roomId: event.roomId,
+        accountId: account.accountId,
+        revision: 1,
+        reason: "missing-player-view",
+      });
       return sendError(reply, "internal-error");
     }
     return reply.code(201).send(successEnvelope(data));

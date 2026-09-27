@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import argon2 from "argon2";
 import type { FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   LoginResponseEnvelopeSchema,
@@ -15,13 +15,19 @@ import {
 } from "@dglz/protocol";
 
 import { createApp } from "../src/app.js";
-import { hashSessionToken, provisionAccount } from "../src/auth.js";
+import {
+  hashSessionToken,
+  provisionAccount,
+  UnauthorizedSessionError,
+} from "../src/auth.js";
 import { openDatabase } from "../src/db/index.js";
+import { UnsupportedPersistedEventError } from "../src/rooms.js";
 
 const databasePaths: string[] = [];
 const apps = new Set<FastifyInstance>();
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all([...apps].map((app) => app.close()));
   apps.clear();
   for (const path of databasePaths.splice(0)) {
@@ -78,6 +84,73 @@ async function closeApp(app: FastifyInstance): Promise<void> {
 }
 
 describe("phase 1 HTTP slice", () => {
+  it("logs unexpected HTTP causes with route context and keeps handled errors quiet", async () => {
+    const app = await makeApp({
+      dbPath: await makeDatabase(),
+      secureCookies: false,
+    });
+    const errors = vi.spyOn(app.log, "error");
+    const failures = [
+      {
+        error: new Error("private-code", {
+          cause: Object.assign(new Error("private-token"), {
+            code: "SQLITE_BUSY",
+          }),
+        }),
+        status: 500,
+        code: "internal-error",
+      },
+      {
+        error: new UnauthorizedSessionError(),
+        status: 401,
+        code: "unauthorized",
+      },
+      {
+        error: new UnsupportedPersistedEventError(),
+        status: 500,
+        code: "unsupported-persisted-event",
+      },
+      {
+        error: Object.assign(new Error("limit"), { statusCode: 429 }),
+        status: 429,
+        code: "rate-limited",
+      },
+      {
+        error: Object.assign(new Error("private-body"), {
+          code: "FST_ERR_CTP_INVALID_JSON_BODY",
+        }),
+        status: 400,
+        code: "malformed-input",
+      },
+    ];
+    for (const [index, failure] of failures.entries()) {
+      app.get(`/api/diagnostic-${index}/:roomId`, () => {
+        throw failure.error;
+      });
+    }
+    for (const [index, failure] of failures.entries()) {
+      const response = await app.inject({
+        url: `/api/diagnostic-${index}/private-room?code=private-query`,
+        headers: protocolHeaders(),
+      });
+      expect(response.statusCode).toBe(failure.status);
+      expect(response.json()).toMatchObject({ error: { code: failure.code } });
+      expect(response.body).not.toContain("private-");
+    }
+    expect(errors).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        operation: "http-request",
+        method: "GET",
+        route: "/api/diagnostic-0/:roomId",
+        err: expect.objectContaining({
+          cause: expect.objectContaining({ code: "SQLITE_BUSY" }),
+        }),
+      }),
+      "服务器操作失败",
+    );
+    expect(JSON.stringify(errors.mock.calls)).not.toContain("private-");
+  });
+
   it("serves the browser shell and hashed assets without swallowing API or asset errors", async () => {
     const dbPath = await makeDatabase();
     const webRoot = join(dbPath, "..", "web");

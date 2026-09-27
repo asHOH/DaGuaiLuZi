@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import type { FastifyBaseLogger } from "fastify";
 
 import {
   decide,
@@ -26,6 +27,7 @@ import {
 import type { AppDatabase } from "./db/index.js";
 import { UnauthorizedSessionError } from "./auth.js";
 import { ChallengeLookup, createChallengeCode } from "./challenges.js";
+import { logUnexpectedError, type ErrorContext } from "./error-logging.js";
 import {
   appendRoomEvents,
   commitRoomCommand,
@@ -108,12 +110,24 @@ export class RoomExecutor {
     private readonly challenges: ChallengeLookup = new ChallengeLookup(
       database,
     ),
+    private readonly logger?: Pick<FastifyBaseLogger, "error">,
   ) {
     this.current = loadedRoom;
   }
 
   public get revision(): number {
     return this.current.revision;
+  }
+
+  private logFailure(error: unknown, context: ErrorContext): void {
+    logUnexpectedError(this.logger, error, {
+      roomId: this.current.roomId,
+      revision: this.current.revision,
+      ...("state" in this.current
+        ? { handStartSequence: this.current.handStartSequence }
+        : {}),
+      ...context,
+    });
   }
 
   public viewFor(accountId: PlayerAccountId): RoomViewData | undefined {
@@ -223,6 +237,18 @@ export class RoomExecutor {
     authorize: (() => void) | undefined,
   ): Promise<RoomCommandAck> {
     authorize?.();
+    const fail = (stage: string, error: unknown, reason?: string) => {
+      this.logFailure(error, {
+        operation: "room-command",
+        stage,
+        accountId,
+        commandId: envelope.commandId,
+        commandType: envelope.payload.type,
+        expectedRevision: envelope.expectedRevision,
+        reason,
+      });
+      return commandError(envelope.commandId, "internal-error");
+    };
     const fingerprint = roomCommandFingerprint(envelope);
     const stored = findAcceptedCommand(this.database, envelope.commandId);
     if (stored !== undefined) {
@@ -311,7 +337,7 @@ export class RoomExecutor {
       } catch (error) {
         if (error instanceof UnauthorizedSessionError)
           return commandError(envelope.commandId, "unauthorized");
-        return commandError(envelope.commandId, "internal-error");
+        return fail("recovery-commit", error);
       }
       this.current = next;
       return acknowledgement;
@@ -334,8 +360,8 @@ export class RoomExecutor {
         command = toDomainCommand(accountId, envelope.payload);
       }
       decision = decide(this.current.state, command);
-    } catch {
-      return commandError(envelope.commandId, "internal-error");
+    } catch (error) {
+      return fail("decision", error);
     }
     if (!decision.ok) {
       return commandError(envelope.commandId, "domain-rejected", {
@@ -347,8 +373,8 @@ export class RoomExecutor {
     let candidate: LoadedRoom;
     try {
       candidate = foldRoomEvents(this.current, events);
-    } catch {
-      return commandError(envelope.commandId, "internal-error");
+    } catch (error) {
+      return fail("fold-events", error);
     }
 
     if (presence !== undefined) {
@@ -357,8 +383,8 @@ export class RoomExecutor {
         let connected: ReadonlySet<PlayerAccountId>;
         try {
           connected = await presence();
-        } catch {
-          return commandError(envelope.commandId, "internal-error");
+        } catch (error) {
+          return fail("presence", error);
         }
         if (
           requirements.playerIds.every((playerId) => connected.has(playerId))
@@ -369,17 +395,21 @@ export class RoomExecutor {
               candidate.state,
               activityStartCommand(candidate.state),
             );
-          } catch {
-            return commandError(envelope.commandId, "internal-error");
+          } catch (error) {
+            return fail("start-decision", error);
           }
           if (!startDecision.ok) {
-            return commandError(envelope.commandId, "internal-error");
+            return fail(
+              "start-decision",
+              undefined,
+              startDecision.rejection.reason,
+            );
           }
           events = [...events, ...startDecision.events];
           try {
             candidate = foldRoomEvents(this.current, events);
-          } catch {
-            return commandError(envelope.commandId, "internal-error");
+          } catch (error) {
+            return fail("fold-start", error);
           }
         }
       }
@@ -396,12 +426,13 @@ export class RoomExecutor {
           candidate.state,
           freshStartCommand("StartNextHand"),
         );
-        if (!next.ok) return commandError(envelope.commandId, "internal-error");
+        if (!next.ok)
+          return fail("next-hand", undefined, next.rejection.reason);
         events = [...events, ...next.events];
         candidate = foldRoomEvents(candidate, next.events);
       }
-    } catch {
-      return commandError(envelope.commandId, "internal-error");
+    } catch (error) {
+      return fail("next-hand", error);
     }
     const view =
       envelope.payload.type === "LeaveRoom"
@@ -412,7 +443,7 @@ export class RoomExecutor {
           }
         : deriveRoomView(candidate, accountId);
     if (view === undefined) {
-      return commandError(envelope.commandId, "internal-error");
+      return fail("view", undefined, "missing-player-view");
     }
     const acknowledgement = RoomCommandAckSchema.parse({
       protocolVersion: PROTOCOL_VERSION,
@@ -451,7 +482,7 @@ export class RoomExecutor {
       if (raced !== undefined) {
         return commandError(envelope.commandId, "command-id-reused");
       }
-      return commandError(envelope.commandId, "internal-error");
+      return fail("commit", error);
     }
 
     this.current = candidate;
@@ -468,7 +499,8 @@ export class RoomExecutor {
     let connected: ReadonlySet<PlayerAccountId>;
     try {
       connected = await presence();
-    } catch {
+    } catch (error) {
+      this.logFailure(error, { operation: "auto-start", stage: "presence" });
       return;
     }
     if (!requirements.playerIds.every((playerId) => connected.has(playerId))) {
@@ -481,10 +513,16 @@ export class RoomExecutor {
         this.current.state,
         activityStartCommand(this.current.state),
       );
-    } catch {
+    } catch (error) {
+      this.logFailure(error, { operation: "auto-start", stage: "decision" });
       return;
     }
     if (!decision.ok) {
+      this.logFailure(undefined, {
+        operation: "auto-start",
+        stage: "decision",
+        reason: decision.rejection.reason,
+      });
       return;
     }
 
@@ -498,7 +536,8 @@ export class RoomExecutor {
         events: decision.events,
         control: roomControl(candidate),
       });
-    } catch {
+    } catch (error) {
+      this.logFailure(error, { operation: "auto-start", stage: "commit" });
       return;
     }
     this.current = candidate;
@@ -509,7 +548,10 @@ export class RoomExecutorRegistry {
   private readonly executors = new Map<string, RoomExecutor>();
   public readonly challenges: ChallengeLookup;
 
-  public constructor(private readonly database: AppDatabase) {
+  public constructor(
+    private readonly database: AppDatabase,
+    private readonly logger?: Pick<FastifyBaseLogger, "error">,
+  ) {
     this.challenges = new ChallengeLookup(database);
   }
 
@@ -529,7 +571,12 @@ export class RoomExecutorRegistry {
       loaded = recoverRoomControls(this.database, roomId);
     }
     if (loaded === undefined) return undefined;
-    const executor = new RoomExecutor(this.database, loaded, this.challenges);
+    const executor = new RoomExecutor(
+      this.database,
+      loaded,
+      this.challenges,
+      this.logger,
+    );
     this.executors.set(roomId, executor);
     return executor;
   }

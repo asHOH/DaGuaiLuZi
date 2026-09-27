@@ -26,7 +26,7 @@ import {
 } from "../src/auth.js";
 import { openDatabase } from "../src/db/index.js";
 import { loadRoom, readRoomEvents } from "../src/rooms.js";
-import { RoomExecutor } from "../src/room-executor.js";
+import { RoomExecutor, RoomExecutorRegistry } from "../src/room-executor.js";
 import { derivePlayerView } from "@dglz/game-core";
 
 const paths: string[] = [];
@@ -641,6 +641,7 @@ describe("phase 2 Socket.IO room slice", () => {
 
   it("rolls back the command record when event append fails", async () => {
     const { app, dbPath, roomId, memberCookie } = await setup();
+    const errors = vi.spyOn(app.log, "error");
     const database = openDatabase(dbPath);
     database.sqlite.exec(`
       CREATE TRIGGER fail_member_join
@@ -668,6 +669,19 @@ describe("phase 2 Socket.IO room slice", () => {
       acceptedCommands: 0,
       roomEvents: 1,
     });
+    expect(errors).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        operation: "room-command",
+        stage: "commit",
+        roomId,
+        commandId: command.commandId,
+        commandType: "JoinRoom",
+        expectedRevision: 1,
+        revision: 1,
+        err: expect.objectContaining({ code: "SQLITE_CONSTRAINT_TRIGGER" }),
+      }),
+      "服务器操作失败",
+    );
 
     const repaired = openDatabase(dbPath);
     repaired.sqlite.exec("DROP TRIGGER fail_member_join");
@@ -676,10 +690,13 @@ describe("phase 2 Socket.IO room slice", () => {
       ok: true,
       data: { revision: 2 },
     });
+    expect(await sendCommand(member, command)).toMatchObject({ ok: true });
+    expect(errors).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a stored acknowledgement for a different command ID", async () => {
     const { app, dbPath, roomId, memberCookie } = await setup();
+    const errors = vi.spyOn(app.log, "error");
     await app.listen({ host: "127.0.0.1", port: 0 });
     const member = (await openSocket(listenPort(app), memberCookie)).socket;
     const command = {
@@ -716,6 +733,37 @@ describe("phase 2 Socket.IO room slice", () => {
       acceptedCommands: 1,
       roomEvents: 2,
     });
+    expect(errors).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        operation: "socket-command",
+        roomId,
+        commandId: command.commandId,
+        err: expect.objectContaining({
+          type: "UnsupportedPersistedEventError",
+        }),
+      }),
+      "服务器操作失败",
+    );
+  });
+
+  it("logs unexpected socket room-loading failures without changing the handshake error", async () => {
+    const { app, roomId, ownerCookie } = await setup();
+    const errors = vi.spyOn(app.log, "error");
+    vi.spyOn(
+      RoomExecutorRegistry.prototype,
+      "getOrCreate",
+    ).mockRejectedValueOnce(new Error("private details"));
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    await expect(
+      openSocket(listenPort(app), ownerCookie, roomId),
+    ).rejects.toMatchObject({
+      data: { code: "internal-error" },
+    });
+    expect(errors).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ operation: "socket-handshake", roomId }),
+      "服务器操作失败",
+    );
+    expect(JSON.stringify(errors.mock.calls)).not.toContain("private details");
   });
 
   it("accepts a valid command without an acknowledgement callback", async () => {
