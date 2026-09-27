@@ -13,6 +13,7 @@ Use the Node.js version in `.node-version` and the pnpm version in `package.json
 | `pnpm build` | Build all packages and apps. |
 | `pnpm check` | Run formatting, build, lint, typechecks, and unit/server tests. |
 | `pnpm --filter @dglz/web test:browser` | Run browser checks against the current build. |
+| `pnpm --filter @dglz/web test:acceptance` | Run the same journeys across the [acceptance browser matrix](mvp-acceptance.md). |
 
 Prettier owns code/config formatting; Markdown is excluded to keep tables compact. Oxlint owns lint rules; TypeScript remains the typecheck authority. Lefthook checks staged formatting and lint before commit, then runs `pnpm check` before push. Run `pnpm exec lefthook install` if hooks are missing. GitHub Actions runs `pnpm check`, installs Chromium with its system dependencies, then runs browser checks against that build after a frozen-lockfile install.
 

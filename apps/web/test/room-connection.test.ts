@@ -224,6 +224,72 @@ afterEach(() => {
 });
 
 describe("createRoomConnection", () => {
+  it("reconnects after server shutdown without an HTTP probe and waits for an authoritative view", async () => {
+    const socket = makeSocketHarness();
+    socketModule.io.mockReturnValue(socket.socket);
+    fetchMock.mockResolvedValueOnce(response(successEnvelope(roomView(3))));
+    fetchMock.mockRejectedValue(new TypeError("server-offline"));
+    const updates: RoomState[] = [];
+    const authFailure = vi.fn<(code: string) => void>();
+    const connection = openConnection(updates, authFailure);
+    await settle();
+    socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(roomView(3)));
+
+    vi.mocked(socket.socket.connect).mockImplementationOnce(() => {
+      socket.emit("connect_error", new Error("server-offline"));
+    });
+    socket.disconnect("io server disconnect");
+    await settle();
+    expect(socket.socket.connect).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(latest(updates)).toMatchObject({ connected: false, synced: false });
+    connection.send({ type: "SelectMatch" });
+    expect(socket.commands).toHaveLength(0);
+    expect(authFailure).not.toHaveBeenCalled();
+
+    // Socket.IO retries transport failures when the server becomes available.
+    socket.socket.connect();
+    expect(socket.socket.auth).toEqual({
+      protocolVersion: PROTOCOL_VERSION,
+      accountId: ACCOUNT_ID,
+      roomId: ROOM_ID,
+    });
+    expect(latest(updates)).toMatchObject({ connected: true, synced: false });
+    connection.send({ type: "SelectMatch" });
+    expect(socket.commands).toHaveLength(0);
+    socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(roomView(4)));
+    connection.send({ type: "SelectMatch" });
+    expect(socket.commands[0]?.payload.expectedRevision).toBe(4);
+  });
+
+  it("handles revoked or mismatched accounts through the reconnect handshake", async () => {
+    const socket = makeSocketHarness();
+    socketModule.io.mockReturnValue(socket.socket);
+    fetchMock.mockResolvedValueOnce(response(successEnvelope(roomView(3))));
+    const updates: RoomState[] = [];
+    const authFailure = vi.fn<(code: string) => void>();
+    const connection = openConnection(updates, authFailure);
+    await settle();
+    socket.emit(SOCKET_ROOM_VIEW_EVENT, viewEvent(roomView(3)));
+    vi.mocked(socket.socket.connect).mockImplementationOnce(() => {
+      expect(socket.socket.auth).toMatchObject({ accountId: ACCOUNT_ID });
+      socket.emit(
+        "connect_error",
+        Object.assign(new Error("unauthorized"), {
+          data: { code: "unauthorized" },
+        }),
+      );
+    });
+    socket.disconnect("io server disconnect");
+    await settle();
+    expect(authFailure).toHaveBeenCalledWith("unauthorized");
+    expect(socket.socket.close).toHaveBeenCalledTimes(1);
+    expect(socket.socket.removeAllListeners).toHaveBeenCalledTimes(1);
+    connection.send({ type: "SelectMatch" });
+    expect(socket.commands).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it.each([false, true])(
     "retries a lost departure receipt without membership (reconnect: %s)",
     async (reconnect) => {

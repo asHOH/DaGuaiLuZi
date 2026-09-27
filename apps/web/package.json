@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:acceptance": "playwright test --config playwright.acceptance.config.ts"
   },
   "dependencies": {
     "@dglz/game-rules": "workspace:*",

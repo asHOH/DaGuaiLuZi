@@ -1,5 +1,5 @@
 import { createServer } from "node:net";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +51,7 @@ type TestServer = {
   app: App;
   url: string;
   accounts: Account[];
+  restart: (whileStopped?: () => Promise<void>) => Promise<void>;
   interruptRoom: (roomId: string) => Promise<void>;
 };
 
@@ -102,12 +103,19 @@ async function startServer(): Promise<
   let app = await createApp(options);
   await app.listen({ host: "127.0.0.1", port });
   const url = `http://127.0.0.1:${port}`;
+  async function restart(whileStopped?: () => Promise<void>) {
+    await app.close();
+    await whileStopped?.();
+    app = await createApp(options);
+    await app.listen({ host: "127.0.0.1", port });
+  }
   return {
     get app() {
       return app;
     },
     url,
     accounts,
+    restart,
     async interruptRoom(roomId: string) {
       const damaged = openDatabase(dbPath);
       try {
@@ -119,9 +127,7 @@ async function startServer(): Promise<
       } finally {
         damaged.close();
       }
-      await app.close();
-      app = await createApp(options);
-      await app.listen({ host: "127.0.0.1", port });
+      await restart();
     },
     close: async () => {
       await app.close();
@@ -139,7 +145,9 @@ const test = base.extend<{
   testServer: TestServer & { close: () => Promise<void> };
 }>({
   testServer: async ({ browser }, use) => {
-    void browser;
+    test
+      .info()
+      .annotations.push({ type: "browser", description: browser.version() });
     const server = await startServer();
     try {
       await use(server);
@@ -220,6 +228,7 @@ class ProtocolClient {
   }
 
   public async connect(): Promise<void> {
+    if (this.socket.connected) return;
     await new Promise<void>((resolve, reject) => {
       const onConnect = () => {
         this.socket.off("connect_error", onError);
@@ -275,6 +284,7 @@ class ProtocolClient {
       if (result.ok) {
         if ("left" in result.data) throw new Error("unexpected-departure");
         this.latest = result.data;
+        this.socket.auth = { protocolVersion: PROTOCOL_VERSION, roomId };
         return result.data;
       }
       if (
@@ -373,6 +383,32 @@ async function assertNoHorizontalOverflow(page: Page): Promise<void> {
       () => document.documentElement.scrollWidth <= window.innerWidth + 1,
     ),
   ).toBe(true);
+}
+
+async function captureScreenshot(page: Page, name: string): Promise<void> {
+  const path = test.info().outputPath(name);
+  await page.screenshot({ path, fullPage: true });
+  await test.info().attach(name, { path, contentType: "image/png" });
+}
+
+async function copyAndCheck(
+  page: Page,
+  button: string,
+  value: string,
+): Promise<void> {
+  const canRead = page.context().browser()?.browserType().name() === "chromium";
+  if (canRead)
+    await page
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: button, exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "已复制" }),
+  ).toHaveText("已复制，可分享给好友。");
+  if (canRead)
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      value,
+    );
 }
 
 type ActiveRoomView = Extract<RoomViewData["view"], { lifecycle: "ACTIVE" }>;
@@ -504,7 +540,11 @@ async function playAndSettle(
         const before = await cards.count();
         await card.focus();
         if (!keyboardUsed) {
+          await browserPage.emulateMedia({ reducedMotion: "reduce" });
+          await expect(card).toHaveCSS("transition-duration", "0s");
+          await expect(card).toHaveCSS("animation-name", "none");
           await card.press("Enter");
+          await browserPage.emulateMedia({ reducedMotion: "no-preference" });
           keyboardUsed = true;
         } else if (!touchUsed) {
           await card.tap();
@@ -515,11 +555,10 @@ async function playAndSettle(
         await expect(card).toHaveAttribute("aria-pressed", "true");
         await expect(cards).toHaveCount(before);
         if (!playScreenshotCaptured) {
-          await mkdir("output/playwright", { recursive: true });
-          await browserPage.screenshot({
-            path: `output/playwright/${screenshotPrefix}-active-play.png`,
-            fullPage: true,
-          });
+          await captureScreenshot(
+            browserPage,
+            `${screenshotPrefix}-active-play.png`,
+          );
           playScreenshotCaptured = true;
         }
         const play = browserPage.getByRole("button", {
@@ -725,10 +764,7 @@ async function completeSetup(
         page.getByRole("button", { name: button, exact: true }),
       ).toBeEnabled();
       await assertNoHorizontalOverflow(page);
-      await page.screenshot({
-        path: `output/playwright/${screenshotPrefix}-setup.png`,
-        fullPage: true,
-      });
+      await captureScreenshot(page, `${screenshotPrefix}-setup.png`);
       await page.getByRole("button", { name: button, exact: true }).click();
       await expect
         .poll(async () => (await readRoom(url, roomId, cookie)).revision)
@@ -750,11 +786,9 @@ async function runHappyPath(
 ): Promise<void> {
   const ownerContext = await browser.newContext({
     hasTouch: true,
-    viewport: { height: 900, width: 1280 },
   });
   const joinerContext = await browser.newContext({
     hasTouch: true,
-    viewport: { height: 900, width: 1280 },
   });
   const ownerPage = await ownerContext.newPage();
   const joinerPage = await joinerContext.newPage();
@@ -859,10 +893,10 @@ async function runHappyPath(
     );
     await ownerPage.setViewportSize({ width: 390, height: 844 });
     await assertNoHorizontalOverflow(ownerPage);
-    await ownerPage.screenshot({
-      path: `output/playwright/${rulesetId}-lobby-controls-mobile.png`,
-      fullPage: true,
-    });
+    await captureScreenshot(
+      ownerPage,
+      `${rulesetId}-lobby-controls-mobile.png`,
+    );
     const leave = ownerPage.getByRole("button", {
       name: "退出房间",
       exact: true,
@@ -894,10 +928,10 @@ async function runHappyPath(
     await joinerPage.goto(inviteUrl);
     await chooseFirstSeat(joinerPage);
     await ownerPage.setViewportSize({ width: 1280, height: 900 });
-    await ownerPage.screenshot({
-      path: `output/playwright/${rulesetId}-lobby-controls-desktop.png`,
-      fullPage: true,
-    });
+    await captureScreenshot(
+      ownerPage,
+      `${rulesetId}-lobby-controls-desktop.png`,
+    );
 
     for (const account of server.accounts.slice(2, playerCount)) {
       const session = await loginProtocol(server.url, account);
@@ -939,9 +973,15 @@ async function runHappyPath(
     ).toBeEnabled();
     await expect(ownerPage.getByText("已选择比赛，等大家准备")).toBeVisible();
     await expect(
+      joinerPage.getByText("1 人已准备", { exact: true }),
+    ).toBeVisible();
+    await expect(
       joinerPage.getByRole("button", { name: "准备就绪" }),
     ).toBeEnabled();
     await joinerPage.getByRole("button", { name: "准备就绪" }).click();
+    await expect(
+      joinerPage.getByRole("button", { name: "取消准备" }),
+    ).toBeVisible();
     for (const client of clients) {
       await client.command(server.url, roomId, {
         type: "SetReadiness",
@@ -984,6 +1024,30 @@ async function runHappyPath(
       );
     expect(reloadedCards).toEqual(ownerCards);
 
+    await server.restart(async () => {
+      for (const page of [ownerPage, joinerPage]) {
+        await expect(page.getByRole("status")).toContainText("正在同步牌局…");
+        await expect(
+          page.getByRole("button", { name: "出牌", exact: true }),
+        ).toBeDisabled();
+      }
+    });
+    await Promise.all(clients.map((client) => client.connect()));
+    for (const [page, cards] of [
+      [ownerPage, ownerCards],
+      [joinerPage, joinerCards],
+    ] as const) {
+      await expect(page.getByRole("status")).toHaveText("已连接 · 牌局已同步");
+      await expect(page.getByTestId("hand-card")).toHaveCount(27);
+      expect(
+        await page
+          .getByTestId("hand-card")
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getAttribute("data-card")),
+          ),
+      ).toEqual(cards);
+    }
+
     await ownerContext.setOffline(true);
     await expect(ownerPage.getByRole("status")).toContainText("正在同步牌局…");
     await ownerContext.setOffline(false);
@@ -995,17 +1059,11 @@ async function runHappyPath(
     await expect(ownerPage.getByTestId("hand-card").first()).toBeInViewport();
     await expect(ownerPage.getByTestId("hand-card").last()).toBeVisible();
     await assertNoHorizontalOverflow(ownerPage);
-    await mkdir("output/playwright", { recursive: true });
-    await ownerPage.screenshot({
-      path: `output/playwright/${rulesetId}-mobile.png`,
-      fullPage: true,
-    });
+
+    await captureScreenshot(ownerPage, `${rulesetId}-mobile.png`);
     await ownerPage.setViewportSize({ width: 1280, height: 900 });
     await assertNoHorizontalOverflow(ownerPage);
-    await ownerPage.screenshot({
-      path: `output/playwright/${rulesetId}-desktop.png`,
-      fullPage: true,
-    });
+    await captureScreenshot(ownerPage, `${rulesetId}-desktop.png`);
     await ownerPage.getByRole("button", { name: "退出登录" }).click();
     await expect(
       ownerPage.getByRole("button", { name: "登录", exact: true }),
@@ -1065,14 +1123,7 @@ async function runHappyPath(
       ownerPage.getByRole("button", { name: "复制同牌挑战码" }),
     ).toBeEnabled();
     if (playerCount === 4) {
-      await ownerContext.grantPermissions([
-        "clipboard-read",
-        "clipboard-write",
-      ]);
-      await ownerPage.getByRole("button", { name: "复制同牌挑战码" }).click();
-      expect(
-        await ownerPage.evaluate(() => navigator.clipboard.readText()),
-      ).toBe(challengeCode);
+      await copyAndCheck(ownerPage, "复制同牌挑战码", challengeCode);
       await ownerPage.evaluate(() => {
         Object.defineProperty(navigator.clipboard, "writeText", {
           configurable: true,
@@ -1142,10 +1193,7 @@ async function runHappyPath(
     ).toContainText("比赛已终止");
     expect(await readRoom(server.url, roomId, currentCookie)).toEqual(ended);
     await assertNoHorizontalOverflow(ownerPage);
-    await ownerPage.screenshot({
-      path: `output/playwright/${rulesetId}-aborted-lobby.png`,
-      fullPage: true,
-    });
+    await captureScreenshot(ownerPage, `${rulesetId}-aborted-lobby.png`);
     await ownerPage.getByRole("button", { name: "选择比赛" }).click();
     await expect(ownerPage.getByText("已选择比赛，等大家准备")).toBeVisible();
     await ownerPage.getByRole("button", { name: "准备就绪" }).click();
@@ -1208,20 +1256,15 @@ async function runHappyPath(
       await expect(ownerPage.getByRole("alert")).toHaveText(
         "找不到可用的同牌挑战，请检查挑战码或本局是否已完成。",
       );
-      let releaseLookup!: () => void;
-      let lookupArrived!: () => void;
-      const released = new Promise<void>((resolve) => {
-        releaseLookup = resolve;
-      });
-      const arrived = new Promise<void>((resolve) => {
-        lookupArrived = resolve;
-      });
       await ownerPage.route(
         "**/api/challenges/lookup",
         async (route) => {
-          const response = await route.fetch();
-          lookupArrived();
-          await released;
+          const [response] = await Promise.all([
+            route.fetch(),
+            ownerPage
+              .getByLabel("同牌挑战码", { exact: true })
+              .fill("changed-code"),
+          ]);
           await route.fulfill({ response });
         },
         { times: 1 },
@@ -1229,18 +1272,16 @@ async function runHappyPath(
       await ownerPage
         .getByLabel("同牌挑战码", { exact: true })
         .fill(challengeCode);
-      await ownerPage
-        .getByRole("button", { name: "查看牌局", exact: true })
-        .click();
-      await arrived;
-      await ownerPage
-        .getByLabel("同牌挑战码", { exact: true })
-        .fill("changed-code");
-      const delayedResponse = ownerPage.waitForResponse(
-        "**/api/challenges/lookup",
-      );
-      releaseLookup();
-      await (await delayedResponse).finished();
+      const [delayedResponse] = await Promise.all([
+        ownerPage.waitForResponse("**/api/challenges/lookup", {
+          timeout: 15_000,
+        }),
+        ownerPage
+          .getByRole("button", { name: "查看牌局", exact: true })
+          .click(),
+      ]);
+      expect(delayedResponse.status()).toBe(200);
+      expect(await delayedResponse.finished()).toBeNull();
       await ownerPage.evaluate(
         () =>
           new Promise<void>((resolve) =>
@@ -1283,14 +1324,17 @@ async function runHappyPath(
     for (const width of [390, 1280]) {
       await ownerPage.setViewportSize({ width, height: 900 });
       await assertNoHorizontalOverflow(ownerPage);
-      await ownerPage.screenshot({
-        path: `output/playwright/${rulesetId}-challenge-lobby-${width}.png`,
-        fullPage: true,
-      });
+      await captureScreenshot(
+        ownerPage,
+        `${rulesetId}-challenge-lobby-${width}.png`,
+      );
     }
     await ownerPage
       .getByRole("button", { name: "准备就绪", exact: true })
       .click();
+    await expect(
+      ownerPage.getByRole("button", { name: "取消准备" }),
+    ).toBeVisible();
     for (const [accountId, client] of protocolClients) {
       if (accountId !== owner.accountId)
         await client.command(server.url, roomId, {
@@ -1333,10 +1377,10 @@ async function runHappyPath(
     for (const width of [390, 1280]) {
       await ownerPage.setViewportSize({ width, height: 900 });
       await assertNoHorizontalOverflow(ownerPage);
-      await ownerPage.screenshot({
-        path: `output/playwright/${rulesetId}-challenge-active-${width}.png`,
-        fullPage: true,
-      });
+      await captureScreenshot(
+        ownerPage,
+        `${rulesetId}-challenge-active-${width}.png`,
+      );
     }
     let challengeRoom = await readRoom(server.url, roomId, currentCookie);
     for (
@@ -1458,10 +1502,10 @@ async function runHappyPath(
     for (const width of [390, 1280]) {
       await ownerPage.setViewportSize({ width, height: 900 });
       await assertNoHorizontalOverflow(ownerPage);
-      await ownerPage.screenshot({
-        path: `output/playwright/${rulesetId}-challenge-result-${width}.png`,
-        fullPage: true,
-      });
+      await captureScreenshot(
+        ownerPage,
+        `${rulesetId}-challenge-result-${width}.png`,
+      );
     }
     await ownerPage
       .getByLabel("同牌挑战码", { exact: true })
@@ -1488,6 +1532,9 @@ async function runHappyPath(
     await ownerPage
       .getByRole("button", { name: "准备就绪", exact: true })
       .click();
+    await expect(
+      ownerPage.getByRole("button", { name: "取消准备" }),
+    ).toBeVisible();
     for (const [accountId, client] of protocolClients) {
       if (accountId !== owner.accountId)
         await client.command(server.url, roomId, {
@@ -1582,13 +1629,7 @@ async function runHappyPath(
     expect(sharedReplayUrl).toBe(
       `${server.url}/history#replay=${challengeCode}`,
     );
-    await ownerContext.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await ownerPage
-      .getByRole("button", { name: "复制回放链接", exact: true })
-      .click();
-    expect(await ownerPage.evaluate(() => navigator.clipboard.readText())).toBe(
-      sharedReplayUrl,
-    );
+    await copyAndCheck(ownerPage, "复制回放链接", sharedReplayUrl);
     await ownerPage
       .getByRole("button", { name: "下一步", exact: true })
       .click();
@@ -1663,10 +1704,7 @@ async function runHappyPath(
     for (const width of [390, 1280]) {
       await ownerPage.setViewportSize({ width, height: 900 });
       await assertNoHorizontalOverflow(ownerPage);
-      await ownerPage.screenshot({
-        path: `output/playwright/${rulesetId}-replay-${width}.png`,
-        fullPage: true,
-      });
+      await captureScreenshot(ownerPage, `${rulesetId}-replay-${width}.png`);
     }
     // A recipient can follow the shared link through login without joining the source Room.
     await joinerPage
@@ -1770,10 +1808,10 @@ async function runHappyPath(
     for (const width of [390, 1280]) {
       await joinerPage.setViewportSize({ width, height: 900 });
       await assertNoHorizontalOverflow(joinerPage);
-      await joinerPage.screenshot({
-        path: `output/playwright/${rulesetId}-interrupted-${width}.png`,
-        fullPage: true,
-      });
+      await captureScreenshot(
+        joinerPage,
+        `${rulesetId}-interrupted-${width}.png`,
+      );
     }
     const replace = joinerPage.getByRole("button", {
       name: "沿用规则开新房间",
@@ -1828,22 +1866,13 @@ async function runHappyPath(
     await expect(
       ownerPage.getByRole("region", { name: "牌局回放", exact: true }),
     ).toHaveCount(0);
-    let releaseReplay!: () => void;
-    let replayArrived!: () => void;
-    let replayStatus: number | undefined;
-    const replayReleased = new Promise<void>((resolve) => {
-      releaseReplay = resolve;
-    });
-    const replayRequested = new Promise<void>((resolve) => {
-      replayArrived = resolve;
-    });
     await ownerPage.route(
       "**/api/replays/lookup",
       async (route) => {
-        const response = await route.fetch();
-        replayStatus = response.status();
-        replayArrived();
-        await replayReleased;
+        const [response] = await Promise.all([
+          route.fetch(),
+          ownerPage.getByLabel("回放挑战码", { exact: true }).fill("invalid"),
+        ]);
         await route.fulfill({ response });
       },
       { times: 1 },
@@ -1851,21 +1880,17 @@ async function runHappyPath(
     await ownerPage
       .getByLabel("回放挑战码", { exact: true })
       .fill(challengeCode);
-    await ownerPage
-      .getByRole("region", { name: "查看一手牌的回放", exact: true })
-      .getByRole("button", { name: "查看回放", exact: true })
-      .click();
-    const staleReplayResponse = ownerPage.waitForResponse(
-      "**/api/replays/lookup",
-    );
-    try {
-      await replayRequested;
-      expect(replayStatus).toBe(200);
-      await ownerPage.getByLabel("回放挑战码", { exact: true }).fill("invalid");
-    } finally {
-      releaseReplay();
-    }
-    await (await staleReplayResponse).finished();
+    const [staleReplayResponse] = await Promise.all([
+      ownerPage.waitForResponse("**/api/replays/lookup", {
+        timeout: 15_000,
+      }),
+      ownerPage
+        .getByRole("region", { name: "查看一手牌的回放", exact: true })
+        .getByRole("button", { name: "查看回放", exact: true })
+        .click(),
+    ]);
+    expect(staleReplayResponse.status()).toBe(200);
+    expect(await staleReplayResponse.finished()).toBeNull();
     await ownerPage.evaluate(
       () =>
         new Promise<void>((resolve) =>
@@ -1909,12 +1934,12 @@ async function runHappyPath(
 }
 
 test("四人省心规则可续局、终止并重新比赛", async ({ browser, testServer }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(Math.max(120_000, test.info().project.timeout));
   await runHappyPath(browser, testServer, "dglz-4p-2d-v1", 4);
 });
 
 test("六人自主规则可续局、终止并重新比赛", async ({ browser, testServer }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(Math.max(120_000, test.info().project.timeout));
   await runHappyPath(browser, testServer, "dglz-6p-3d-v1", 6);
 });
 
@@ -2001,14 +2026,11 @@ test("修改密码后清除各标签页手牌并可用新密码返回牌局", as
     await page.getByRole("link", { name: "修改密码" }).click();
     await page.reload();
     await expect(page.getByRole("form", { name: "修改密码" })).toBeVisible();
-    await mkdir("output/playwright", { recursive: true });
+
     for (const width of [390, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await assertNoHorizontalOverflow(page);
-      await page.screenshot({
-        path: `output/playwright/password-change-${width}.png`,
-        fullPage: true,
-      });
+      await captureScreenshot(page, `password-change-${width}.png`);
     }
     const current = page.getByLabel("当前密码", { exact: true });
     const next = page.getByLabel("新密码", { exact: true });

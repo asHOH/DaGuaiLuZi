@@ -1,7 +1,6 @@
 import { io } from "socket.io-client";
 import {
   PROTOCOL_VERSION,
-  LoginResponseEnvelopeSchema,
   RoomCommandAckSchema,
   RoomLeftEnvelopeSchema,
   RoomResponseEnvelopeSchema,
@@ -255,16 +254,8 @@ export function createRoomConnection(
       pending: false,
       uncertain: command !== undefined,
     });
-    if (reason === "io server disconnect") {
-      // Revoked sessions are disconnected server-side without a structured error.
-      void api("/session", LoginResponseEnvelopeSchema)
-        .then(() => {
-          if (!closed) socket.connect();
-        })
-        .catch((error: unknown) => {
-          if (!closed) failure(error);
-        });
-    }
+    // The handshake rechecks the session and account; transport retries survive shutdown.
+    if (reason === "io server disconnect" && !closed) socket.connect();
   });
   socket.on("connect_error", (error: Error & { data?: { code?: string } }) => {
     if (joined && error.data?.code === "forbidden") {

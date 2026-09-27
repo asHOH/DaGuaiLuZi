@@ -14,6 +14,7 @@ export default defineConfig({
   ],
   use: {
     headless: true,
+    viewport: { width: 1280, height: 900 },
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
