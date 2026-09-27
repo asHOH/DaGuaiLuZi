@@ -3,6 +3,58 @@ import { expect, it } from "vitest";
 import { rulesConfigurationPreset, type RoomViewData } from "@dglz/protocol";
 import { RoomTable } from "../src/RoomTable.js";
 
+it("offers vacating only the current member's seat and disables it while syncing or pending", () => {
+  const room: RoomViewData = {
+    revision: 1,
+    view: {
+      lifecycle: "LOBBY",
+      roomId: "room",
+      ownerId: "alice",
+      members: [
+        { playerId: "alice", joinOrder: 0, ready: true },
+        { playerId: "bob", joinOrder: 1, ready: false },
+      ],
+      seats: [
+        { seatIndex: 0, playerId: "alice" },
+        { seatIndex: 1, playerId: "bob" },
+        { seatIndex: 2 },
+        { seatIndex: 3 },
+      ],
+      rulesConfiguration: rulesConfigurationPreset("dglz-4p-2d-v1", "省心"),
+      seatingPolicy: "fixed",
+      matchRulesConfigurationLocked: false,
+      seatingPolicyLocked: false,
+    },
+  };
+  const render = (accountId: string, locked = false, pending = false) =>
+    renderToStaticMarkup(
+      <RoomTable
+        room={room}
+        accountId={accountId}
+        locked={locked}
+        pending={pending}
+        onCommand={() => {}}
+      />,
+    );
+  for (const accountId of ["alice", "bob"]) {
+    expect(
+      render(accountId).match(/<button[^>]*>离座<\/button>/g),
+    ).toHaveLength(1);
+    expect(render(accountId)).toContain("离座将取消准备");
+    expect(render(accountId)).not.toMatch(
+      /<button[^>]*disabled[^>]*>离座<\/button>/,
+    );
+    expect(render(accountId, true)).toMatch(
+      /<button[^>]*disabled[^>]*>离座<\/button>/,
+    );
+    expect(render(accountId, false, true)).toMatch(
+      /<button[^>]*disabled[^>]*>离座<\/button>/,
+    );
+  }
+  room.view.seats[0] = { seatIndex: 0 };
+  expect(render("alice")).not.toMatch(/<button[^>]*>离座<\/button>/);
+});
+
 it("shows Challenge rules and completion sharing only with an eligible source reference", () => {
   const room: RoomViewData = {
     revision: 10,

@@ -206,7 +206,17 @@ function SeatCard({
         </button>
       )}
       {isCurrentAccount && (
-        <span className={styles.currentSeatHint}>你的座位</span>
+        <>
+          <button
+            className={styles.seatButton}
+            type="button"
+            disabled={actionsDisabled}
+            onClick={() => onCommand({ type: "RemoveSeat" })}
+          >
+            离座
+          </button>
+          <span className={styles.currentSeatHint}>离座将取消准备</span>
+        </>
       )}
     </li>
   );

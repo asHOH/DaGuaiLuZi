@@ -126,6 +126,10 @@ const SeatAssignedPayloadSchema = z
   })
   .strict();
 
+const SeatRemovedPayloadSchema = SeatAssignedPayloadSchema.extend({
+  type: z.literal("SeatRemoved"),
+});
+
 const ReadinessChangedPayloadSchema = z
   .object({
     type: z.literal("ReadinessChanged"),
@@ -523,8 +527,7 @@ const RoomEventPayloadSchemas = {
   ChallengeHandCompleted: ChallengeHandCompletedPayloadSchema,
   ChallengeHandAborted: ChallengeHandAbortedPayloadSchema,
   SeatAssigned: SeatAssignedPayloadSchema,
-  // Core-only event; persistence remains unsupported.
-  SeatRemoved: undefined,
+  SeatRemoved: SeatRemovedPayloadSchema,
   ReadinessChanged: ReadinessChangedPayloadSchema,
   ReadinessCleared: ReadinessClearedPayloadSchema,
   SeatAssignmentsCleared: SeatAssignmentsClearedPayloadSchema,
@@ -548,8 +551,7 @@ const RoomEventPayloadSchemas = {
   TieChoiceBallotSubmitted: TieChoiceBallotSubmittedPayloadSchema,
   TieChoiceRoundResolved: TieChoiceRoundResolvedPayloadSchema,
 } satisfies {
-  [Type in Event["type"]]:
-    z.ZodType<Extract<Event, { type: Type }>> | undefined;
+  [Type in Event["type"]]: z.ZodType<Extract<Event, { type: Type }>>;
 };
 
 const PersistedRoomEventRowSchema = z
@@ -1027,8 +1029,8 @@ function parsePersistedRoomEvent(
   eventType: Event["type"],
   decoded: unknown,
 ): Event | undefined {
-  const parsed = RoomEventPayloadSchemas[eventType]?.safeParse(decoded);
-  return parsed?.success ? parsed.data : undefined;
+  const parsed = RoomEventPayloadSchemas[eventType].safeParse(decoded);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function* readRoomEvents(

@@ -142,6 +142,10 @@ export const AssignSeatPayloadSchema = z
   .strict();
 export type AssignSeatPayload = z.infer<typeof AssignSeatPayloadSchema>;
 
+export const RemoveSeatPayloadSchema = z
+  .object({ type: z.literal("RemoveSeat") })
+  .strict();
+
 export const SetReadinessPayloadSchema = z
   .object({
     type: z.literal("SetReadiness"),
@@ -277,6 +281,7 @@ export const RoomCommandPayloadSchema = z.discriminatedUnion("type", [
   SelectChallengeHandPayloadSchema,
   AbortChallengeHandPayloadSchema,
   AssignSeatPayloadSchema,
+  RemoveSeatPayloadSchema,
   SetReadinessPayloadSchema,
   PlayPayloadSchema,
   PassPayloadSchema,

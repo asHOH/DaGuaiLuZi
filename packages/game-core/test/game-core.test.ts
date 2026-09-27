@@ -359,7 +359,7 @@ describe("game-core lobby seam", () => {
     expect(downView.members.every((member) => !member.ready)).toBe(true);
   });
 
-  it("moves seats atomically and keeps readiness when a seat is removed", () => {
+  it("preserves readiness when moving and cancels it when vacating a seat", () => {
     let state = createFourPlayerLobby();
     state = decideAndFold(state, {
       type: "AssignSeat",
@@ -379,20 +379,86 @@ describe("game-core lobby seam", () => {
     expect(
       derivePlayerView(state, "p1").seats.map((seat) => seat.playerId),
     ).toEqual([undefined, "p1", undefined, undefined]);
+    expect(derivePlayerView(state, "p1").members[0]?.ready).toBe(true);
 
     state = decideAndFold(state, { type: "RemoveSeat", playerId: "p1" });
     const view = derivePlayerView(state, "p1");
     expect(view.seats.every((seat) => seat.playerId === undefined)).toBe(true);
-    expect(view.members[0]?.ready).toBe(true);
+    expect(view.members[0]?.ready).toBe(false);
     expect(deriveStartRequirements(state)).toBeUndefined();
-
-    state = decideAndFold(state, {
-      type: "SetReadiness",
-      playerId: "p1",
-      ready: false,
+    expect(decide(state, { type: "RemoveSeat", playerId: "p1" })).toEqual({
+      ok: false,
+      rejection: { reason: "seat-not-assigned" },
     });
-    expect(derivePlayerView(state, "p1").members[0]?.ready).toBe(false);
   });
+
+  it.each([FOUR_PLAYER_CONFIGURATION, SIX_PLAYER_CONFIGURATION])(
+    "swaps seats in a full $rulesetId lobby without leaving or starting early",
+    (rulesConfiguration) => {
+      let state = evolve(undefined, roomCreated(rulesConfiguration));
+      const count = derivePlayerView(state, "p1").seats.length;
+      for (let seatIndex = 0; seatIndex < count; seatIndex += 1) {
+        const playerId = `p${seatIndex + 1}`;
+        if (seatIndex > 0) {
+          state = decideAndFold(state, { type: "JoinRoom", playerId });
+        }
+        state = decideAndFold(state, {
+          type: "AssignSeat",
+          playerId,
+          seatIndex,
+        });
+        state = decideAndFold(state, {
+          type: "SetReadiness",
+          playerId,
+          ready: true,
+        });
+      }
+      state = decideAndFold(state, { type: "SelectMatch", playerId: "p1" });
+      const before = derivePlayerView(state, "p1");
+      expect(deriveStartRequirements(state)).toBeDefined();
+      expect(
+        decide(state, { type: "AssignSeat", playerId: "p1", seatIndex: 1 }),
+      ).toEqual({
+        ok: false,
+        rejection: { reason: "seat-occupied" },
+      });
+
+      state = decideAndFold(state, { type: "RemoveSeat", playerId: "p1" });
+      expect(deriveStartRequirements(state)).toBeUndefined();
+      state = decideAndFold(state, {
+        type: "AssignSeat",
+        playerId: "p2",
+        seatIndex: 0,
+      });
+      state = decideAndFold(state, {
+        type: "AssignSeat",
+        playerId: "p1",
+        seatIndex: 1,
+      });
+      const swapped = derivePlayerView(state, "p1");
+      expect(swapped.ownerId).toBe(before.ownerId);
+      expect(swapped.members).toEqual(
+        before.members.map((member) => ({
+          ...member,
+          ready: member.playerId !== "p1",
+        })),
+      );
+      expect(swapped.seats.map((seat) => seat.playerId)).toEqual([
+        "p2",
+        "p1",
+        ...before.seats.slice(2).map((seat) => seat.playerId),
+      ]);
+      expect(deriveStartRequirements(state)).toBeUndefined();
+      state = decideAndFold(state, {
+        type: "SetReadiness",
+        playerId: "p1",
+        ready: true,
+      });
+      expect(deriveStartRequirements(state)?.playerIds).toEqual(
+        swapped.seats.map((seat) => seat.playerId),
+      );
+    },
+  );
 
   it("lets the owner replace same-Ruleset configuration and seating policy", () => {
     let state = createFourPlayerLobby();

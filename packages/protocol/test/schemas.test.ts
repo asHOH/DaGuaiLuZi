@@ -204,6 +204,7 @@ describe("protocol schemas", () => {
     for (const payload of [
       { type: "SelectMatch" },
       { type: "AssignSeat", seatIndex: 0 },
+      { type: "RemoveSeat" },
       { type: "SetReadiness", ready: true },
       { type: "AbortMatch" },
     ] as const) {
@@ -211,6 +212,16 @@ describe("protocol schemas", () => {
         RoomCommandEnvelopeSchema.safeParse({ ...command, payload }).success,
       ).toBe(true);
     }
+    expect(
+      RoomCommandPayloadSchema.safeParse({
+        type: "RemoveSeat",
+        playerId: "other-player",
+      }).success,
+    ).toBe(false);
+    expect(
+      RoomCommandPayloadSchema.safeParse({ type: "RemoveSeat", seatIndex: 1 })
+        .success,
+    ).toBe(false);
     expect(
       RoomCommandEnvelopeSchema.safeParse({
         ...command,

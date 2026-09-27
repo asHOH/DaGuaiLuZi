@@ -3220,13 +3220,21 @@ export function decide(state: State | undefined, command: Command): Decision {
       if (existing === undefined) {
         return rejected("seat-not-assigned");
       }
-      return accepted([
+      const events: Event[] = [
         {
           type: "SeatRemoved",
           playerId: command.playerId,
           seatIndex: existing.seatIndex,
         },
-      ]);
+      ];
+      if (hasReady(current, command.playerId)) {
+        events.push({
+          type: "ReadinessChanged",
+          playerId: command.playerId,
+          ready: false,
+        });
+      }
+      return accepted(events);
     }
 
     case "SetReadiness": {

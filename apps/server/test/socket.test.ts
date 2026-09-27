@@ -206,6 +206,129 @@ function sendCommand(
 }
 
 describe("phase 2 Socket.IO room slice", () => {
+  it("vacates only the actor's seat atomically and preserves retries across restart", async () => {
+    const { app, dbPath, roomId, ownerCookie, memberCookie } = await setup();
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const ownerConnection = await openSocket(
+      listenPort(app),
+      ownerCookie,
+      roomId,
+    );
+    const owner = ownerConnection.socket;
+    const initial = (await ownerConnection.firstView).data;
+    const ownerId = initial.view.ownerId;
+    const member = (await openSocket(listenPort(app), memberCookie)).socket;
+    let revision = initial.revision;
+    const command = (payload: RoomCommandPayload) => ({
+      protocolVersion: PROTOCOL_VERSION,
+      commandId: randomUUID(),
+      roomId,
+      expectedRevision: revision,
+      payload,
+    });
+    const send = async (socket: Socket, payload: RoomCommandPayload) => {
+      const ack = await sendCommand(socket, command(payload));
+      expect(ack.ok).toBe(true);
+      if (!ack.ok || !("view" in ack.data))
+        throw new Error("expected-member-view");
+      revision = ack.data.revision;
+      return ack.data;
+    };
+    await send(member, { type: "JoinRoom" });
+    await send(member, { type: "AssignSeat", seatIndex: 1 });
+    await send(member, { type: "SetReadiness", ready: true });
+    await send(owner, { type: "AssignSeat", seatIndex: 0 });
+    const before = await send(owner, { type: "SetReadiness", ready: true });
+    const remove = command({ type: "RemoveSeat" });
+    const beforeCounts = databaseCounts(dbPath);
+
+    const database = openDatabase(dbPath);
+    try {
+      database.sqlite.exec(
+        "CREATE TRIGGER fail_unready BEFORE INSERT ON room_events WHEN NEW.event_type = 'ReadinessChanged' BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+      );
+      expect(await sendCommand(owner, remove)).toMatchObject({
+        ok: false,
+        error: { code: "internal-error" },
+      });
+      expect(databaseCounts(dbPath)).toEqual(beforeCounts);
+      expect(
+        derivePlayerView(loadRoom(database, roomId)!.state, ownerId),
+      ).toEqual(before.view);
+      database.sqlite.exec("DROP TRIGGER fail_unready");
+    } finally {
+      database.close();
+    }
+
+    const memberUpdate = new Promise<RoomViewSyncEnvelope>((resolve) => {
+      const updated = (value: RoomViewSyncEnvelope) => {
+        if (value.data.revision !== before.revision + 2) return;
+        member.off(SOCKET_ROOM_VIEW_EVENT, updated);
+        resolve(value);
+      };
+      member.on(SOCKET_ROOM_VIEW_EVENT, updated);
+    });
+    const acknowledgement = await sendCommand(owner, remove);
+    expect(acknowledgement.ok).toBe(true);
+    if (!acknowledgement.ok || !("view" in acknowledgement.data))
+      throw new Error("expected-member-view");
+    const vacated = acknowledgement.data;
+    revision = vacated.revision;
+    expect(vacated).toMatchObject({
+      revision: before.revision + 2,
+      view: {
+        lifecycle: "LOBBY",
+        ownerId,
+        members: before.view.members.map((entry) => ({
+          ...entry,
+          ready: entry.playerId !== ownerId,
+        })),
+      },
+    });
+    expect(vacated.view.seats[0]?.playerId).toBeUndefined();
+    expect(vacated.view.seats.slice(1)).toEqual(before.view.seats.slice(1));
+    expect((await memberUpdate).data).toEqual(vacated);
+    const committedCounts = databaseCounts(dbPath);
+    expect(committedCounts).toEqual({
+      roomEvents: beforeCounts.roomEvents + 2,
+      acceptedCommands: beforeCounts.acceptedCommands + 1,
+    });
+    expect(await sendCommand(owner, remove)).toEqual(acknowledgement);
+    expect(
+      await sendCommand(owner, command({ type: "RemoveSeat" })),
+    ).toMatchObject({
+      ok: false,
+      error: { reason: "seat-not-assigned" },
+    });
+
+    owner.close();
+    member.close();
+    apps.splice(apps.indexOf(app), 1);
+    await app.close();
+    const restarted = await createApp({
+      dbPath,
+      allowedOrigin: "https://game.example",
+      secureCookies: false,
+    });
+    apps.push(restarted);
+    await restarted.listen({ host: "127.0.0.1", port: 0 });
+    const resynced = await openSocket(
+      listenPort(restarted),
+      ownerCookie,
+      roomId,
+    );
+    expect((await resynced.firstView).data).toEqual(vacated);
+    expect(await sendCommand(resynced.socket, remove)).toEqual(acknowledgement);
+    expect(databaseCounts(dbPath)).toEqual(committedCounts);
+    const reseated = await send(resynced.socket, {
+      type: "AssignSeat",
+      seatIndex: 0,
+    });
+    expect(reseated.view.members[0]?.ready).toBe(false);
+    const unreadyRemoval = await send(resynced.socket, { type: "RemoveSeat" });
+    expect(unreadyRemoval.revision).toBe(reseated.revision + 1);
+  });
+
   it("persists lobby controls, departure receipts and last-member archival across restart", async () => {
     const { app, dbPath, roomId, ownerCookie, memberCookie } = await setup();
     await app.listen({ host: "127.0.0.1", port: 0 });
