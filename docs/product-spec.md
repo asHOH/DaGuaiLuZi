@@ -5,6 +5,7 @@ User requirements only. Be extremely concise. Do not infer.
 - Friends-only responsive web app for mobile/PC on the existing VPS through `cloudflared`; no Vercel.
 - MVP supports the six-player, three-deck and four-player, two-deck [Rulesets](ruleset.md). Room Match configurations start from [Rules Configuration Presets](rules-configuration-presets.md).
 - Owner-managed Rooms: members join by code/link, choose seats, and ready; the owner selects fixed/random seating and a Match or Challenge Hand, which auto-starts when every seat has a ready, connected member. Browsing and discovery are post-MVP.
+- Between Match Hands, wait until every seated player is connected before starting the next Hand; reconnecting resumes automatically.
 - In the lobby, members may vacate their own seat to swap seats even when full; vacating cancels their readiness and preserves membership and ownership.
 - post-MVP: Rooms can have spectators; membership is limited to the selected Ruleset's player count.
 - Persistent username/password accounts; optional email; VPS-administrator-assisted password reset.

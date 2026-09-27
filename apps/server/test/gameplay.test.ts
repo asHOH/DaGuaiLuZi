@@ -203,35 +203,36 @@ async function table(
   let sockets: Socket[] = [];
   let views: RoomViewData[] = [];
   cleanups.push(async () => {
-    for (const socket of sockets) socket.close();
+    for (const socket of sockets) socket?.close();
   });
-  async function connectAll() {
-    views = [];
+  async function connect(index: number) {
     const address = app.server.address();
     if (address === null || typeof address === "string")
       throw new Error("not-listening");
     const port = address.port;
-    sockets = await Promise.all(
-      sessions.map(async (cookie, index) => {
-        const socket = io(`http://127.0.0.1:${port}`, {
-          auth: { protocolVersion: PROTOCOL_VERSION, roomId },
-          extraHeaders: { cookie, origin: options.allowedOrigin },
-          transports: ["websocket"],
-          reconnection: false,
-        });
-        socket.on("room:view", (raw) => {
-          views[index] = RoomViewSyncEnvelopeSchema.parse(raw).data;
-        });
-        await new Promise<void>((resolve, reject) => {
-          socket.once("room:view", (raw) => {
-            RoomViewSyncEnvelopeSchema.parse(raw);
-            resolve();
-          });
-          socket.once("connect_error", reject);
-        });
-        return socket;
-      }),
-    );
+    const socket = io(`http://127.0.0.1:${port}`, {
+      auth: { protocolVersion: PROTOCOL_VERSION, roomId },
+      extraHeaders: { cookie: sessions[index]!, origin: options.allowedOrigin },
+      transports: ["websocket"],
+      reconnection: false,
+    });
+    sockets[index] = socket;
+    socket.on("room:view", (raw) => {
+      views[index] = RoomViewSyncEnvelopeSchema.parse(raw).data;
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("room:view", (raw) => {
+        RoomViewSyncEnvelopeSchema.parse(raw);
+        resolve();
+      });
+      socket.once("connect_error", reject);
+    });
+    return views[index]!;
+  }
+  async function connectAll() {
+    views = [];
+    sockets = [];
+    await Promise.all(sessions.map((_, index) => connect(index)));
   }
   if (!fixture?.deferConnect) await connectAll();
   const requestRoom = (index: number) =>
@@ -271,6 +272,7 @@ async function table(
   return {
     accounts,
     database,
+    connect,
     read,
     requestRoom,
     async live(index: number, revision: number): Promise<RoomViewData> {
@@ -290,7 +292,7 @@ async function table(
     send,
     rows,
     async restart() {
-      for (const socket of sockets) socket.close();
+      for (const socket of sockets) socket?.close();
       await app.close();
       app = await createApp(options);
       await app.listen({ host: "127.0.0.1", port: 0 });
@@ -1201,20 +1203,32 @@ it("recovers a settled no-Tribute Hand once under concurrent reconnects", async 
   );
 }, 30000);
 
-it("installs no next-Hand state when recovery commit fails, then retries once on concurrent reads", async () => {
+it("installs no next-Hand state when recovery commit fails, then retries once under concurrent recovery", async () => {
   const game = await table("dglz-4p-2d-v1", false, "省心", {
     initialSeed: "phase-5-draw-1",
     deferConnect: true,
   });
+  const waiting = await game.read(0);
+  const room = (await new RoomExecutorRegistry(game.database).getOrCreate(
+    waiting.view.roomId,
+  ))!;
+  const presence = () =>
+    Promise.resolve(new Set(game.accounts.map(({ accountId }) => accountId)));
   const before = game.rows();
   game.database.sqlite.exec(
     "CREATE TRIGGER fail_recovery BEFORE INSERT ON room_events WHEN NEW.event_type = 'HandStarted' BEGIN SELECT RAISE(ABORT, 'forced-recovery-failure'); END",
   );
-  expect((await game.requestRoom(0)).statusCode).toBe(500);
+  await expect(
+    room.resumeSettledHand(game.accounts[0]!.accountId, presence),
+  ).rejects.toThrow("forced-recovery-failure");
+  expect(room.viewFor(game.accounts[0]!.accountId)).toEqual(waiting);
   expect(game.rows()).toEqual(before);
   game.database.sqlite.exec("DROP TRIGGER fail_recovery");
   const recovered = await Promise.all(
-    game.accounts.map((_, index) => game.read(index)),
+    game.accounts.map(async ({ accountId }) => {
+      await room.resumeSettledHand(accountId, presence);
+      return room.viewFor(accountId)!;
+    }),
   );
   expect(recovered.every((data) => active(data).handNumber === 2)).toBe(true);
   expect(new Set(recovered.map((data) => data.revision)).size).toBe(1);
@@ -1224,6 +1238,66 @@ it("installs no next-Hand state when recovery commit fails, then retries once on
   await game.restart();
   expect(await game.read(0)).toEqual(recovered[0]);
 }, 30000);
+
+it.each(["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const)(
+  "%s commits settlement while players are offline and starts the next Hand once everyone reconnects",
+  async (rulesetId) => {
+    const game = await table(rulesetId, false, "省心", {
+      initialSeed: "gameplay-integration",
+      stopBeforeSettlement: true,
+      deferConnect: true,
+    });
+    const current = await game.read(0);
+    const playerId = active(current).currentActor!;
+    const actor = game.accounts.findIndex(
+      (account) => account.accountId === playerId,
+    );
+    const own = active(await game.read(actor));
+    const { state } = loadRoom(game.database, current.view.roomId)!;
+    const card = own.hand.find(
+      (card) => decide(state, { type: "Play", playerId, cards: [card] }).ok,
+    );
+    const command = game.envelope(
+      current,
+      card === undefined ? { type: "Pass" } : { type: "Play", cards: [card] },
+    );
+    await game.connect(actor);
+    const ack = await game.send(actor, command);
+    expect(ack).toMatchObject({
+      ok: true,
+      data: { view: { lifecycle: "ACTIVE", completedHandCount: 1 } },
+    });
+    const waiting = await game.read(actor);
+    expect(active(waiting).handResult).toBeDefined();
+    expect(
+      game.rows().filter((row) => row.type === "HandStarted"),
+    ).toHaveLength(0);
+    expect(await game.send(actor, command)).toEqual(ack);
+    const others = game.accounts
+      .map((_, index) => index)
+      .filter((index) => index !== actor);
+    await Promise.all(others.slice(0, -1).map((index) => game.connect(index)));
+    expect(await game.read(actor)).toEqual(waiting);
+    const reconnected = await game.connect(others.at(-1)!);
+    expect(active(reconnected).handNumber).toBe(2);
+    const started = await game.read(actor);
+    expect(active(started)).toMatchObject({
+      handNumber: 2,
+      completedHandCount: 1,
+    });
+    expect(active(started).handResult).toBeUndefined();
+    expect(game.rows().filter((row) => row.type === "HandStarted")).toEqual([
+      { type: "HandStarted", commandId: null },
+    ]);
+    expect(await game.send(actor, command)).toEqual(ack);
+    await game.restart();
+    expect(await game.read(actor)).toEqual(started);
+    expect(
+      game.rows().filter((row) => row.type === "HandStarted"),
+    ).toHaveLength(1);
+  },
+  30000,
+);
 
 for (const matchEnding of [
   "no-failure-limit-at-5",

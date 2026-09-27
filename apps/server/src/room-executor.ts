@@ -100,6 +100,23 @@ function activityStartCommand(state: State): Command {
     : freshStartCommand();
 }
 
+async function canStartNextHand(
+  view: RoomViewData["view"] | undefined,
+  presence: RoomPresence | undefined,
+): Promise<boolean> {
+  if (
+    presence === undefined ||
+    view?.lifecycle !== "ACTIVE" ||
+    view.selectedActivity !== "match" ||
+    view.handResult === undefined
+  )
+    return false;
+  const connected = await presence();
+  return view.seats.every(
+    ({ playerId }) => playerId !== undefined && connected.has(playerId),
+  );
+}
+
 export class RoomExecutor {
   private current: LoadedRoom | UnrecoverableRoom;
   private queue: Promise<void> = Promise.resolve();
@@ -167,17 +184,13 @@ export class RoomExecutor {
 
   public resumeSettledHand(
     accountId: PlayerAccountId,
+    presence: RoomPresence,
     authorize?: () => void,
   ): Promise<void> {
-    const result = this.queue.then(() => {
+    const result = this.queue.then(async () => {
       authorize?.();
       if ("recovery" in this.current) return;
-      const view = this.viewFor(accountId)?.view;
-      if (
-        view?.lifecycle !== "ACTIVE" ||
-        view.selectedActivity !== "match" ||
-        view.handResult === undefined
-      )
+      if (!(await canStartNextHand(this.viewFor(accountId)?.view, presence)))
         return;
       const decision = decide(
         this.current.state,
@@ -417,11 +430,7 @@ export class RoomExecutor {
 
     try {
       const settled = deriveRoomView(candidate, accountId)?.view;
-      if (
-        settled?.lifecycle === "ACTIVE" &&
-        settled.selectedActivity === "match" &&
-        settled.handResult !== undefined
-      ) {
+      if (await canStartNextHand(settled, presence)) {
         const next = decide(
           candidate.state,
           freshStartCommand("StartNextHand"),

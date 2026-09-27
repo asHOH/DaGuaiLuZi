@@ -387,8 +387,10 @@ export async function createApp(
         if (executor === undefined) {
           return;
         }
-        await executor.resumeSettledHand(account.accountId, () =>
-          assertSession(database, data.sessionToken, account.accountId),
+        await executor.resumeSettledHand(
+          account.accountId,
+          connectedRoomAccounts(initialRoomId),
+          () => assertSession(database, data.sessionToken, account.accountId),
         );
         await executor.autoStart(connectedRoomAccounts(initialRoomId));
         await publishRoomViews(initialRoomId, executor);
@@ -745,7 +747,11 @@ export async function createApp(
       const revision = room.revision;
       const authorize = () =>
         assertSession(database, requestCookieToken(request), account.accountId);
-      await room.resumeSettledHand(account.accountId, authorize);
+      await room.resumeSettledHand(
+        account.accountId,
+        connectedRoomAccounts(roomId.data),
+        authorize,
+      );
       if (room.revision !== revision) await publishRoomViews(roomId.data, room);
       authorize();
       return reply.send(successEnvelope(room.viewFor(account.accountId)!));

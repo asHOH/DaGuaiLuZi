@@ -867,6 +867,7 @@ function ActiveView({
         {view.handResult !== undefined && (
           <section className={styles.result} aria-label="本局结果">
             <h3>本局结束</h3>
+            <p>等待所有玩家上线后开始下一局。</p>
             <p>
               {view.handResult.outcome === "draw"
                 ? "本局平局"

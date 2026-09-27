@@ -375,7 +375,11 @@ it("rechecks queued commands, cached acknowledgements, resumption, and Challenge
       authorize,
     ),
     room.execute(account.accountId, accepted, undefined, authorize),
-    room.resumeSettledHand(account.accountId, authorize),
+    room.resumeSettledHand(
+      account.accountId,
+      () => Promise.resolve(new Set([account.accountId])),
+      authorize,
+    ),
     room.createChallengeCode(account.accountId, 1, authorize),
   ];
   revokeAllSessions(database, "alice");
