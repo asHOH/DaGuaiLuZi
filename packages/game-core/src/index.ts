@@ -842,29 +842,6 @@ function cloneRulesConfiguration(
   return { ...configuration };
 }
 
-function cloneChallengeTemplate(
-  template: ChallengeTemplate,
-): ChallengeTemplate {
-  const setup =
-    template.setup.kind === "initial-hand"
-      ? { ...template.setup }
-      : {
-          ...template.setup,
-          finishPositions: [...template.setup.finishPositions],
-          result: {
-            ...template.setup.result,
-            caughtSeatIndices: [...template.setup.result.caughtSeatIndices],
-          },
-        };
-  return {
-    ...template,
-    rulesConfiguration: cloneRulesConfiguration(template.rulesConfiguration),
-    teamLevels: [...template.teamLevels] as [TeamLevel, TeamLevel],
-    failureCounters: [...template.failureCounters] as [number, number],
-    setup,
-  };
-}
-
 function sameRulesConfiguration(
   left: RulesConfiguration,
   right: RulesConfiguration,
@@ -892,139 +869,8 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
-function cloneHandSetup(setup: HandSetup): HandSetup {
-  return {
-    ...setup,
-    givers: setup.givers.map((giver) => ({
-      ...giver,
-      eligibleCards: [...giver.eligibleCards],
-    })),
-    recipientSeats: [...setup.recipientSeats],
-    tributeSelections: setup.tributeSelections.map((selection) => ({
-      ...selection,
-    })),
-    tributeTransfers: setup.tributeTransfers.map((transfer) => ({
-      ...transfer,
-    })),
-    returnOffers: setup.returnOffers.map((offer) => ({
-      ...offer,
-      candidateCards: [...offer.candidateCards],
-    })),
-    returnTransfers: setup.returnTransfers.map((transfer) => ({
-      ...transfer,
-    })),
-    tieChoice:
-      setup.tieChoice === undefined
-        ? undefined
-        : {
-            ...setup.tieChoice,
-            voters: [...setup.tieChoice.voters],
-            candidates: [...setup.tieChoice.candidates],
-            ballots: setup.tieChoice.ballots.map((ballot) => ({ ...ballot })),
-          },
-    resolvedTieRounds: setup.resolvedTieRounds.map((round) => ({
-      ...round,
-      ballots: round.ballots.map((ballot) => ({ ...ballot })),
-      committedPairs: round.committedPairs.map((pair) => ({ ...pair })),
-      remainingVoterIds: [...round.remainingVoterIds],
-      remainingCandidateIds: [...round.remainingCandidateIds],
-    })),
-  };
-}
-
 function makeState(value: InternalState): State {
-  const activeMatch =
-    value.activeMatch === undefined
-      ? undefined
-      : {
-          ...value.activeMatch,
-          rulesConfiguration: cloneRulesConfiguration(
-            value.activeMatch.rulesConfiguration,
-          ),
-          teamLevels: [...value.activeMatch.teamLevels] as [
-            TeamLevel,
-            TeamLevel,
-          ],
-          failureCounters: [...value.activeMatch.failureCounters] as [
-            number,
-            number,
-          ],
-          summary:
-            value.activeMatch.summary === undefined
-              ? undefined
-              : {
-                  ...value.activeMatch.summary,
-                  teamLevels: [...value.activeMatch.summary.teamLevels] as [
-                    TeamLevel,
-                    TeamLevel,
-                  ],
-                },
-          challengeSummary:
-            value.activeMatch.challengeSummary === undefined
-              ? undefined
-              : {
-                  ...value.activeMatch.challengeSummary,
-                  result: {
-                    ...value.activeMatch.challengeSummary.result,
-                    caughtPlayerIds: [
-                      ...value.activeMatch.challengeSummary.result
-                        .caughtPlayerIds,
-                    ],
-                  },
-                },
-          hands: value.activeMatch.hands.map((hand) => ({
-            playerId: hand.playerId,
-            cards: [...hand.cards],
-          })),
-          hand: {
-            ...value.activeMatch.hand,
-            setup: cloneHandSetup(value.activeMatch.hand.setup),
-            passedSeats: [...value.activeMatch.hand.passedSeats],
-            finishPositions: [...value.activeMatch.hand.finishPositions],
-            result:
-              value.activeMatch.hand.result === undefined
-                ? undefined
-                : {
-                    ...value.activeMatch.hand.result,
-                    caughtPlayerIds: [
-                      ...value.activeMatch.hand.result.caughtPlayerIds,
-                    ],
-                  },
-            unbeatenPlay:
-              value.activeMatch.hand.unbeatenPlay === undefined
-                ? undefined
-                : {
-                    ...value.activeMatch.hand.unbeatenPlay,
-                    play: {
-                      ...value.activeMatch.hand.unbeatenPlay.play,
-                      cards: [
-                        ...value.activeMatch.hand.unbeatenPlay.play.cards,
-                      ],
-                      representedFaces: [
-                        ...value.activeMatch.hand.unbeatenPlay.play
-                          .representedFaces,
-                      ],
-                      comparisonRanks: [
-                        ...value.activeMatch.hand.unbeatenPlay.play
-                          .comparisonRanks,
-                      ],
-                    },
-                  },
-          },
-        };
-
-  return deepFreeze({
-    ...value,
-    members: value.members.map((member) => ({ ...member })),
-    seats: value.seats.map((seat) => ({ ...seat })),
-    readyPlayerIds: [...value.readyPlayerIds],
-    rulesConfiguration: cloneRulesConfiguration(value.rulesConfiguration),
-    challengeTemplate:
-      value.challengeTemplate === undefined
-        ? undefined
-        : cloneChallengeTemplate(value.challengeTemplate),
-    activeMatch,
-  }) as unknown as State;
+  return deepFreeze(structuredClone(value)) as unknown as State;
 }
 
 function readState(state: State): InternalState {
@@ -1034,101 +880,12 @@ function readState(state: State): InternalState {
 function accepted(events: readonly Event[]): Decision {
   return {
     ok: true,
-    events: deepFreeze(events.map((event) => cloneEvent(event))),
+    events: deepFreeze(structuredClone(events)),
   };
 }
 
 function rejected(reason: RejectionReason): Decision {
   return { ok: false, rejection: { reason } };
-}
-
-function cloneEvent(event: Event): Event {
-  if (event.type === "MatchRulesConfigurationReplaced") {
-    return {
-      ...event,
-      rulesConfiguration: cloneRulesConfiguration(event.rulesConfiguration),
-    };
-  }
-
-  if (event.type === "MatchStarted") {
-    return {
-      ...event,
-      rulesConfiguration: cloneRulesConfiguration(event.rulesConfiguration),
-      playerIds: [...event.playerIds],
-      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
-      failureCounters: [...event.failureCounters] as [number, number],
-    };
-  }
-
-  if (event.type === "ChallengeHandSelected") {
-    return { ...event, template: cloneChallengeTemplate(event.template) };
-  }
-
-  if (event.type === "ChallengeHandStarted") {
-    return {
-      ...event,
-      template: cloneChallengeTemplate(event.template),
-      playerIds: [...event.playerIds],
-    };
-  }
-
-  if (event.type === "ChallengeHandCompleted") {
-    return { ...event, caughtPlayerIds: [...event.caughtPlayerIds] };
-  }
-
-  if (event.type === "HandStarted") {
-    return {
-      ...event,
-      rulesConfiguration: cloneRulesConfiguration(event.rulesConfiguration),
-      playerIds: [...event.playerIds],
-      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
-      failureCounters: [...event.failureCounters] as [number, number],
-    };
-  }
-
-  if (event.type === "CardsPlayed") {
-    return {
-      ...event,
-      cards: [...event.cards],
-      representedFaces: [...event.representedFaces],
-      comparisonRanks: [...event.comparisonRanks],
-    };
-  }
-
-  if (event.type === "ReturnCandidatesOffered") {
-    return { ...event, candidateCards: [...event.candidateCards] };
-  }
-
-  if (event.type === "TieChoiceRoundResolved") {
-    return {
-      ...event,
-      ballots: event.ballots.map((ballot) => ({ ...ballot })),
-      committedPairs: event.committedPairs.map((pair) => ({ ...pair })),
-      remainingVoterIds: [...event.remainingVoterIds],
-      remainingCandidateIds: [...event.remainingCandidateIds],
-    };
-  }
-
-  if (event.type === "HandResultDetermined") {
-    return { ...event, caughtPlayerIds: [...event.caughtPlayerIds] };
-  }
-
-  if (event.type === "HandSettled") {
-    return {
-      ...event,
-      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
-      failureCounters: [...event.failureCounters] as [number, number],
-    };
-  }
-
-  if (event.type === "MatchCompleted" || event.type === "MatchAborted") {
-    return {
-      ...event,
-      teamLevels: [...event.teamLevels] as [TeamLevel, TeamLevel],
-    };
-  }
-
-  return event;
 }
 
 function isLobby(state: InternalState): boolean {
