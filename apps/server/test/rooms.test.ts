@@ -157,6 +157,16 @@ it("roundtrips frozen subsequent Challenge Templates and validates event identit
         }),
       ).toThrow("invalid-players");
     }
+    for (const eventType of ["MatchSelected", "SeatRemoved", "UnknownEvent"]) {
+      database.sqlite
+        .prepare(
+          "UPDATE room_events SET event_type = ? WHERE room_id = ? AND sequence = 5",
+        )
+        .run(eventType, roomId);
+      expect(() => [...readRoomEvents(database, roomId)]).toThrow(
+        "unsupported-persisted-event",
+      );
+    }
   } finally {
     database.close();
   }

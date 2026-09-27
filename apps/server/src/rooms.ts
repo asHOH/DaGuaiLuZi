@@ -509,47 +509,54 @@ const TieChoiceRoundResolvedPayloadSchema = z
       : { selectedLeaderId: event.selectedLeaderId }),
   }));
 
+const RoomEventPayloadSchemas = {
+  RoomCreated: RoomCreatedPayloadSchema,
+  MemberJoined: MemberJoinedPayloadSchema,
+  MemberLeft: MemberLeftPayloadSchema,
+  OwnerTransferred: OwnerTransferredPayloadSchema,
+  RoomArchived: RoomArchivedPayloadSchema,
+  RoomInterrupted: RoomInterruptedPayloadSchema,
+  SeatingPolicyReplaced: SeatingPolicyReplacedPayloadSchema,
+  MatchSelected: MatchSelectedPayloadSchema,
+  ChallengeHandSelected: ChallengeHandSelectedPayloadSchema,
+  ChallengeHandStarted: ChallengeHandStartedPayloadSchema,
+  ChallengeHandCompleted: ChallengeHandCompletedPayloadSchema,
+  ChallengeHandAborted: ChallengeHandAbortedPayloadSchema,
+  SeatAssigned: SeatAssignedPayloadSchema,
+  // Core-only event; persistence remains unsupported.
+  SeatRemoved: undefined,
+  ReadinessChanged: ReadinessChangedPayloadSchema,
+  ReadinessCleared: ReadinessClearedPayloadSchema,
+  SeatAssignmentsCleared: SeatAssignmentsClearedPayloadSchema,
+  MatchRulesConfigurationReplaced: MatchRulesConfigurationReplacedPayloadSchema,
+  MatchStarted: MatchStartedPayloadSchema,
+  CardsPlayed: CardsPlayedPayloadSchema,
+  PlayerPassed: PlayerPassedPayloadSchema,
+  PlayerFinished: PlayerFinishedPayloadSchema,
+  TurnAdvanced: TurnAdvancedPayloadSchema,
+  LeadReset: LeadResetPayloadSchema,
+  HandResultDetermined: HandResultDeterminedPayloadSchema,
+  HandSettled: HandSettledPayloadSchema,
+  MatchCompleted: MatchCompletedPayloadSchema,
+  MatchAborted: MatchAbortedPayloadSchema,
+  HandStarted: HandStartedPayloadSchema,
+  TributeCardSelected: TributeCardSelectedPayloadSchema,
+  TributeTransferred: TributeTransferredPayloadSchema,
+  ReturnCandidatesOffered: ReturnCandidatesOfferedPayloadSchema,
+  ReturnTransferred: ReturnTransferredPayloadSchema,
+  HandLeaderChosen: HandLeaderChosenPayloadSchema,
+  TieChoiceBallotSubmitted: TieChoiceBallotSubmittedPayloadSchema,
+  TieChoiceRoundResolved: TieChoiceRoundResolvedPayloadSchema,
+} satisfies {
+  [Type in Event["type"]]:
+    z.ZodType<Extract<Event, { type: Type }>> | undefined;
+};
+
 const PersistedRoomEventRowSchema = z
   .object({
     roomId: z.string().min(1).max(128),
     sequence: z.number().int().positive(),
-    eventType: z.enum([
-      "RoomCreated",
-      "MemberJoined",
-      "MemberLeft",
-      "OwnerTransferred",
-      "RoomArchived",
-      "RoomInterrupted",
-      "SeatingPolicyReplaced",
-      "MatchSelected",
-      "ChallengeHandSelected",
-      "ChallengeHandStarted",
-      "ChallengeHandCompleted",
-      "ChallengeHandAborted",
-      "SeatAssigned",
-      "ReadinessChanged",
-      "ReadinessCleared",
-      "SeatAssignmentsCleared",
-      "MatchRulesConfigurationReplaced",
-      "MatchStarted",
-      "CardsPlayed",
-      "PlayerPassed",
-      "PlayerFinished",
-      "TurnAdvanced",
-      "LeadReset",
-      "HandResultDetermined",
-      "HandSettled",
-      "MatchCompleted",
-      "MatchAborted",
-      "HandStarted",
-      "TributeCardSelected",
-      "TributeTransferred",
-      "ReturnCandidatesOffered",
-      "ReturnTransferred",
-      "HandLeaderChosen",
-      "TieChoiceBallotSubmitted",
-      "TieChoiceRoundResolved",
-    ]),
+    eventType: z.enum(Object.keys(RoomEventPayloadSchemas) as Event["type"][]),
     eventSchemaVersion: z.number().int().positive(),
     causationCommandId: CommandIdSchema.nullable(),
     recordedAt: z.number().int().positive(),
@@ -679,105 +686,9 @@ export type CommittedRoomCommand = Readonly<{
 }>;
 
 function eventPayload(event: Event): string {
-  if (event.type === "ChallengeHandAborted")
-    return JSON.stringify(ChallengeHandAbortedPayloadSchema.parse(event));
-  if (event.type === "ChallengeHandCompleted")
-    return JSON.stringify(ChallengeHandCompletedPayloadSchema.parse(event));
-  if (event.type === "ChallengeHandStarted")
-    return JSON.stringify(ChallengeHandStartedPayloadSchema.parse(event));
-  if (event.type === "ChallengeHandSelected")
-    return JSON.stringify(ChallengeHandSelectedPayloadSchema.parse(event));
-  if (event.type === "RoomCreated") {
-    return JSON.stringify(RoomCreatedPayloadSchema.parse(event));
-  }
-  if (event.type === "MemberJoined") {
-    return JSON.stringify(MemberJoinedPayloadSchema.parse(event));
-  }
-  if (event.type === "MemberLeft")
-    return JSON.stringify(MemberLeftPayloadSchema.parse(event));
-  if (event.type === "OwnerTransferred")
-    return JSON.stringify(OwnerTransferredPayloadSchema.parse(event));
-  if (event.type === "RoomArchived")
-    return JSON.stringify(RoomArchivedPayloadSchema.parse(event));
-  if (event.type === "RoomInterrupted")
-    return JSON.stringify(RoomInterruptedPayloadSchema.parse(event));
-  if (event.type === "SeatingPolicyReplaced")
-    return JSON.stringify(SeatingPolicyReplacedPayloadSchema.parse(event));
-  if (event.type === "MatchSelected") {
-    return JSON.stringify(MatchSelectedPayloadSchema.parse(event));
-  }
-  if (event.type === "MatchRulesConfigurationReplaced") {
-    return JSON.stringify(
-      MatchRulesConfigurationReplacedPayloadSchema.parse(event),
-    );
-  }
-  if (event.type === "SeatAssigned") {
-    return JSON.stringify(SeatAssignedPayloadSchema.parse(event));
-  }
-  if (event.type === "ReadinessChanged") {
-    return JSON.stringify(ReadinessChangedPayloadSchema.parse(event));
-  }
-  if (event.type === "ReadinessCleared") {
-    return JSON.stringify(ReadinessClearedPayloadSchema.parse(event));
-  }
-  if (event.type === "SeatAssignmentsCleared") {
-    return JSON.stringify(SeatAssignmentsClearedPayloadSchema.parse(event));
-  }
-  if (event.type === "MatchStarted") {
-    return JSON.stringify(MatchStartedPayloadSchema.parse(event));
-  }
-  if (event.type === "CardsPlayed") {
-    return JSON.stringify(CardsPlayedPayloadSchema.parse(event));
-  }
-  if (event.type === "PlayerPassed") {
-    return JSON.stringify(PlayerPassedPayloadSchema.parse(event));
-  }
-  if (event.type === "PlayerFinished") {
-    return JSON.stringify(PlayerFinishedPayloadSchema.parse(event));
-  }
-  if (event.type === "TurnAdvanced") {
-    return JSON.stringify(TurnAdvancedPayloadSchema.parse(event));
-  }
-  if (event.type === "LeadReset") {
-    return JSON.stringify(LeadResetPayloadSchema.parse(event));
-  }
-  if (event.type === "HandResultDetermined") {
-    return JSON.stringify(HandResultDeterminedPayloadSchema.parse(event));
-  }
-  if (event.type === "HandSettled") {
-    return JSON.stringify(HandSettledPayloadSchema.parse(event));
-  }
-  if (event.type === "MatchCompleted") {
-    return JSON.stringify(MatchCompletedPayloadSchema.parse(event));
-  }
-  if (event.type === "MatchAborted") {
-    return JSON.stringify(MatchAbortedPayloadSchema.parse(event));
-  }
-  if (event.type === "HandStarted") {
-    return JSON.stringify(HandStartedPayloadSchema.parse(event));
-  }
-  if (event.type === "TributeCardSelected") {
-    return JSON.stringify(TributeCardSelectedPayloadSchema.parse(event));
-  }
-  if (event.type === "TributeTransferred") {
-    return JSON.stringify(TributeTransferredPayloadSchema.parse(event));
-  }
-  if (event.type === "ReturnCandidatesOffered") {
-    return JSON.stringify(ReturnCandidatesOfferedPayloadSchema.parse(event));
-  }
-  if (event.type === "ReturnTransferred") {
-    return JSON.stringify(ReturnTransferredPayloadSchema.parse(event));
-  }
-  if (event.type === "HandLeaderChosen") {
-    return JSON.stringify(HandLeaderChosenPayloadSchema.parse(event));
-  }
-  if (event.type === "TieChoiceBallotSubmitted") {
-    return JSON.stringify(TieChoiceBallotSubmittedPayloadSchema.parse(event));
-  }
-  if (event.type === "TieChoiceRoundResolved") {
-    return JSON.stringify(TieChoiceRoundResolvedPayloadSchema.parse(event));
-  }
-  throw new UnsupportedPersistedEventError();
+  const schema = RoomEventPayloadSchemas[event.type];
+  if (schema === undefined) throw new UnsupportedPersistedEventError();
+  return JSON.stringify(schema.parse(event));
 }
 
 export type CommittedRoomEvents = Readonly<{
@@ -1113,86 +1024,11 @@ export function foldRoomEvents(
 }
 
 function parsePersistedRoomEvent(
-  eventType: string,
+  eventType: Event["type"],
   decoded: unknown,
 ): Event | undefined {
-  const parsed = (() => {
-    switch (eventType) {
-      case "ChallengeHandAborted":
-        return ChallengeHandAbortedPayloadSchema.safeParse(decoded);
-      case "ChallengeHandCompleted":
-        return ChallengeHandCompletedPayloadSchema.safeParse(decoded);
-      case "ChallengeHandStarted":
-        return ChallengeHandStartedPayloadSchema.safeParse(decoded);
-      case "ChallengeHandSelected":
-        return ChallengeHandSelectedPayloadSchema.safeParse(decoded);
-      case "RoomCreated":
-        return RoomCreatedPayloadSchema.safeParse(decoded);
-      case "MemberJoined":
-        return MemberJoinedPayloadSchema.safeParse(decoded);
-      case "MemberLeft":
-        return MemberLeftPayloadSchema.safeParse(decoded);
-      case "OwnerTransferred":
-        return OwnerTransferredPayloadSchema.safeParse(decoded);
-      case "RoomArchived":
-        return RoomArchivedPayloadSchema.safeParse(decoded);
-      case "RoomInterrupted":
-        return RoomInterruptedPayloadSchema.safeParse(decoded);
-      case "SeatingPolicyReplaced":
-        return SeatingPolicyReplacedPayloadSchema.safeParse(decoded);
-      case "MatchSelected":
-        return MatchSelectedPayloadSchema.safeParse(decoded);
-      case "MatchRulesConfigurationReplaced":
-        return MatchRulesConfigurationReplacedPayloadSchema.safeParse(decoded);
-      case "SeatAssigned":
-        return SeatAssignedPayloadSchema.safeParse(decoded);
-      case "ReadinessChanged":
-        return ReadinessChangedPayloadSchema.safeParse(decoded);
-      case "ReadinessCleared":
-        return ReadinessClearedPayloadSchema.safeParse(decoded);
-      case "SeatAssignmentsCleared":
-        return SeatAssignmentsClearedPayloadSchema.safeParse(decoded);
-      case "MatchStarted":
-        return MatchStartedPayloadSchema.safeParse(decoded);
-      case "CardsPlayed":
-        return CardsPlayedPayloadSchema.safeParse(decoded);
-      case "PlayerPassed":
-        return PlayerPassedPayloadSchema.safeParse(decoded);
-      case "PlayerFinished":
-        return PlayerFinishedPayloadSchema.safeParse(decoded);
-      case "TurnAdvanced":
-        return TurnAdvancedPayloadSchema.safeParse(decoded);
-      case "LeadReset":
-        return LeadResetPayloadSchema.safeParse(decoded);
-      case "HandResultDetermined":
-        return HandResultDeterminedPayloadSchema.safeParse(decoded);
-      case "HandSettled":
-        return HandSettledPayloadSchema.safeParse(decoded);
-      case "MatchCompleted":
-        return MatchCompletedPayloadSchema.safeParse(decoded);
-      case "MatchAborted":
-        return MatchAbortedPayloadSchema.safeParse(decoded);
-      case "HandStarted":
-        return HandStartedPayloadSchema.safeParse(decoded);
-      case "TributeCardSelected":
-        return TributeCardSelectedPayloadSchema.safeParse(decoded);
-      case "TributeTransferred":
-        return TributeTransferredPayloadSchema.safeParse(decoded);
-      case "ReturnCandidatesOffered":
-        return ReturnCandidatesOfferedPayloadSchema.safeParse(decoded);
-      case "ReturnTransferred":
-        return ReturnTransferredPayloadSchema.safeParse(decoded);
-      case "HandLeaderChosen":
-        return HandLeaderChosenPayloadSchema.safeParse(decoded);
-      case "TieChoiceBallotSubmitted":
-        return TieChoiceBallotSubmittedPayloadSchema.safeParse(decoded);
-      case "TieChoiceRoundResolved":
-        return TieChoiceRoundResolvedPayloadSchema.safeParse(decoded);
-      default:
-        return undefined;
-    }
-  })();
-  return parsed === undefined || !parsed.success ? undefined : parsed.data;
+  const parsed = RoomEventPayloadSchemas[eventType]?.safeParse(decoded);
+  return parsed?.success ? parsed.data : undefined;
 }
 
 export function* readRoomEvents(
