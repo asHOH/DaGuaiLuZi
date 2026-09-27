@@ -1862,23 +1862,28 @@ function decideStartNextHand(
     randomnessVersion: command.randomnessVersion,
     shuffleVersion: command.shuffleVersion,
   };
+  return acceptHandStart(state, event);
+}
+
+function acceptHandStart(
+  state: InternalState,
+  event: HandStarted | ChallengeHandStarted,
+): Decision {
   const events: Event[] = [event];
   let candidate = foldAcceptedState(state, events);
-  const activeHand = candidate.activeMatch!.hand;
+  const { hand: activeHand, rulesConfiguration } = candidate.activeMatch!;
   if (activeHand.setup.givers.length === 0) {
     const leader = leaderEvent(candidate);
     if (leader !== undefined) events.push(leader);
     return accepted(events);
   }
 
-  if (
-    state.activeMatch.rulesConfiguration.tributeCardSelection === "fair-random"
-  ) {
+  if (rulesConfiguration.tributeCardSelection === "fair-random") {
     for (const giver of activeHand.setup.givers) {
       const index = boundedChoice(
         makeRandomStream(
-          command.handSeed,
-          state.activeMatch.rulesConfiguration.rulesetId,
+          activeHand.handSeed,
+          rulesConfiguration.rulesetId,
           `tribute-card/${giver.seatIndex}`,
         ),
         giver.eligibleCards.length,
@@ -1892,8 +1897,7 @@ function decideStartNextHand(
       });
     }
     candidate = foldAcceptedState(candidate, events.slice(1));
-    const transfers = tributeTransferEvents(candidate);
-    events.push(...transfers);
+    events.push(...tributeTransferEvents(candidate));
   }
 
   return accepted(events);
@@ -2590,37 +2594,7 @@ function decideStartChallengeHand(state: InternalState): Decision {
     playerIds: resolvedPlayerIds,
     seatingPolicy: state.seatingPolicy,
   };
-  const events: Event[] = [event];
-  let candidate = foldAcceptedState(state, events);
-  const activeHand = candidate.activeMatch!.hand;
-  if (activeHand.setup.givers.length === 0) {
-    const leader = leaderEvent(candidate);
-    if (leader !== undefined) events.push(leader);
-    return accepted(events);
-  }
-
-  if (template.rulesConfiguration.tributeCardSelection === "fair-random") {
-    for (const giver of activeHand.setup.givers) {
-      const index = boundedChoice(
-        makeRandomStream(
-          template.handSeed,
-          template.rulesetId,
-          `tribute-card/${giver.seatIndex}`,
-        ),
-        giver.eligibleCards.length,
-      );
-      events.push({
-        type: "TributeCardSelected",
-        giverId: giver.playerId,
-        giverSeat: giver.seatIndex,
-        card: giver.eligibleCards[index]!,
-        rank: giver.rank,
-      });
-    }
-    candidate = foldAcceptedState(candidate, events.slice(1));
-    events.push(...tributeTransferEvents(candidate));
-  }
-  return accepted(events);
+  return acceptHandStart(state, event);
 }
 
 function handAtSeat(
