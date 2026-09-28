@@ -2,7 +2,7 @@
 
 Status: automated acceptance passed, 2026-09-27. Real-device multiplayer remains pending by user decision: no shared test site/session yet.
 
-Target: iPhone Safari, Android Chrome, desktop Chrome/Edge. Reuse the five browser journeys; keep one gameplay journey per Ruleset.
+Target: iPhone Safari, Android Chrome, Windows and macOS browsers. Existing desktop automation covers Chrome/Edge; macOS browser coverage is undecided. The owner has Windows and iPhone for hands-on testing; macOS/Android device testing remains to be arranged. Reuse the five browser journeys; keep one gameplay journey per Ruleset.
 
 | Gate | Evidence / remaining work |
 | --- | --- |
