@@ -99,14 +99,6 @@
   letter-spacing: 0.14em;
   white-space: nowrap;
 }
-.brand span {
-  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 0.7rem;
-  letter-spacing: 0.2em;
-  display: block;
-  margin-top: 5px;
-  color: var(--brass);
-}
 .account {
   display: flex;
   flex-wrap: wrap;
@@ -130,11 +122,6 @@
   align-items: center;
   gap: 70px;
   padding: 55px 0;
-}
-.eyebrow {
-  color: var(--brass);
-  letter-spacing: 0.18em;
-  font-size: 0.8rem;
 }
 .panel {
   border: 1px solid #b7b28a50;
@@ -241,16 +228,6 @@
   font-size: 0.85rem;
   margin: 16px 0;
 }
-.footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  border-top: 1px solid #b3c6b830;
-  margin-top: 32px;
-  padding: 22px 0;
-  color: var(--muted);
-  font-size: 0.75rem;
-}
 @media (max-width: 640px) {
   .shell {
     padding: 0 16px;
@@ -291,10 +268,6 @@
   .notice {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .footer {
-    flex-direction: column;
-    gap: 8px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

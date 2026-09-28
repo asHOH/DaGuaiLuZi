@@ -37,6 +37,9 @@ it("offers vacating only the current member's seat and disables it while syncing
       />,
     );
   for (const accountId of ["alice", "bob"]) {
+    expect(render(accountId).match(/>已准备</g)).toHaveLength(1);
+    expect(render(accountId).match(/>未准备</g)).toHaveLength(1);
+    expect(render(accountId)).not.toContain("待入座");
     expect(
       render(accountId).match(/<button[^>]*>离座<\/button>/g),
     ).toHaveLength(1);
@@ -53,6 +56,11 @@ it("offers vacating only the current member's seat and disables it while syncing
   }
   room.view.seats[0] = { seatIndex: 0 };
   expect(render("alice")).not.toMatch(/<button[^>]*>离座<\/button>/);
+  expect(render("alice")).toContain("待入座");
+  expect(render("alice").match(/本人 · 房主/g)).toHaveLength(1);
+  expect(render("alice").match(/aria-label="座位安排"/g)).toHaveLength(1);
+  expect(render("alice")).not.toContain("座位方式");
+  expect(render("bob")).toContain("座位方式");
 });
 
 it("shows Challenge rules and completion sharing only with an eligible source reference", () => {
@@ -107,6 +115,11 @@ it("shows Challenge rules and completion sharing only with an eligible source re
   expect(owner).toContain("查看牌局");
   expect(owner).toContain("选择比赛");
   expect(owner).not.toContain("设置牌局规则");
+  expect(owner.match(/六人三副牌/g)).toHaveLength(1);
+  expect(owner).toContain("座位安排");
+  room.view.seatingPolicyLocked = true;
+  expect(render("alice")).not.toContain("座位安排");
+  expect(render("alice")).toContain("已锁定");
   if (room.view.lifecycle !== "LOBBY") throw new Error("expected-lobby");
   delete room.view.challengeSummary!.handStartSequence;
   const member = render("bob");

@@ -353,6 +353,7 @@ async function loginUi(
   await expect(
     page.getByRole("button", { name: "退出登录", exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("contentinfo")).toHaveCount(0);
   if (destination === `${url}/`) {
     await expect(
       page.getByRole("heading", { name: "今晚，怎么打？" }),
@@ -983,8 +984,15 @@ async function runHappyPath(
     ).toBeEnabled();
     await expect(ownerPage.getByText("已选择比赛，等大家准备")).toBeVisible();
     await expect(
-      joinerPage.getByText("1 人已准备", { exact: true }),
+      joinerPage
+        .getByRole("list", { name: "房间座位" })
+        .getByRole("listitem")
+        .filter({ hasText: "房主" })
+        .getByText("已准备", { exact: true }),
     ).toBeVisible();
+    await expect(joinerPage.getByText("已准备", { exact: true })).toHaveCount(
+      1,
+    );
     await expect(
       joinerPage.getByRole("button", { name: "准备就绪" }),
     ).toBeEnabled();

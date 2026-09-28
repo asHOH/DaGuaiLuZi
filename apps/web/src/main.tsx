@@ -315,7 +315,7 @@ function App() {
             navigate("");
           }}
         >
-          大怪路子<span>好友牌局</span>
+          大怪路子
         </a>
         {account && (
           <div className={styles.account}>
@@ -368,7 +368,6 @@ function App() {
         ) : reloadRequired ? null : account === null ? (
           <section key="login" className={styles.welcome}>
             <div className={styles.intro}>
-              <p className={styles.eyebrow}>一桌好友 · 一手好牌</p>
               <h1>
                 坐下来，
                 <br />
@@ -532,11 +531,7 @@ function App() {
         ) : roomId === "" ? (
           <section className={styles.home}>
             <div>
-              <p className={styles.eyebrow}>好友到齐，就开局</p>
               <h1>今晚，怎么打？</h1>
-              <p>
-                新房间使用「省心」规则。入座并准备后，所有人在线即可自动开局。
-              </p>
             </div>
             <div className={styles.forms}>
               <form
@@ -566,7 +561,6 @@ function App() {
               </form>
               <form className={styles.panel} onSubmit={join}>
                 <h2>赴个约</h2>
-                <p>粘贴好友发来的房间码或邀请链接。</p>
                 <label>
                   房间码或链接
                   <input name="room" required autoComplete="off" />
@@ -574,15 +568,6 @@ function App() {
                 <button disabled={busy}>加入房间</button>
               </form>
             </div>
-            <a
-              href="/history"
-              onClick={(event) => {
-                event.preventDefault();
-                navigatePath("/history");
-              }}
-            >
-              查看已完成的牌局与回放
-            </a>
           </section>
         ) : !validRoom ? (
           <section className={styles.panel}>
@@ -653,9 +638,6 @@ function App() {
           </>
         )}
       </main>
-      <footer className={styles.footer}>
-        好友相聚，慢慢打。<span>支持出牌、不出与本局结算</span>
-      </footer>
     </div>
   );
 }

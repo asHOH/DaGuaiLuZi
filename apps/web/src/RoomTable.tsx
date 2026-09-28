@@ -123,26 +123,17 @@ export function cardLabel(code: string): {
   };
 }
 
-function memberDisplay(
-  view: RoomViewData["view"],
-  playerId: string,
-  accountId: string,
-): string {
-  if (playerId === accountId) return "本人";
-  if (playerId === view.ownerId) return "房主";
-  const seatIndex = memberSeatIndex(view, playerId);
-  return seatIndex === undefined ? "已加入" : positionLabel(seatIndex);
-}
-
 function rulesConfiguration(
   configuration: RoomViewData["view"]["rulesConfiguration"],
 ) {
-  return Object.entries(configuration).map(([key, value]) => (
-    <div className={styles.ruleRow} key={key}>
-      <dt>{RULE_LABELS[key] ?? key}</dt>
-      <dd>{RULE_VALUES[value] ?? value}</dd>
-    </div>
-  ));
+  return Object.entries(configuration)
+    .filter(([key]) => key !== "rulesetId")
+    .map(([key, value]) => (
+      <div className={styles.ruleRow} key={key}>
+        <dt>{RULE_LABELS[key] ?? key}</dt>
+        <dd>{RULE_VALUES[value] ?? value}</dd>
+      </div>
+    ));
 }
 
 function SeatCard({
@@ -164,6 +155,9 @@ function SeatCard({
   const isCurrentAccount = occupant === accountId;
   const isTeamOne = seat.seatIndex % 2 === 0;
   const actionsDisabled = locked || pending;
+  const ready = view.members.find(
+    (member) => member.playerId === occupant,
+  )?.ready;
 
   return (
     <li className={`${styles.seatCard} ${occupant ? styles.seatOccupied : ""}`}>
@@ -178,15 +172,17 @@ function SeatCard({
       <div className={styles.seatOccupant}>
         {occupant ? (
           <>
-            <span className={styles.occupantMark} aria-hidden="true">
-              {isCurrentAccount ? "我" : occupant === view.ownerId ? "主" : "●"}
-            </span>
             <span>
               {isCurrentAccount
-                ? "本人"
+                ? occupant === view.ownerId
+                  ? "本人 · 房主"
+                  : "本人"
                 : occupant === view.ownerId
                   ? "房主"
                   : "已入座"}
+            </span>
+            <span className={ready ? styles.readyState : styles.waitingState}>
+              {ready ? "已准备" : "未准备"}
             </span>
           </>
         ) : (
@@ -245,16 +241,38 @@ function RulesDetails({
         </span>
       </summary>
       <div className={styles.rulesBody}>
-        <div className={styles.policyLine}>
-          <span className={styles.policyKey}>座位方式</span>
-          <strong>
-            {view.seatingPolicy === "fixed" ? "固定座位" : "随机座位"}
-          </strong>
-          {view.seatingPolicyLocked && (
-            <span className={styles.lockPill}>已锁定</span>
-          )}
-        </div>
-        {onCommand === undefined ? (
+        {onCommand !== undefined && !view.seatingPolicyLocked ? (
+          <label className={styles.ruleField}>
+            座位安排
+            <select
+              aria-label="座位安排"
+              value={view.seatingPolicy}
+              disabled={disabled}
+              onChange={(event) =>
+                onCommand({
+                  type: "ReplaceSeatingPolicy",
+                  seatingPolicy: SeatingPolicySchema.parse(event.target.value),
+                })
+              }
+            >
+              <option value="fixed">固定座位</option>
+              <option value="randomized">开局随机分配</option>
+            </select>
+          </label>
+        ) : (
+          <div className={styles.policyLine}>
+            <span className={styles.policyKey}>座位方式</span>
+            <strong>
+              {view.seatingPolicy === "fixed" ? "固定座位" : "随机座位"}
+            </strong>
+            {view.seatingPolicyLocked && (
+              <span className={styles.lockPill}>已锁定</span>
+            )}
+          </div>
+        )}
+        {onCommand === undefined ||
+        view.matchRulesConfigurationLocked ||
+        view.selectedActivity === "challenge" ? (
           <dl className={styles.ruleList}>
             {rulesConfiguration(configuration)}
           </dl>
@@ -344,6 +362,9 @@ function LobbyView({
   const currentSeat = memberSeatIndex(view, accountId);
   const actionsDisabled = locked || pending;
   const requiredSeatCount = view.seats.length;
+  const unseatedMembers = view.members.filter(
+    (member) => memberSeatIndex(view, member.playerId) === undefined,
+  );
 
   return (
     <div className={styles.lobbyLayout}>
@@ -354,8 +375,7 @@ function LobbyView({
             <p>
               {view.challengeSummary.result.outcome === "draw"
                 ? "本局平局"
-                : `${view.challengeSummary.result.winningTeam === 0 ? "一队" : "二队"}获胜`}{" "}
-              · 本次挑战结束
+                : `${view.challengeSummary.result.winningTeam === 0 ? "一队" : "二队"}获胜`}
             </p>
             {view.challengeSummary.handStartSequence !== undefined && (
               <ChallengeShare
@@ -385,10 +405,7 @@ function LobbyView({
           </section>
         )}
         <div className={styles.sectionHeading}>
-          <div>
-            <p className={styles.eyebrow}>房间大厅</p>
-            <h2 id="lobby-title">等人开局</h2>
-          </div>
+          <h2 id="lobby-title">等人开局</h2>
           <span className={styles.seatCount}>
             {view.members.length} / {requiredSeatCount} 位成员
           </span>
@@ -476,76 +493,42 @@ function LobbyView({
       </section>
 
       <aside className={styles.lobbyAside} aria-label="房间状态">
-        <section
-          className={styles.readinessPanel}
-          aria-labelledby="readiness-title"
-        >
-          <div className={styles.panelHeading}>
-            <h3 id="readiness-title">成员状态</h3>
-            <span>
-              {view.members.filter((member) => member.ready).length} 人已准备
-            </span>
-          </div>
-          <ul className={styles.memberList}>
-            {view.members
-              .slice()
-              .sort((first, second) => first.joinOrder - second.joinOrder)
-              .map((member) => {
-                const seatIndex = memberSeatIndex(view, member.playerId);
-                return (
-                  <li className={styles.memberRow} key={member.playerId}>
-                    <span className={styles.memberName}>
-                      <span className={styles.memberDot} aria-hidden="true" />
-                      {memberDisplay(view, member.playerId, accountId)}
-                    </span>
-                    <span className={styles.memberSeat}>
-                      {seatIndex === undefined
-                        ? "待选座"
-                        : positionLabel(seatIndex)}
-                    </span>
-                    <span
-                      className={
-                        member.ready ? styles.readyState : styles.waitingState
-                      }
-                    >
-                      {member.ready ? "已准备" : "未准备"}
-                    </span>
-                  </li>
-                );
-              })}
-          </ul>
-        </section>
+        {unseatedMembers.length > 0 && (
+          <section
+            className={styles.readinessPanel}
+            aria-labelledby="readiness-title"
+          >
+            <div className={styles.panelHeading}>
+              <h3 id="readiness-title">待入座</h3>
+            </div>
+            <ul className={styles.memberList}>
+              {unseatedMembers
+                .slice()
+                .sort((first, second) => first.joinOrder - second.joinOrder)
+                .map((member) => {
+                  return (
+                    <li className={styles.memberRow} key={member.playerId}>
+                      <span className={styles.memberName}>
+                        {member.playerId === accountId
+                          ? member.playerId === view.ownerId
+                            ? "本人 · 房主"
+                            : "本人"
+                          : member.playerId === view.ownerId
+                            ? "房主"
+                            : "已加入"}
+                      </span>
+                    </li>
+                  );
+                })}
+            </ul>
+          </section>
+        )}
         <RulesDetails
           view={view}
           disabled={actionsDisabled}
-          {...(view.ownerId === accountId &&
-          !view.matchRulesConfigurationLocked &&
-          view.selectedActivity !== "challenge"
-            ? { onCommand }
-            : {})}
+          {...(view.ownerId === accountId ? { onCommand } : {})}
         />
         <div className={styles.rulesBody}>
-          {view.ownerId === accountId && !view.seatingPolicyLocked && (
-            <label className={styles.ruleField}>
-              座位安排
-              <select
-                aria-label="座位安排"
-                value={view.seatingPolicy}
-                disabled={actionsDisabled}
-                onChange={(event) =>
-                  onCommand({
-                    type: "ReplaceSeatingPolicy",
-                    seatingPolicy: SeatingPolicySchema.parse(
-                      event.target.value,
-                    ),
-                  })
-                }
-              >
-                <option value="fixed">固定座位</option>
-                <option value="randomized">开局随机分配</option>
-              </select>
-            </label>
-          )}
           <p className={styles.actionHint}>
             {view.members.length === 1
               ? "退出后房间关闭，已完成的牌局记录仍可查看。"
@@ -586,7 +569,7 @@ function PreviousHand({
       </button>
       {open && (
         <>
-          <h3>上一局结果 · 第 {summary.handNumber} 局</h3>
+          <h3>第 {summary.handNumber} 局</h3>
           <p>
             {summary.result.outcome === "draw"
               ? "本局平局"
@@ -765,22 +748,13 @@ function ActiveView({
     <div className={styles.activeLayout}>
       <section className={styles.tableStage} aria-label="牌桌">
         <div className={styles.tableHeading}>
-          <div>
-            <p className={styles.eyebrow}>
-              {view.selectedActivity === "challenge" ? "同牌挑战" : "牌局"} · 第{" "}
-              {view.handNumber ??
-                (view.completedHandCount ?? 0) +
-                  (view.handResult === undefined ? 1 : 0)}{" "}
-              局
-            </p>
-            <h2 id="table-title">
-              {view.handResult !== undefined
-                ? "本局已结算"
-                : view.setupStage === "play"
-                  ? "轮流出牌"
-                  : "开局选择"}
-            </h2>
-          </div>
+          <h2 id="table-title">
+            {view.selectedActivity === "challenge" ? "同牌挑战" : "牌局"} · 第{" "}
+            {view.handNumber ??
+              (view.completedHandCount ?? 0) +
+                (view.handResult === undefined ? 1 : 0)}{" "}
+            局
+          </h2>
           <div className={styles.trumpBadge}>
             <span>当前级牌</span>
             <strong>{view.trumpRank}</strong>
@@ -818,7 +792,7 @@ function ActiveView({
           {view.unbeatenPlay === undefined ? (
             <p>
               {view.handResult !== undefined
-                ? "本局出牌结束"
+                ? null
                 : view.setupStage === "play"
                   ? "新一轮领牌"
                   : "完成进贡、还牌后开始出牌"}
@@ -854,14 +828,6 @@ function ActiveView({
           <span>
             二队等级 <strong>{view.teamLevels[1]}</strong>
           </span>
-          <span>
-            当前行动{" "}
-            <strong>
-              {currentActorSeat === undefined
-                ? "等待中"
-                : positionLabel(currentActorSeat)}
-            </strong>
-          </span>
         </div>
 
         {view.handResult !== undefined && (
@@ -884,16 +850,9 @@ function ActiveView({
 
       <section className={styles.handPanel} aria-labelledby="hand-title">
         <div className={styles.handHeading}>
-          <div>
-            <p className={styles.eyebrow}>只对你可见</p>
-            <h2 id="hand-title">你的手牌</h2>
-          </div>
-          <span className={styles.handCount}>{view.hand.length} 张</span>
+          <h2 id="hand-title">你的手牌</h2>
         </div>
-        <ul
-          className={styles.hand}
-          aria-label={`${accountId === view.currentActor ? "当前行动，" : ""}你的手牌`}
-        >
+        <ul className={styles.hand} aria-label="你的手牌">
           {view.hand.map((code) => {
             const card = cardLabel(code);
             const cardClass =
@@ -1098,7 +1057,7 @@ function ActiveView({
           <>
             <p className={styles.handNote} aria-live="polite">
               {feedback === undefined
-                ? "点选手牌，也可用 Tab 切换、空格选择。"
+                ? null
                 : feedback.ok
                   ? `已选 ${selected.length} 张 · ${PLAY_FORM_LABELS[feedback.play.form]} · ${feedback.play.rank === "BIG" ? "大王" : feedback.play.rank === "SMALL" ? "小王" : feedback.play.rank}`
                   : errorMessage("domain-rejected", feedback.reason)}
@@ -1128,15 +1087,6 @@ function ActiveView({
               >
                 清空选择
               </button>
-              <span className={styles.handNote}>
-                {locked
-                  ? "正在同步牌局…"
-                  : pending
-                    ? "正在提交…"
-                    : view.currentActor === accountId
-                      ? "轮到你了"
-                      : "等待其他玩家出牌"}
-              </span>
             </div>
           </>
         )}
@@ -1218,7 +1168,6 @@ export function RoomTable({
         />
       ) : (
         <section className={styles.lobbyMain} aria-label="房间恢复">
-          <h2>{lifecycleLabel}</h2>
           <p>
             {room.view.lifecycle === "INTERRUPTED"
               ? "当前牌局无法恢复。房主可以归档房间，或沿用比赛规则另开一桌。"
@@ -1249,7 +1198,6 @@ export function RoomTable({
                 </button>
               </div>
             )}
-          <a href="/history">查看牌局记录</a>
         </section>
       )}
     </section>
