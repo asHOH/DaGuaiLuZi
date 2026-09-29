@@ -30,7 +30,18 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     ).toBeEnabled();
     let current = await room(page);
     expect(current.view.seats).toHaveLength(4);
+    await expect(page.getByTestId("remaining-count")).toHaveCount(1);
+    await page.screenshot({
+      path: test.info().outputPath("four-player-desktop.png"),
+      fullPage: true,
+    });
     const pausedRevision = current.revision;
+    const selectedCard = page.getByTestId("hand-card").first();
+    await selectedCard.click({ position: { x: 12, y: 32 } });
+    await expect(selectedCard).toHaveAttribute("aria-pressed", "true");
+    expect((await room(page)).revision).toBe(pausedRevision);
+    await selectedCard.press("Enter");
+    await expect(selectedCard).toHaveAttribute("aria-pressed", "false");
     // The driver runs in Node, so browser clock mocking cannot verify the pause.
     await page.waitForTimeout(1500);
     expect((await room(page)).revision).toBe(pausedRevision);
@@ -43,7 +54,7 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
         });
         await page
           .locator(`[data-testid="hand-card"][data-card="${card}"]`)
-          .click();
+          .click({ position: { x: 12, y: 32 } });
         await page.getByRole("button", { name: "出牌", exact: true }).click();
       } else {
         await page.getByRole("button", { name: "不出", exact: true }).click();
@@ -61,6 +72,8 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       .toBeGreaterThan(current.revision);
     expect((await room(page)).view.hand).toEqual(current.view.hand);
 
+    const retained = (await room(page)).view.latestPlays;
+    await expect(page.getByTestId("played-hand")).toHaveCount(retained.length);
     await page.reload();
     await expect(
       controls.getByRole("button", { name: "继续自动操作" }),
@@ -68,6 +81,15 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await expect(page.getByTestId("hand-card")).toHaveCount(
       current.view.hand.length,
     );
+    expect((await room(page)).view.latestPlays).toEqual(retained);
+    for (const play of retained) {
+      const displayed = page
+        .locator(`[data-seat="${play.seatIndex}"]`)
+        .getByTestId("played-hand");
+      await expect(displayed).toBeVisible();
+      for (const card of play.cards)
+        await expect(displayed.locator(`[data-card="${card}"]`)).toHaveCount(1);
+    }
     const oldUrl = page.url();
     await controls.getByLabel("试玩人数").selectOption("6");
     await controls.getByRole("button", { name: "重新开始" }).click();
@@ -79,6 +101,7 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     current = await room(page);
     expect(current.view.seats).toHaveLength(6);
     expect(current.view.handSizes).toEqual([27, 27, 27, 27, 27, 27]);
+    await expect(page.getByTestId("remaining-count")).toHaveCount(1);
 
     for (
       let step = 0;
@@ -107,12 +130,24 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       path: test.info().outputPath("playground-desktop.png"),
       fullPage: true,
     });
-    await page.setViewportSize({ width: 390, height: 844 });
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
+    for (const width of [1920, 1024, 768, 320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const group of await page
+        .locator('[aria-label="你的手牌"] [data-rank]')
+        .all()) {
+        const rows = await group
+          .locator("button")
+          .evaluateAll((cards) =>
+            cards.map((card) => Math.round(card.getBoundingClientRect().top)),
+          );
+        expect(new Set(rows).size).toBe(1);
+      }
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    }
     await page.screenshot({
       path: test.info().outputPath("playground-mobile.png"),
       fullPage: true,

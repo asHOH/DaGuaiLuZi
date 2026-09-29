@@ -1184,6 +1184,7 @@ export function deriveRoomView(
                   (view.handResult === undefined ? 1 : 0),
             handSizes: view.handSizes,
             hand: view.hand,
+            latestPlays: view.latestPlays,
             ...(view.currentActor === undefined
               ? {}
               : {

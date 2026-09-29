@@ -690,6 +690,7 @@ export type PlayerView = Readonly<{
   currentActor?: PlayerAccountId;
   currentActorSeat?: SeatIndex;
   unbeatenPlay?: PlayerViewPlay;
+  latestPlays?: readonly PlayerViewPlay[];
   passedPlayerIds?: readonly PlayerAccountId[];
   finishPositions?: readonly (number | undefined)[];
   handResult?: PlayerViewHandResult;
@@ -798,6 +799,7 @@ type ActiveHand = Readonly<{
   handSeed: HandSeed;
   currentActorSeat: SeatIndex;
   unbeatenPlay: ActivePlay | undefined;
+  latestPlays: readonly ActivePlay[];
   passedSeats: readonly SeatIndex[];
   finishPositions: readonly (number | undefined)[];
   result: HandResultDetermined | undefined;
@@ -1486,6 +1488,7 @@ function setupForChallengeTemplate(
       handSeed: template.handSeed,
       currentActorSeat: firstFinisherSeat < 0 ? 0 : firstFinisherSeat,
       unbeatenPlay: undefined,
+      latestPlays: [],
       passedSeats: [],
       finishPositions: [...template.setup.finishPositions],
       result: {
@@ -3492,6 +3495,7 @@ export function evolve(state: State | undefined, event: Event): State {
             handSeed: event.handSeed,
             currentActorSeat: event.dealerSeat,
             unbeatenPlay: undefined,
+            latestPlays: [],
             passedSeats: [],
             finishPositions: Array(event.playerIds.length).fill(undefined),
             result: undefined,
@@ -3535,6 +3539,7 @@ export function evolve(state: State | undefined, event: Event): State {
             handSeed: event.handSeed,
             currentActorSeat: setup.firstFinisherSeat,
             unbeatenPlay: undefined,
+            latestPlays: [],
             passedSeats: [],
             finishPositions: Array(event.playerIds.length).fill(undefined),
             result: undefined,
@@ -3583,6 +3588,7 @@ export function evolve(state: State | undefined, event: Event): State {
             handSeed: template.handSeed,
             currentActorSeat: setup.firstFinisherSeat,
             unbeatenPlay: undefined,
+            latestPlays: [],
             passedSeats: [],
             finishPositions: Array(event.playerIds.length).fill(undefined),
             result: undefined,
@@ -3635,6 +3641,12 @@ export function evolve(state: State | undefined, event: Event): State {
           hand: {
             ...current.activeMatch.hand,
             unbeatenPlay: activePlay,
+            latestPlays: [
+              ...current.activeMatch.hand.latestPlays.filter(
+                (play) => play.seatIndex !== event.seatIndex,
+              ),
+              activePlay,
+            ],
             passedSeats: [],
           },
         },
@@ -3705,6 +3717,7 @@ export function evolve(state: State | undefined, event: Event): State {
             ...current.activeMatch.hand,
             currentActorSeat: event.seatIndex,
             unbeatenPlay: undefined,
+            latestPlays: [],
             passedSeats: [],
           },
         },
@@ -4258,6 +4271,17 @@ export function derivePlayerView(
       activeHand.currentActorSeat,
     );
     const unbeatenPlay = activeHand.unbeatenPlay;
+    const latestPlays = activeHand.latestPlays.map(
+      ({ playerId, seatIndex, play }) => ({
+        playerId,
+        seatIndex,
+        cards: play.cards.map((card) => card.code),
+        form: play.form,
+        rank: play.rank,
+        representedFaces: [...play.representedFaces],
+        comparisonRanks: [...play.comparisonRanks],
+      }),
+    );
     const pendingReturnChoice = pendingReturn(current.activeMatch);
     const pendingPlayerIds =
       activeHand.setup.tieChoice !== undefined
@@ -4297,6 +4321,7 @@ export function derivePlayerView(
       trumpRank: current.activeMatch.trumpRank,
       handSizes: current.activeMatch.hands.map((hand) => hand.cards.length),
       hand: ownHand === undefined ? [] : ownHand.cards.map((card) => card.code),
+      latestPlays,
       ...(activeHand.setup.stage !== "play" ||
       activeHand.result !== undefined ||
       currentActor === undefined
@@ -4308,15 +4333,9 @@ export function derivePlayerView(
       ...(unbeatenPlay === undefined
         ? {}
         : {
-            unbeatenPlay: {
-              playerId: unbeatenPlay.playerId,
-              seatIndex: unbeatenPlay.seatIndex,
-              cards: unbeatenPlay.play.cards.map((card) => card.code),
-              form: unbeatenPlay.play.form,
-              rank: unbeatenPlay.play.rank,
-              representedFaces: [...unbeatenPlay.play.representedFaces],
-              comparisonRanks: [...unbeatenPlay.play.comparisonRanks],
-            },
+            unbeatenPlay: latestPlays.find(
+              (play) => play.seatIndex === unbeatenPlay.seatIndex,
+            )!,
           }),
       passedPlayerIds: activeHand.passedSeats
         .map((seatIndex) => playerAtSeat(current.activeMatch!, seatIndex))

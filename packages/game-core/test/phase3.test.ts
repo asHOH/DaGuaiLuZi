@@ -174,6 +174,8 @@ describe("game-core active Hand play", () => {
       const history = [...started.history];
       const playerIds = started.playerIds;
       const initialCards = remainingCards(state, playerIds);
+      const latestCards = new Map<number, readonly CardInstanceCode[]>();
+      let replacedPlay = false;
 
       for (let turn = 0; turn < 1000; turn += 1) {
         const view = playerView(state, "p1");
@@ -201,6 +203,25 @@ describe("game-core active Hand play", () => {
         history.push(...applied.events);
         state = applied.state;
 
+        for (const event of applied.events) {
+          if (event.type === "CardsPlayed") {
+            replacedPlay ||= latestCards.has(event.seatIndex);
+            latestCards.set(event.seatIndex, event.cards);
+          } else if (event.type === "LeadReset") {
+            latestCards.clear();
+          }
+        }
+        for (const playerId of playerIds) {
+          expect(
+            new Map(
+              playerView(state, playerId).latestPlays!.map((play) => [
+                play.seatIndex,
+                play.cards,
+              ]),
+            ),
+          ).toEqual(latestCards);
+        }
+
         const played = applied.events.filter(
           (event): event is Extract<Event, { type: "CardsPlayed" }> =>
             event.type === "CardsPlayed",
@@ -220,6 +241,7 @@ describe("game-core active Hand play", () => {
       }
 
       expect(playerView(state, "p1").handResult).toBeDefined();
+      expect(replacedPlay).toBe(true);
       expect(
         history.some((event) => event.type === "HandResultDetermined"),
       ).toBe(true);
@@ -276,6 +298,7 @@ describe("game-core active Hand play", () => {
     expect(view.unbeatenPlay).toBeUndefined();
     expect(view.currentActor).toBe(actor);
     expect(view.passedPlayerIds).toEqual([]);
+    expect(view.latestPlays).toEqual([]);
   });
 
   it("closes a BIG lead immediately without synthetic passes", () => {
@@ -307,6 +330,7 @@ describe("game-core active Hand play", () => {
     const view = playerView(played.state, "p1");
     expect(view.unbeatenPlay).toBeUndefined();
     expect(view.currentActor).toBe(scenario!.actor);
+    expect(view.latestPlays).toEqual([]);
   });
 
   it("uses finishing wildcard interpretation for the actor's last cards", () => {

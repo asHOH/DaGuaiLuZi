@@ -93,6 +93,8 @@ For ordinary comparison, the Trump Rank is above `A`. Within a straight it has i
 
 ### Turn flow
 
+Players with 10 or fewer cards remaining must declare their exact remaining-card count and keep it current after each play. This applies to both Rulesets.
+
 For the first Hand, a dealer is selected uniformly from the six players; that player's team is the initial Dealer Team, and the dealer leads the first play. Play proceeds counter-clockwise. A leader may play any legal form. Each following unfinished player either plays a valid stronger response or passes; finished players are skipped. A pass applies only to the current unbeaten play: a player who previously passed may respond when play reaches them again. When a play survives a complete circuit of the other five seats, each having passed or already finished, the lead resets. The player who made that play leads if still holding cards; otherwise the next unfinished player counter-clockwise leads. Play continues until the Hand result is determined.
 
 ## 2. Hand Result

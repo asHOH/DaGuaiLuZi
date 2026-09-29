@@ -3,6 +3,106 @@ import { expect, it } from "vitest";
 import { rulesConfigurationPreset, type RoomViewData } from "@dglz/protocol";
 import { RoomTable } from "../src/RoomTable.js";
 
+it.each([4, 6])(
+  "renders public plays once and only declares low opponent counts at a %i-player table",
+  (count) => {
+    const latestPlays: Extract<
+      RoomViewData["view"],
+      { lifecycle: "ACTIVE" }
+    >["latestPlays"] = [
+      {
+        playerId: "p1",
+        seatIndex: 1,
+        cards: ["9S#1"],
+        form: "single",
+        rank: "9",
+        representedFaces: ["9S"],
+        comparisonRanks: ["9"],
+      },
+      {
+        playerId: "p2",
+        seatIndex: 2,
+        cards: ["10C#1"],
+        form: "single",
+        rank: "10",
+        representedFaces: ["10C"],
+        comparisonRanks: ["10"],
+      },
+    ];
+    const room: RoomViewData = {
+      revision: 10,
+      view: {
+        lifecycle: "ACTIVE",
+        roomId: "room",
+        ownerId: "p0",
+        selectedActivity: "match",
+        members: Array.from({ length: count }, (_, i) => ({
+          playerId: `p${i}`,
+          joinOrder: i,
+          ready: true,
+        })),
+        seats: Array.from({ length: count }, (_, seatIndex) => ({
+          seatIndex,
+          playerId: `p${seatIndex}`,
+        })),
+        rulesConfiguration: rulesConfigurationPreset(
+          count === 4 ? "dglz-4p-2d-v1" : "dglz-6p-3d-v1",
+          "省心",
+        ),
+        seatingPolicy: "fixed",
+        matchRulesConfigurationLocked: true,
+        seatingPolicyLocked: true,
+        dealerSeat: 0,
+        dealerTeam: 0,
+        teamLevels: ["2", "2"],
+        trumpRank: "2",
+        failureCounters: [0, 0],
+        completedHandCount: 0,
+        handSizes: [27, 11, 10, 0, 9, 26].slice(0, count),
+        hand: ["AS#2", "AH#1", "AS#1"],
+        latestPlays,
+        unbeatenPlay: latestPlays[1],
+        currentActor: "p0",
+        currentActorSeat: 0,
+        passedPlayerIds: ["p1"],
+        finishPositions: Array(count).fill(null),
+        setupStage: "play",
+        tributeTransfers: [],
+        returnCandidates: [],
+        pendingPlayerIds: [],
+        eligibleTributeCards: [],
+      },
+    };
+    const render = (accountId = "p0") =>
+      renderToStaticMarkup(
+        <RoomTable
+          room={room}
+          accountId={accountId}
+          locked={false}
+          pending={false}
+          onCommand={() => {}}
+        />,
+      );
+    const markup = render();
+    expect(
+      [...markup.matchAll(/data-testid="remaining-count">(\d+) 张/g)].map(
+        (match) => Number(match[1]),
+      ),
+    ).toEqual(count === 4 ? [27, 10, 0] : [27, 10, 0, 9]);
+    expect(markup.match(/data-testid="played-hand"/g)).toHaveLength(2);
+    expect(markup.match(/data-unbeaten="true"/g)).toHaveLength(1);
+    expect(markup.match(/data-card="9S#1"/g)).toHaveLength(1);
+    expect(markup).toContain('data-seat="1" data-position="1"');
+    expect(markup).toContain(
+      'data-seat="0" data-position="0" data-self="true"',
+    );
+    expect(render("p2")).toContain(
+      'data-seat="2" data-position="0" data-self="true"',
+    );
+    expect(markup).not.toContain('aria-label="当前出牌"');
+  },
+);
+
 it("offers vacating only the current member's seat and disables it while syncing or pending", () => {
   const room: RoomViewData = {
     revision: 1,

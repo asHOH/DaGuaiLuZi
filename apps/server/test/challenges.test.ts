@@ -1332,10 +1332,12 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       if (i === target.ids.length - 1) target.disconnectOwner();
       await target.accept(i, { type: "SetReadiness", ready: true });
     }
-    const persistedState = () => {
-      let state: State | undefined;
-      for (const { event } of readRoomEvents(game.database, target.roomId))
-        state = evolve(state, event);
+    const persistedState = (state?: State, afterSequence = 0) => {
+      for (const { sequence, event } of readRoomEvents(
+        game.database,
+        target.roomId,
+      ))
+        if (sequence > afterSequence) state = evolve(state, event);
       return state!;
     };
     expect(target.view().view.lifecycle).toBe("LOBBY");
@@ -1347,8 +1349,10 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     await target.restart();
     expect(setupSnapshot(persistedState())).toEqual(beforeRestart);
     expect(target.view().view.selectedActivity).toBe("challenge");
+    // Fold new persisted events per move; verify a full reconstruction below.
+    let state = persistedState();
+    let replayedRevision = target.view().revision;
     for (let step = 0; step < 1500; step++) {
-      const state = persistedState();
       const view = derivePlayerView(state, target.ids[0]!);
       if (view.lifecycle !== "ACTIVE") break;
       const playerId =
@@ -1370,7 +1374,10 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
             : { type: "Play", cards: [card] };
       }
       await target.accept(target.ids.indexOf(playerId), payload);
+      state = persistedState(state, replayedRevision);
+      replayedRevision = target.view().revision;
     }
+    expect(state).toEqual(persistedState());
     expect(target.view().view.lifecycle).toBe("LOBBY");
     expect(target.view().view).toHaveProperty("challengeSummary");
     expect([...readRoomEvents(game.database, game.roomId)]).toEqual(

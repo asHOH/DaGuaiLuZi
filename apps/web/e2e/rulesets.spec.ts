@@ -255,10 +255,10 @@ async function playAndSettle(
           await browserPage.emulateMedia({ reducedMotion: "no-preference" });
           keyboardUsed = true;
         } else if (!touchUsed) {
-          await card.tap();
+          await card.tap({ position: { x: 12, y: 32 } });
           touchUsed = true;
         } else {
-          await card.click();
+          await card.click({ position: { x: 12, y: 32 } });
         }
         await expect(card).toHaveAttribute("aria-pressed", "true");
         await expect(cards).toHaveCount(before);
@@ -406,7 +406,7 @@ async function completeSetup(
           .locator(
             `[data-testid="${candidateCards ? "return-candidate" : "hand-card"}"][data-card="${card}"]`,
           )
-          .click();
+          .click({ position: { x: 12, y: 32 } });
       }
       if (own.tieKind !== undefined) {
         await page
@@ -814,7 +814,10 @@ async function runHappyPath(
       exact: true,
     });
     await expect(abort).toBeEnabled();
-    await ownerPage.getByTestId("hand-card").first().click();
+    await ownerPage
+      .getByTestId("hand-card")
+      .first()
+      .click({ position: { x: 12, y: 32 } });
     await expect(ownerPage.getByTestId("hand-card").first()).toHaveAttribute(
       "aria-pressed",
       "true",

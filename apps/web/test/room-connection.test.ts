@@ -606,6 +606,7 @@ describe("createRoomConnection", () => {
         completedHandCount: 0,
         handNumber: 1,
         hand: ["AS#1"],
+        latestPlays: [],
         handSizes: [1, 27, 27, 27],
         currentActor: ACCOUNT_ID,
         currentActorSeat: 0,

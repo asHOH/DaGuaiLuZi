@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 8 as const;
+export const PROTOCOL_VERSION = 9 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
@@ -754,6 +754,7 @@ const activePlayerViewSchema = z
     handNumber: z.number().int().positive().optional(),
     handSizes: z.array(z.number().int().nonnegative()),
     hand: z.array(CardInstanceCodeSchema),
+    latestPlays: z.array(PlayerViewPlaySchema).max(6),
     currentActor: identifier.optional(),
     currentActorSeat: z.number().int().nonnegative().optional(),
     unbeatenPlay: PlayerViewPlaySchema.optional(),

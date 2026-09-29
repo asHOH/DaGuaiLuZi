@@ -10,6 +10,7 @@ import {
 import { errorMessage } from "./api";
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
 import { ChallengeEntry, ChallengeShare } from "./ChallengeControls";
+import { cardLabel, groupCards } from "./card-display";
 
 import styles from "./RoomTable.module.css";
 
@@ -23,13 +24,6 @@ type RoomTableProps = {
 };
 
 const POSITION_NAMES = ["一", "二", "三", "四", "五", "六"];
-
-const SUITS: Record<string, { name: string; symbol: string }> = {
-  S: { name: "黑桃", symbol: "♠" },
-  H: { name: "红桃", symbol: "♥" },
-  D: { name: "方块", symbol: "♦" },
-  C: { name: "梅花", symbol: "♣" },
-};
 
 export const RULE_LABELS: Record<string, string> = {
   rulesetId: "规则组",
@@ -96,31 +90,22 @@ function memberSeatIndex(
   return view.seats.find((seat) => seat.playerId === playerId)?.seatIndex;
 }
 
-export function cardLabel(code: string): {
-  display: string;
-  aria: string;
-  tone: "red" | "black" | "joker";
-} {
-  const [face, copy] = code.split("#");
-  const copyLabel = copy === undefined ? "" : `，第${copy}张`;
-
-  if (face === "SMALL" || face === "BIG") {
-    const joker = face === "SMALL" ? "小王" : "大王";
-    return { display: joker, aria: `${joker}${copyLabel}`, tone: "joker" };
-  }
-
-  const suit = face?.slice(-1);
-  const rank = face?.slice(0, -1) ?? "?";
-  const suitInfo = suit === undefined ? undefined : SUITS[suit];
-  if (suitInfo === undefined) {
-    return { display: code, aria: `未知牌${copyLabel}`, tone: "black" };
-  }
-
-  return {
-    display: `${rank}${suitInfo.symbol}`,
-    aria: `${suitInfo.name}${rank}${copyLabel}`,
-    tone: suit === "H" || suit === "D" ? "red" : "black",
-  };
+function CardFace({ code }: { code: string }) {
+  const card = cardLabel(code);
+  return (
+    <span
+      className={styles.cardFace}
+      data-red={card.red}
+      data-joker={card.tone === "joker"}
+      aria-hidden="true"
+    >
+      <span className={styles.cardCorner}>
+        <span className={styles.cardRank}>{card.rank}</span>
+        {card.symbol && <span className={styles.cardSuit}>{card.symbol}</span>}
+      </span>
+      <span className={styles.cardPip}>{card.symbol}</span>
+    </span>
+  );
 }
 
 function rulesConfiguration(
@@ -743,6 +728,8 @@ function ActiveView({
   const currentActorSeat = view.seats.find(
     (seat) => seat.playerId === view.currentActor,
   )?.seatIndex;
+  const ownSeat = memberSeatIndex(view, accountId) ?? 0;
+  const handGroups = groupCards(view.hand, view.trumpRank);
 
   return (
     <div className={styles.activeLayout}>
@@ -755,80 +742,117 @@ function ActiveView({
                 (view.handResult === undefined ? 1 : 0)}{" "}
             局
           </h2>
+          <div className={styles.tableMeta}>
+            <span>
+              一队等级 <strong>{view.teamLevels[0]}</strong>
+            </span>
+            <span>
+              二队等级 <strong>{view.teamLevels[1]}</strong>
+            </span>
+          </div>
           <div className={styles.trumpBadge}>
             <span>当前级牌</span>
             <strong>{view.trumpRank}</strong>
           </div>
         </div>
 
-        <ol className={styles.tableSeats} aria-label="牌桌座位">
+        <ol
+          className={styles.tableSeats}
+          data-player-count={view.seats.length}
+          aria-label="牌桌座位"
+        >
           {view.seats.map((seat) => {
             const isActor = seat.seatIndex === currentActorSeat;
             const isCurrent = seat.playerId === accountId;
+            const play = view.latestPlays.find(
+              (play) => play.seatIndex === seat.seatIndex,
+            );
+            const isUnbeaten =
+              play !== undefined &&
+              view.unbeatenPlay?.seatIndex === seat.seatIndex;
+            const count = view.handSizes[seat.seatIndex] ?? 0;
+            const passed =
+              seat.playerId !== undefined &&
+              view.passedPlayerIds.includes(seat.playerId);
             return (
               <li
                 className={`${styles.tableSeat} ${isActor ? styles.tableSeatActor : ""}`}
                 key={seat.seatIndex}
+                data-seat={seat.seatIndex}
+                data-position={
+                  (seat.seatIndex - ownSeat + view.seats.length) %
+                  view.seats.length
+                }
+                data-self={isCurrent}
+                data-team={seat.seatIndex % 2}
               >
-                <span className={styles.tableSeatPosition}>
-                  {positionLabel(seat.seatIndex)}
-                </span>
-                <span className={styles.tableSeatTeam}>
-                  {seat.seatIndex % 2 === 0 ? "一队" : "二队"}
-                </span>
-                <span className={styles.tableSeatName}>
-                  {isCurrent ? "本人" : seat.playerId ? "已入座" : "空位"}
-                  {view.finishPositions[seat.seatIndex] != null
-                    ? ` · 第${view.finishPositions[seat.seatIndex]}名`
-                    : ` · ${view.handSizes[seat.seatIndex] ?? 0}张`}
-                </span>
-                {isActor && <span className={styles.actorTag}>当前行动</span>}
+                <div className={styles.seatIdentity}>
+                  <span className={styles.avatar} aria-hidden="true">
+                    {POSITION_NAMES[seat.seatIndex]}
+                  </span>
+                  <div className={styles.seatInfo}>
+                    <span className={styles.tableSeatPosition}>
+                      {positionLabel(seat.seatIndex)}
+                      {isCurrent ? " · 本人" : ""}
+                    </span>
+                    <span className={styles.tableSeatTeam}>
+                      {seat.seatIndex % 2 === 0 ? "一队" : "二队"}
+                    </span>
+                    <span
+                      className={styles.tableSeatName}
+                      aria-live="polite"
+                      aria-atomic="true"
+                    >
+                      {view.finishPositions[seat.seatIndex] != null &&
+                        `第${view.finishPositions[seat.seatIndex]}名`}
+                      {(isCurrent || count <= 10) && (
+                        <span data-testid="remaining-count">{count} 张</span>
+                      )}
+                    </span>
+                    <span className={styles.actorTag}>
+                      {isActor ? "当前行动" : ""}
+                    </span>
+                  </div>
+                </div>
+                <div className={styles.seatPlay}>
+                  {play !== undefined && (
+                    <div
+                      className={styles.playedHand}
+                      data-testid="played-hand"
+                      data-unbeaten={isUnbeaten}
+                      aria-label={`${positionLabel(seat.seatIndex)}出牌`}
+                    >
+                      <ul className={styles.playCards}>
+                        {groupCards(play.cards, view.trumpRank)
+                          .flatMap((group) => group.cards)
+                          .map((code) => (
+                            <li
+                              key={code}
+                              aria-label={cardLabel(code).aria}
+                              data-card={code}
+                            >
+                              <CardFace code={code} />
+                            </li>
+                          ))}
+                      </ul>
+                      <span className={styles.playCaption}>
+                        {isUnbeaten ? "当前牌 · " : ""}
+                        {PLAY_FORM_LABELS[play.form]}
+                      </span>
+                    </div>
+                  )}
+                  {passed && <span className={styles.passTag}>不出</span>}
+                </div>
               </li>
             );
           })}
         </ol>
 
-        <div className={styles.currentPlay} aria-label="当前出牌">
-          {view.unbeatenPlay === undefined ? (
-            <p>
-              {view.handResult !== undefined
-                ? null
-                : view.setupStage === "play"
-                  ? "新一轮领牌"
-                  : "完成进贡、还牌后开始出牌"}
-            </p>
-          ) : (
-            <>
-              <p>
-                {positionLabel(view.unbeatenPlay.seatIndex)}出牌 ·{" "}
-                {PLAY_FORM_LABELS[view.unbeatenPlay.form]}
-              </p>
-              <ul className={styles.playCards}>
-                {view.unbeatenPlay.cards.map((code) => {
-                  const card = cardLabel(code);
-                  return (
-                    <li
-                      key={code}
-                      className={`${styles.card} ${card.tone === "red" ? styles.cardRed : card.tone === "joker" ? styles.cardJoker : styles.cardBlack}`}
-                      aria-label={card.aria}
-                    >
-                      {card.display}
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          )}
-        </div>
-
-        <div className={styles.tableMeta}>
-          <span>
-            一队等级 <strong>{view.teamLevels[0]}</strong>
-          </span>
-          <span>
-            二队等级 <strong>{view.teamLevels[1]}</strong>
-          </span>
-        </div>
+        {view.unbeatenPlay === undefined && view.handResult === undefined && (
+          <p className={styles.tablePrompt}>
+            {view.setupStage === "play" ? "新一轮领牌" : "等待开局选择"}
+          </p>
+        )}
 
         {view.handResult !== undefined && (
           <section className={styles.result} aria-label="本局结果">
@@ -852,46 +876,49 @@ function ActiveView({
         <div className={styles.handHeading}>
           <h2 id="hand-title">你的手牌</h2>
         </div>
-        <ul className={styles.hand} aria-label="你的手牌">
-          {view.hand.map((code) => {
-            const card = cardLabel(code);
-            const cardClass =
-              card.tone === "red"
-                ? styles.cardRed
-                : card.tone === "joker"
-                  ? styles.cardJoker
-                  : styles.cardBlack;
-            return (
-              <li key={code}>
-                <button
-                  type="button"
-                  className={`${styles.card} ${cardClass} ${selected.includes(code) ? styles.cardSelected : ""}`}
-                  data-card={code}
-                  data-testid="hand-card"
-                  aria-label={card.aria}
-                  aria-pressed={selected.includes(code)}
-                  disabled={
-                    !canSelect ||
-                    (tributeSelection &&
-                      !view.eligibleTributeCards.includes(code))
-                  }
-                  onClick={() =>
-                    setSelection({
-                      handKey,
-                      cards: selected.includes(code)
-                        ? selected.filter((card) => card !== code)
-                        : view.setupStage !== "play" && candidateCount === 0
-                          ? [code]
-                          : [...selected, code],
-                    })
-                  }
-                >
-                  <span aria-hidden="true">{card.display}</span>
-                </button>
+        <div className={styles.handScroll}>
+          <ul className={styles.hand} aria-label="你的手牌">
+            {handGroups.map((group) => (
+              <li key={group.rank} data-rank={group.rank}>
+                <ul className={styles.rankGroup}>
+                  {group.cards.map((code) => {
+                    const card = cardLabel(code);
+                    return (
+                      <li key={code}>
+                        <button
+                          type="button"
+                          className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
+                          data-card={code}
+                          data-testid="hand-card"
+                          aria-label={card.aria}
+                          aria-pressed={selected.includes(code)}
+                          disabled={
+                            !canSelect ||
+                            (tributeSelection &&
+                              !view.eligibleTributeCards.includes(code))
+                          }
+                          onClick={() =>
+                            setSelection({
+                              handKey,
+                              cards: selected.includes(code)
+                                ? selected.filter((card) => card !== code)
+                                : view.setupStage !== "play" &&
+                                    candidateCount === 0
+                                  ? [code]
+                                  : [...selected, code],
+                            })
+                          }
+                        >
+                          <CardFace code={code} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        </div>
         {view.setupStage !== "play" && view.handResult === undefined && (
           <section className={styles.setupChoices} aria-label="开局选择">
             {view.tieKind !== undefined ? (
@@ -967,7 +994,7 @@ function ActiveView({
                   {positionLabel(offer.recipientSeat)}
                   已提供候选牌，点选一张并确认收回。
                 </p>
-                <ul className={styles.hand}>
+                <ul className={styles.candidateCards}>
                   {offer.candidateCards.map((code) => {
                     const card = cardLabel(code);
                     return (
@@ -978,13 +1005,13 @@ function ActiveView({
                           data-card={code}
                           aria-label={card.aria}
                           aria-pressed={selected.includes(code)}
-                          className={`${styles.card} ${card.tone === "red" ? styles.cardRed : card.tone === "joker" ? styles.cardJoker : styles.cardBlack} ${selected.includes(code) ? styles.cardSelected : ""}`}
+                          className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
                           disabled={locked || pending}
                           onClick={() =>
                             setSelection({ handKey, cards: [code] })
                           }
                         >
-                          {card.display}
+                          <CardFace code={code} />
                         </button>
                       </li>
                     );
@@ -1111,7 +1138,9 @@ export function RoomTable({
   }[room.view.lifecycle];
 
   return (
-    <section className={styles.roomTable}>
+    <section
+      className={`${styles.roomTable} ${room.view.lifecycle === "ACTIVE" ? styles.roomActive : ""}`}
+    >
       <header className={styles.roomHeader}>
         {room.view.lifecycle === "ACTIVE" &&
           room.view.ownerId === accountId && (

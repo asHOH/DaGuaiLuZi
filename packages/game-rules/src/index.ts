@@ -28,6 +28,7 @@ export {
 } from "./rulesets.js";
 
 export { evaluatePlay } from "./evaluate-play.js";
+export { rankStrength } from "./play-ranking.js";
 export { hasAutomaticResponseClosure } from "./automatic-response-closure.js";
 
 export type {

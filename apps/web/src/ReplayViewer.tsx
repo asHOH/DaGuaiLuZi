@@ -9,7 +9,8 @@ import {
 
 import { ApiError, api } from "./api";
 import { PLAY_FORM_LABELS } from "./play-feedback";
-import { cardLabel, RULE_LABELS, RULE_VALUES } from "./RoomTable";
+import { RULE_LABELS, RULE_VALUES } from "./RoomTable";
+import { cardLabel } from "./card-display";
 import { ChallengeShare } from "./ChallengeControls";
 import { type ReplaySource } from "./replay-links";
 

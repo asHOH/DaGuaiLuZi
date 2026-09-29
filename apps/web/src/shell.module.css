@@ -228,9 +228,48 @@
   font-size: 0.85rem;
   margin: 16px 0;
 }
+.gameShell {
+  max-width: none;
+  min-height: 100dvh;
+  padding: 0 24px;
+  background: #163c35;
+}
+.gameShell .header {
+  padding: 6px 0;
+}
+.gameShell .brand {
+  font-size: 21px;
+  letter-spacing: 0;
+}
+.gameShell .account {
+  font-size: 12px;
+}
+.gameShell .roomToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 16px;
+}
+.gameShell .roomBar {
+  flex: 1;
+  margin: 4px 0;
+  gap: 12px;
+}
+.gameShell .roomBar button,
+.gameShell .invite summary {
+  font-size: 12px;
+}
+.gameShell .connection {
+  font-size: 11px;
+  margin: 4px 0;
+}
 @media (max-width: 640px) {
   .shell {
     padding: 0 16px;
+  }
+  .gameShell {
+    padding: 0 12px;
   }
   .header {
     padding: 18px 0;

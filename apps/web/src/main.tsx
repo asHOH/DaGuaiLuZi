@@ -305,7 +305,9 @@ function App() {
   }
   const validRoom = RoomIdSchema.safeParse(roomId).success;
   return (
-    <div className={styles.shell}>
+    <div
+      className={`${styles.shell} ${validRoom && roomState.room?.view.lifecycle === "ACTIVE" ? styles.gameShell : ""}`}
+    >
       <header className={styles.header}>
         <a
           className={styles.brand}
@@ -576,29 +578,31 @@ function App() {
           </section>
         ) : (
           <>
-            <div className={styles.roomBar}>
-              <button onClick={() => navigate("")}>返回开桌</button>
-              <details className={styles.invite}>
-                <summary>邀请好友</summary>
-                <label>
-                  邀请链接
-                  <input
-                    readOnly
-                    aria-label="邀请链接"
-                    value={`${location.origin}/rooms/${roomId}`}
-                    onFocus={(event) => event.target.select()}
-                  />
-                </label>
-              </details>
-            </div>
-            <div className={styles.connection} role="status">
-              {!roomState.synced || !roomState.connected
-                ? "正在同步牌局…"
-                : roomState.pending
-                  ? "正在提交…"
-                  : roomState.uncertain
-                    ? "等待确认操作结果"
-                    : "已连接 · 牌局已同步"}
+            <div className={styles.roomToolbar}>
+              <div className={styles.roomBar}>
+                <button onClick={() => navigate("")}>返回开桌</button>
+                <details className={styles.invite}>
+                  <summary>邀请好友</summary>
+                  <label>
+                    邀请链接
+                    <input
+                      readOnly
+                      aria-label="邀请链接"
+                      value={`${location.origin}/rooms/${roomId}`}
+                      onFocus={(event) => event.target.select()}
+                    />
+                  </label>
+                </details>
+              </div>
+              <div className={styles.connection} role="status">
+                {!roomState.synced || !roomState.connected
+                  ? "正在同步牌局…"
+                  : roomState.pending
+                    ? "正在提交…"
+                    : roomState.uncertain
+                      ? "等待确认操作结果"
+                      : "已连接 · 牌局已同步"}
+              </div>
             </div>
             {roomState.error && (
               <div className={styles.notice} role="alert">
