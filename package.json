@@ -6,6 +6,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "play": "pnpm build && pnpm --filter @dglz/web play",
     "build": "pnpm --recursive --if-present run build",
     "check": "pnpm format:check && pnpm build && pnpm lint && pnpm typecheck:workspace && pnpm test:workspace",
     "fix": "pnpm lint:fix && pnpm format",

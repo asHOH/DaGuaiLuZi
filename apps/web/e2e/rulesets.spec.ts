@@ -1,9 +1,3 @@
-import { createServer } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import {
   expect,
   test as base,
@@ -12,140 +6,22 @@ import {
   type Page,
 } from "@playwright/test";
 import { decodeCardInstance } from "@dglz/game-rules";
-import { io, type Socket } from "socket.io-client";
 import {
   errorEnvelope,
-  LoginResponseEnvelopeSchema,
-  PROTOCOL_VERSION,
-  PROTOCOL_VERSION_HEADER,
   rulesConfigurationPreset,
-  RoomCommandAckSchema,
-  RoomResponseEnvelopeSchema,
-  RoomViewSyncEnvelopeSchema,
-  SOCKET_ROOM_COMMAND_EVENT,
-  SOCKET_ROOM_VIEW_EVENT,
-  type RoomCommandAck,
-  type RoomCommandPayload,
   type RoomViewData,
 } from "@dglz/protocol";
 
-import { createApp } from "../../server/dist/app.js";
-import { provisionAccount } from "../../server/dist/auth.js";
-import { openDatabase } from "../../server/dist/db/index.js";
-
-const PASSWORD = "correct horse battery staple";
-const ACCOUNTS = [
-  "alice",
-  "bob",
-  "charlie",
-  "diana",
-  "eve",
-  "frank",
-  "grace",
-] as const;
-
-type Account = { accountId: string; username: string; password: string };
-type App = Awaited<ReturnType<typeof createApp>>;
-
-type TestServer = {
-  app: App;
-  url: string;
-  accounts: Account[];
-  restart: (whileStopped?: () => Promise<void>) => Promise<void>;
-  interruptRoom: (roomId: string) => Promise<void>;
-};
-
-async function reservePort(): Promise<number> {
-  const reservation = createServer();
-  await new Promise<void>((resolve, reject) => {
-    reservation.once("error", reject);
-    reservation.listen({ host: "127.0.0.1", port: 0 }, () => resolve());
-  });
-  const address = reservation.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("missing-test-port");
-  }
-  const port = address.port;
-  await new Promise<void>((resolve, reject) => {
-    reservation.close((error) =>
-      error === undefined ? resolve() : reject(error),
-    );
-  });
-  return port;
-}
-
-async function startServer(): Promise<
-  TestServer & { close: () => Promise<void> }
-> {
-  const directory = await mkdtemp(join(tmpdir(), "dglz-web-e2e-"));
-  const dbPath = join(directory, "server.sqlite");
-  const database = openDatabase(dbPath);
-  const accounts: Account[] = [];
-  try {
-    for (const username of ACCOUNTS) {
-      const account = await provisionAccount(database, {
-        username,
-        password: PASSWORD,
-      });
-      accounts.push({ ...account, password: PASSWORD });
-    }
-  } finally {
-    database.close();
-  }
-
-  const port = await reservePort();
-  const options = {
-    allowedOrigin: `http://127.0.0.1:${port}`,
-    dbPath,
-    secureCookies: false,
-    webRoot: fileURLToPath(new URL("../dist/", import.meta.url)),
-  };
-  let app = await createApp(options);
-  await app.listen({ host: "127.0.0.1", port });
-  const url = `http://127.0.0.1:${port}`;
-  async function stop() {
-    // Simulated shutdown drops browser preconnects; app.close still cleans up sockets and SQLite.
-    app.server.close();
-    app.server.closeAllConnections();
-    await app.close();
-  }
-  async function restart(whileStopped?: () => Promise<void>) {
-    await stop();
-    await whileStopped?.();
-    app = await createApp(options);
-    await app.listen({ host: "127.0.0.1", port });
-  }
-  return {
-    get app() {
-      return app;
-    },
-    url,
-    accounts,
-    restart,
-    async interruptRoom(roomId: string) {
-      const damaged = openDatabase(dbPath);
-      try {
-        damaged.sqlite
-          .prepare(
-            "UPDATE room_events SET event_schema_version = 999 WHERE room_id = ? AND sequence = (SELECT MAX(sequence) FROM room_events WHERE room_id = ?)",
-          )
-          .run(roomId, roomId);
-      } finally {
-        damaged.close();
-      }
-      await restart();
-    },
-    close: async () => {
-      await stop();
-      await rm(directory, {
-        force: true,
-        maxRetries: 3,
-        recursive: true,
-        retryDelay: 100,
-      });
-    },
-  };
-}
+import {
+  PASSWORD,
+  automaticCommand,
+  startServer,
+  loginProtocol,
+  readRoom,
+  ProtocolClient,
+  type Account,
+  type TestServer,
+} from "./support";
 
 const test = base.extend<{
   testServer: TestServer & { close: () => Promise<void> };
@@ -162,183 +38,6 @@ const test = base.extend<{
     }
   },
 });
-
-function protocolHeaders(): Record<string, string> {
-  return { [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION) };
-}
-
-async function loginProtocol(
-  url: string,
-  account: Account,
-): Promise<{ accountId: string; cookie: string }> {
-  const response = await fetch(`${url}/api/login`, {
-    body: JSON.stringify({
-      username: account.username,
-      password: account.password,
-    }),
-    headers: { ...protocolHeaders(), "content-type": "application/json" },
-    method: "POST",
-  });
-  expect(response.ok).toBe(true);
-  const envelope = LoginResponseEnvelopeSchema.parse(await response.json());
-  const headers = response.headers as Headers & {
-    getSetCookie?: () => string[];
-  };
-  const setCookie = headers.getSetCookie?.()[0] ?? headers.get("set-cookie");
-  const cookie = setCookie?.split(";", 1)[0];
-  if (cookie === undefined) throw new Error("missing-session-cookie");
-  return { accountId: envelope.data.accountId, cookie };
-}
-
-async function readRoom(
-  url: string,
-  roomId: string,
-  cookie: string,
-): Promise<RoomViewData> {
-  const response = await fetch(`${url}/api/rooms/${roomId}`, {
-    headers: { ...protocolHeaders(), cookie },
-  });
-  expect(response.ok).toBe(true);
-  return RoomResponseEnvelopeSchema.parse(await response.json()).data;
-}
-
-class ProtocolClient {
-  public staleJoinRetries = 0;
-  private readonly socket: Socket;
-  private latest: RoomViewData | undefined;
-
-  public constructor(
-    private readonly url: string,
-    private readonly cookie: string,
-    roomId?: string,
-  ) {
-    this.socket = io(url, {
-      autoConnect: false,
-      auth: {
-        protocolVersion: PROTOCOL_VERSION,
-        ...(roomId === undefined ? {} : { roomId }),
-      },
-      extraHeaders: { cookie },
-      transports: ["websocket"],
-    });
-    this.socket.on(SOCKET_ROOM_VIEW_EVENT, (raw: unknown) => {
-      const parsed = RoomViewSyncEnvelopeSchema.safeParse(raw);
-      if (
-        parsed.success &&
-        (this.latest === undefined ||
-          parsed.data.data.revision >= this.latest.revision)
-      ) {
-        this.latest = parsed.data.data;
-      }
-    });
-  }
-
-  public async connect(): Promise<void> {
-    if (this.socket.connected) return;
-    await new Promise<void>((resolve, reject) => {
-      const onConnect = () => {
-        this.socket.off("connect_error", onError);
-        resolve();
-      };
-      const onError = (error: Error) => {
-        this.socket.off("connect", onConnect);
-        reject(error);
-      };
-      this.socket.once("connect", onConnect);
-      this.socket.once("connect_error", onError);
-      this.socket.connect();
-    });
-  }
-
-  private emit(
-    roomId: string,
-    expectedRevision: number,
-    payload: RoomCommandPayload,
-  ): Promise<RoomCommandAck> {
-    return new Promise((resolve, reject) => {
-      this.socket.timeout(5_000).emit(
-        SOCKET_ROOM_COMMAND_EVENT,
-        {
-          protocolVersion: PROTOCOL_VERSION,
-          commandId: crypto.randomUUID(),
-          expectedRevision,
-          payload,
-          roomId,
-        },
-        (error: Error | null, raw: unknown) => {
-          if (error !== null) {
-            reject(error);
-            return;
-          }
-          const parsed = RoomCommandAckSchema.safeParse(raw);
-          if (!parsed.success) {
-            reject(new Error("invalid-command-ack"));
-            return;
-          }
-          resolve(parsed.data);
-        },
-      );
-    });
-  }
-
-  public async join(roomId: string): Promise<RoomViewData> {
-    let expectedRevision = 1;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const result = await this.emit(roomId, expectedRevision, {
-        type: "JoinRoom",
-      });
-      if (result.ok) {
-        if ("left" in result.data) throw new Error("unexpected-departure");
-        this.latest = result.data;
-        this.socket.auth = { protocolVersion: PROTOCOL_VERSION, roomId };
-        return result.data;
-      }
-      if (
-        result.error.code === "stale-revision" &&
-        result.error.currentRevision !== undefined
-      ) {
-        this.staleJoinRetries += 1;
-        expectedRevision = result.error.currentRevision;
-        continue;
-      }
-      throw new Error(`join-failed:${result.error.code}`);
-    }
-    throw new Error("join-retry-limit");
-  }
-
-  public async command(
-    url: string,
-    roomId: string,
-    payload: RoomCommandPayload,
-  ): Promise<RoomViewData> {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      const current =
-        this.latest?.view.roomId === roomId
-          ? this.latest
-          : await readRoom(url, roomId, this.cookie);
-      const result = await this.emit(roomId, current.revision, payload);
-      if (result.ok) {
-        if ("left" in result.data) throw new Error("unexpected-departure");
-        this.latest = result.data;
-        return result.data;
-      }
-      if (result.error.code === "stale-revision") {
-        this.latest = undefined;
-        continue;
-      }
-      throw new Error(`command-failed:${result.error.code}`);
-    }
-    throw new Error("command-retry-limit");
-  }
-
-  public snapshot(roomId: string): RoomViewData | undefined {
-    return this.latest?.view.roomId === roomId ? this.latest : undefined;
-  }
-
-  public close(): void {
-    this.socket.close();
-  }
-}
 
 async function loginUi(
   page: Page,
@@ -594,19 +293,12 @@ async function playAndSettle(
     if (client === undefined || cookie === undefined) {
       throw new Error(`missing-protocol-client:${actor}`);
     }
-    if (view.unbeatenPlay !== undefined) {
-      latestRoom = await client.command(url, roomId, { type: "Pass" });
-    } else {
-      const actorView = activeView(
-        client.snapshot(roomId) ?? (await readRoom(url, roomId, cookie)),
-      );
-      const card = actorView.hand[0];
-      if (card === undefined) throw new Error(`empty-actor-hand:${actor}`);
-      latestRoom = await client.command(url, roomId, {
-        type: "Play",
-        cards: [card],
-      });
-    }
+    const actorView = activeView(
+      await client.synchronizedView(roomId, room.revision),
+    );
+    const payload = automaticCommand(actorView, actor);
+    if (payload === undefined) throw new Error("missing-play-command");
+    latestRoom = await client.command(url, roomId, payload);
   }
   throw new Error("hand-settlement-timeout");
 }
@@ -655,71 +347,25 @@ async function completeSetup(
       return;
     }
 
-    let payload: RoomCommandPayload;
-    let button: string;
-    let selectedCards: typeof own.hand = [];
-    let candidateCards = false;
-    if (own.tieKind !== undefined && own.tieRound !== undefined) {
-      payload = {
-        type: "SubmitTieChoiceBallot",
-        tieKind: own.tieKind,
-        round: own.tieRound,
-        candidateId: null,
-      };
-      button = "提交选择";
-    } else if (own.setupStage === "tribute-selection") {
-      const card = own.eligibleTributeCards[0];
-      if (card === undefined) throw new Error("missing-eligible-tribute");
-      selectedCards = [card];
-      payload = { type: "SelectTributeCard", card };
-      button = "确认进贡";
-    } else {
-      const offer = own.returnCandidates.find(
-        (entry) => entry.giverId === actor,
-      );
-      const transfer = own.tributeTransfers.find(
-        (entry) => entry.recipientId === actor,
-      );
-      const tribute =
-        transfer === undefined ? undefined : decodeCardInstance(transfer.card);
-      if (offer !== undefined) {
-        const card = offer.candidateCards[0];
-        if (card === undefined) throw new Error("missing-return-candidate");
-        payload = { type: "SelectReturnCard", card };
-        selectedCards = [card];
-        candidateCards = true;
-        button = "确认还牌";
-      } else if (
-        own.rulesConfiguration.rulesetId === "dglz-6p-3d-v1" &&
-        own.rulesConfiguration.returnCardSelection ===
-          "giver-choice-from-candidates" &&
-        tribute?.ok &&
-        tribute.card.face.kind === "joker"
-      ) {
-        const count = tribute.card.face.rank === "SMALL" ? 2 : 3;
-        const ranks = new Set<string>();
-        selectedCards = own.hand
-          .filter((code) => {
-            const decoded = decodeCardInstance(code);
-            if (!decoded.ok || ranks.has(decoded.card.face.rank)) return false;
-            ranks.add(decoded.card.face.rank);
-            return true;
-          })
-          .slice(0, count);
-        expect(selectedCards).toHaveLength(count);
-        payload = {
-          type: "OfferReturnCandidates",
-          candidateCards: selectedCards,
-        };
-        button = "提交还牌候选";
-      } else {
-        const card = own.hand[0];
-        if (card === undefined) throw new Error("missing-return-card");
-        selectedCards = [card];
-        payload = { type: "SelectReturnCard", card };
-        button = "确认还牌";
-      }
-    }
+    const payload = automaticCommand(own, actor);
+    if (payload === undefined) throw new Error("missing-setup-command");
+    const selectedCards =
+      "card" in payload
+        ? [payload.card]
+        : payload.type === "OfferReturnCandidates"
+          ? payload.candidateCards
+          : [];
+    const candidateCards = own.returnCandidates.some(
+      (entry) => entry.giverId === actor,
+    );
+    const button =
+      payload.type === "SubmitTieChoiceBallot"
+        ? "提交选择"
+        : payload.type === "SelectTributeCard"
+          ? "确认进贡"
+          : payload.type === "OfferReturnCandidates"
+            ? "提交还牌候选"
+            : "确认还牌";
 
     if (!browserSubmitted) {
       const account = accounts.find((entry) => entry.accountId === actor);
@@ -2193,7 +1839,7 @@ test("修改密码拒绝过期账户页面并处理响应丢失", async ({
     await page.getByRole("button", { name: "确认修改" }).click();
     await expect.poll(() => committed).toBe(true);
     // Keep the same App mounted, but change its operation generation before failure.
-    await page.getByRole("link", { name: "大怪路子 好友牌局" }).click();
+    await page.getByRole("link", { name: "大怪路子", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "今晚，怎么打？" }),
     ).toBeVisible();

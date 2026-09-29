@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "play": "playwright test --config playwright.play.config.ts",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",

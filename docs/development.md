@@ -77,6 +77,8 @@ Lobby `LeaveRoom` removes membership, seat, and readiness; owner departure trans
 
 ## Web
 
+Local manual gameplay: run `pnpm play`. It builds the app and opens a signed-in four-player table; the other seats are disposable protocol clients. Install Chromium once with `pnpm --filter @dglz/web exec playwright install chromium` if needed. The injected Chinese toolbar pauses automation, executes one opponent action, or restarts with four/six players. Restart deals a fresh Hand and pauses automation. Opponents pass responses, lead singles, and resolve setup choices; your seat is always manual. Closing the window removes the temporary database. This loopback-only launcher uses built assets; rerun after source edits. No testing controls or bots ship in the production app.
+
 `pnpm build` builds the Chinese browser UI; the server serves it and Room links from the same origin. For local HTTP, set `DGLZ_ALLOWED_ORIGIN=http://127.0.0.1:3000` and `DGLZ_SECURE_COOKIES=false`, then run the server command above. Open `http://127.0.0.1:3000`.
 
 For UI development, use `DGLZ_ALLOWED_ORIGIN=http://127.0.0.1:5173` on the server and run `pnpm --filter @dglz/web dev` in another terminal. Vite proxies `/api` and `/socket.io` to port 3000. Use the same hostname as the configured origin.
