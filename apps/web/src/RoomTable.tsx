@@ -728,8 +728,11 @@ function ActiveView({
     !pending &&
     view.handResult === undefined &&
     (view.setupStage === "play" || tributeSelection || returnSelection);
-  const canAct =
-    canSelect && view.setupStage === "play" && view.currentActor === accountId;
+  const isOwnTurn =
+    view.handResult === undefined &&
+    view.setupStage === "play" &&
+    view.currentActor === accountId;
+  const canAct = canSelect && isOwnTurn;
   const feedback =
     selected.length === 0 || view.setupStage !== "play"
       ? undefined
@@ -800,41 +803,40 @@ function ActiveView({
                 }
                 data-self={isCurrent}
                 data-team={seat.seatIndex % 2}
+                aria-current={isActor ? "true" : undefined}
                 aria-label={`${positionLabel(seat.seatIndex)}，${seat.seatIndex % 2 === 0 ? "一队" : "二队"}`}
               >
-                <div className={styles.seatIdentity}>
-                  <span className={styles.avatar} aria-hidden="true">
-                    {POSITION_NAMES[seat.seatIndex]}
-                  </span>
-                  <div className={styles.seatInfo}>
-                    {isCurrent && (
-                      <span className={styles.tableSeatPosition}>本人</span>
-                    )}
-                    <span className={styles.tableSeatTeam}>
-                      {seat.seatIndex % 2 === 0 ? "一队" : "二队"}
-                    </span>
+                {!isCurrent && (
+                  <div className={styles.seatIdentity}>
                     <span
-                      className={styles.tableSeatName}
-                      aria-live="polite"
-                      aria-atomic="true"
+                      className={styles.avatar}
+                      data-testid="player-avatar"
+                      aria-hidden="true"
                     >
-                      {view.finishPositions[seat.seatIndex] != null &&
-                        `第${view.finishPositions[seat.seatIndex]}名`}
-                      {(isCurrent || count <= 10) && (
-                        <span data-testid="remaining-count">{count} 张</span>
-                      )}
+                      {POSITION_NAMES[seat.seatIndex]}
                     </span>
-                    <span className={styles.actorTag}>
-                      {isActor ? "当前行动" : ""}
-                    </span>
+                    <div className={styles.seatInfo}>
+                      <span
+                        className={styles.tableSeatName}
+                        aria-live="polite"
+                        aria-atomic="true"
+                      >
+                        {view.finishPositions[seat.seatIndex] != null &&
+                          `第${view.finishPositions[seat.seatIndex]}名`}
+                        {count <= 10 && (
+                          <span data-testid="remaining-count">{count} 张</span>
+                        )}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className={styles.seatPlay}>
                   {play !== undefined && (
                     <div
                       className={styles.playedHand}
                       data-testid="played-hand"
                       data-unbeaten={isUnbeaten}
+                      aria-current={isUnbeaten ? "true" : undefined}
                       aria-label={`${positionLabel(seat.seatIndex)}出牌`}
                     >
                       <ul className={styles.playCards}>
@@ -850,10 +852,6 @@ function ActiveView({
                             </li>
                           ))}
                       </ul>
-                      <span className={styles.playCaption}>
-                        {isUnbeaten ? "当前牌 · " : ""}
-                        {PLAY_FORM_LABELS[play.form]}
-                      </span>
                     </div>
                   )}
                   {passed && <span className={styles.passTag}>不出</span>}
@@ -887,7 +885,70 @@ function ActiveView({
         )}
       </section>
 
-      <section className={styles.handPanel} aria-label="你的手牌">
+      <section
+        className={styles.handPanel}
+        aria-label="你的手牌"
+        data-own-turn={isOwnTurn}
+        aria-description={isOwnTurn ? "轮到你出牌" : undefined}
+      >
+        <div className={styles.handToolbar}>
+          <span
+            className={styles.handCount}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span data-testid="remaining-count">
+              {view.handSizes[ownSeat] ?? 0} 张
+            </span>
+            {view.finishPositions[ownSeat] != null &&
+              ` · 第${view.finishPositions[ownSeat]}名`}
+          </span>
+          {view.handResult === undefined && view.setupStage === "play" && (
+            <div className={styles.playActions}>
+              {isOwnTurn && (
+                <>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    disabled={!canAct || feedback?.ok !== true}
+                    onClick={() => onCommand({ type: "Play", cards: selected })}
+                  >
+                    出牌
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canAct || view.unbeatenPlay === undefined}
+                    onClick={() => onCommand({ type: "Pass" })}
+                  >
+                    不出
+                  </button>
+                </>
+              )}
+              <span className={styles.clearSelection}>
+                {selected.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canSelect}
+                    onClick={() => setSelection({ handKey, cards: [] })}
+                  >
+                    清空选择
+                  </button>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+        {view.handResult === undefined && view.setupStage === "play" && (
+          <p className={styles.handNote} aria-live="polite">
+            {feedback === undefined
+              ? null
+              : feedback.ok
+                ? `已选 ${selected.length} 张 · ${PLAY_FORM_LABELS[feedback.play.form]} · ${feedback.play.rank === "BIG" ? "大王" : feedback.play.rank === "SMALL" ? "小王" : feedback.play.rank}`
+                : errorMessage("domain-rejected", feedback.reason)}
+          </p>
+        )}
         <div className={styles.handScroll}>
           <ul className={styles.hand} aria-label="你的手牌">
             {handGroups.map((group) => (
@@ -1092,47 +1153,6 @@ function ActiveView({
               ))}
             </details>
           )}
-        {view.handResult === undefined && view.setupStage === "play" && (
-          <>
-            <p className={styles.handNote} aria-live="polite">
-              {feedback === undefined
-                ? null
-                : feedback.ok
-                  ? `已选 ${selected.length} 张 · ${PLAY_FORM_LABELS[feedback.play.form]} · ${feedback.play.rank === "BIG" ? "大王" : feedback.play.rank === "SMALL" ? "小王" : feedback.play.rank}`
-                  : errorMessage("domain-rejected", feedback.reason)}
-            </p>
-            <div className={styles.playActions}>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                disabled={!canAct || feedback?.ok !== true}
-                onClick={() => onCommand({ type: "Play", cards: selected })}
-              >
-                出牌
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                disabled={!canAct || view.unbeatenPlay === undefined}
-                onClick={() => onCommand({ type: "Pass" })}
-              >
-                不出
-              </button>
-              <span className={styles.clearSelection}>
-                {selected.length > 0 && (
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={!canSelect}
-                    onClick={() => setSelection({ handKey, cards: [] })}
-                  >
-                    清空选择
-                  </button>
-                )}
-              </span>
-            </div>
-          </>
-        )}
       </section>
     </div>
   );

@@ -458,6 +458,7 @@
 }
 
 .tableHeading {
+  align-items: baseline;
   min-height: 44px;
   gap: 8px;
   padding-right: 150px;
@@ -467,7 +468,7 @@
 }
 
 .trumpBadge {
-  align-items: center;
+  align-items: baseline;
   display: flex;
   gap: 4px;
 }
@@ -539,44 +540,41 @@
   min-width: 0;
 }
 
-.tableSeatPosition {
-  color: var(--ivory);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.tableSeatTeam,
-.tableSeatName,
-.actorTag {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.tableSeatName,
-.actorTag {
-  min-height: 16px;
-}
-
-.tableSeatTeam {
-  color: var(--team-color);
+.tableSeat[data-self="true"] {
+  height: 0;
 }
 
 .tableSeatName {
+  font-size: 11px;
+  min-height: 16px;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   color: var(--ivory);
 }
 
-.actorTag {
-  color: var(--brass-light);
-  min-height: 16px;
-}
-
 .handPanel {
-  border-top: 1px solid var(--line);
+  border-top: 3px solid transparent;
   min-width: 0;
   padding: 10px 12px 0;
+}
+
+.handPanel[data-own-turn="true"] {
+  border-top-color: var(--brass);
+}
+
+.handToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.handCount {
+  color: var(--ivory);
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .handScroll {
@@ -762,18 +760,6 @@
   box-shadow: inset 0 0 0 1px var(--brass);
 }
 
-.playCaption {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  margin-top: 4px;
-  text-align: center;
-}
-
-.playedHand[data-unbeaten="true"] .playCaption {
-  color: var(--brass-light);
-}
-
 .seatPlay {
   position: absolute;
   width: max-content;
@@ -876,26 +862,25 @@
   min-width: 2.75rem;
 }
 
-.handPanel > .playActions {
-  justify-content: center;
-  margin-top: 2px;
+.handToolbar .playActions {
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0;
 }
 
-.handPanel > .playActions button,
-.clearSelection {
-  min-width: 88px;
+.handToolbar .playActions button {
+  min-width: 64px;
+  padding: 0.5rem 0.65rem;
   font-size: 14px;
 }
 
 .clearSelection button {
   width: 100%;
-  padding-inline: 0.25rem;
-  border-color: transparent;
-  background: transparent;
 }
 
 .clearSelection {
-  width: 88px;
+  width: 80px;
+  flex-shrink: 0;
 }
 
 .result {
@@ -1007,19 +992,10 @@
   .seatInfo {
     gap: 0;
   }
-  .tableSeatTeam {
-    position: absolute;
-    top: 5px;
-    left: calc(50% + 22px);
-    font-size: 10px;
-    white-space: nowrap;
-  }
   .tableSeatName {
     justify-content: center;
   }
-  .tableSeatPosition,
-  .tableSeatName,
-  .actorTag {
+  .tableSeatName {
     font-size: 10px;
   }
   .seatPlay {
@@ -1048,9 +1024,6 @@
   }
   .playCards .cardFace[data-joker="true"] .cardRank {
     font-size: 14px;
-  }
-  .playCaption {
-    font-size: 10px;
   }
   .passTag {
     font-size: 12px;

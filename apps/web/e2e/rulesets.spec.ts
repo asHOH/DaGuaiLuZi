@@ -703,9 +703,7 @@ async function runHappyPath(
         await expect(page.getByRole("status")).toContainText(
           "连接已断开，正在重连…",
         );
-        await expect(
-          page.getByRole("button", { name: "出牌", exact: true }),
-        ).toBeDisabled();
+        await expect(page.getByTestId("hand-card").first()).toBeDisabled();
       }
     });
     await Promise.all(clients.map((client) => client.connect()));

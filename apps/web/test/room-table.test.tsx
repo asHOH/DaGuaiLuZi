@@ -93,9 +93,23 @@ it.each([4, 6])(
       [...markup.matchAll(/data-testid="remaining-count">(\d+) 张/g)].map(
         (match) => Number(match[1]),
       ),
-    ).toEqual(count === 4 ? [27, 10, 0] : [27, 10, 0, 9]);
+    ).toEqual(count === 4 ? [10, 0, 27] : [10, 0, 9, 27]);
     expect(markup.match(/data-testid="played-hand"/g)).toHaveLength(2);
     expect(markup.match(/data-unbeaten="true"/g)).toHaveLength(1);
+    expect(markup.match(/data-testid="player-avatar"/g)).toHaveLength(
+      count - 1,
+    );
+    expect(markup).not.toMatch(/本人|当前行动|当前牌 ·|>单张<|>[一二]队</);
+    expect(markup).toContain('data-own-turn="true"');
+    expect(markup).toContain(">出牌</button>");
+    expect(markup).toContain(">不出</button>");
+    expect(markup.indexOf(">出牌</button>")).toBeLessThan(
+      markup.indexOf('data-testid="hand-card"'),
+    );
+    const offTurn = render("p2");
+    expect(offTurn).toContain('data-own-turn="false"');
+    expect(offTurn).not.toMatch(/>(出牌|不出)<\/button>/);
+    expect(markup.match(/aria-current="true"/g)).toHaveLength(2);
     expect(markup.match(/data-card="9S#1"/g)).toHaveLength(1);
     expect(markup).toContain('data-seat="1" data-position="1"');
     expect(markup).toContain(

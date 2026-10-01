@@ -6,7 +6,9 @@ PC-first game surface: one continuous table, spatial four/six-player seating, lo
 - Show each seat's latest played cards until lead reset, including after a pass; emphasize the current play to beat. Recover these public plays on reconnect. Pass markers follow the current unbeaten play.
 - Automatically display the count declaration required by [the rules](ruleset.md#turn-flow): opponents' counts only at 10 or fewer; your own count always. Exact counts remain in transmitted views.
 - Keep selection and explicit submission separate; retain off-turn selection, keyboard operation, and setup/result/recovery actions.
-- Use Phosphor for suits and UI icons. During active play, hide account/history/logout/home navigation and invitations; retain owner termination. Show connection/sync/command states as accessible icons. Show each seat number once, omit the visible hand heading, and show clear-selection only for a selection. Compact metadata puts the enlarged current Trump Rank first, then the other Team Level, both in their team colors.
+- Use Phosphor for suits and UI icons. Active play hides account/history/logout/home navigation and invitations; retain owner termination. Use accessible icons for connection/sync/command states.
+- Show numbered avatars only for other players; omit the entire self-seat display, team/turn/play captions, and visible hand heading. Keep other players' yellow turn markers and the current-play marker. Indicate your turn with a bold accent divider above the hand; hide it otherwise.
+- Above the hand, place your card count at the row's left and the play/pass/clear controls alongside. Show play/pass only on your turn and clear only with a selection; pass and clear share styling. Metadata: enlarged Trump Rank first, then the other Team Level, in team colors and baseline-aligned.
 
 Existing account/lobby baseline:
 
