@@ -105,6 +105,26 @@ it.each([4, 6])(
       'data-seat="2" data-position="0" data-self="true"',
     );
     expect(markup).not.toContain('aria-label="当前出牌"');
+    expect(markup).not.toContain('id="hand-title"');
+    expect(markup).not.toContain("清空选择");
+    expect(markup).not.toMatch(/>[^<]*号位</);
+    if (room.view.lifecycle !== "ACTIVE")
+      throw new Error("expected-active-room");
+    for (const dealerTeam of [0, 1] as const) {
+      room.view.dealerTeam = dealerTeam;
+      room.view.teamLevels = ["3", "4"];
+      room.view.trumpRank = dealerTeam === 0 ? "3" : "4";
+      const levels = render();
+      const currentTeam = dealerTeam === 0 ? "一队" : "二队";
+      const otherTeam = dealerTeam === 0 ? "二队" : "一队";
+      const currentLabel = `aria-label="${currentTeam}，当前级牌 ${room.view.trumpRank}"`;
+      const otherLabel = `aria-label="${otherTeam}等级 ${room.view.teamLevels[1 - dealerTeam]}"`;
+      expect(levels).toContain(currentLabel);
+      expect(levels).toContain(otherLabel);
+      expect(levels.indexOf(currentLabel)).toBeLessThan(
+        levels.indexOf(otherLabel),
+      );
+    }
   },
 );
 

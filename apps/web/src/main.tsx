@@ -15,6 +15,7 @@ import { HandHistory } from "./HandHistory";
 import { replayHash, replaySource, type ReplaySource } from "./replay-links";
 import { RoomTable } from "./RoomTable";
 import { SuitIcon } from "./SuitIcon";
+import { ConnectionStatus } from "./ConnectionStatus";
 import styles from "./shell.module.css";
 
 type Account = { accountId: string; username: string };
@@ -305,50 +306,62 @@ function App() {
     navigate(id);
   }
   const validRoom = RoomIdSchema.safeParse(roomId).success;
+  const activeGame = validRoom && roomState.room?.view.lifecycle === "ACTIVE";
+  const showNavigation =
+    !activeGame &&
+    (!validRoom || roomState.room !== null || roomState.error !== "");
   return (
-    <div
-      className={`${styles.shell} ${validRoom && roomState.room?.view.lifecycle === "ACTIVE" ? styles.gameShell : ""}`}
-    >
+    <div className={`${styles.shell} ${activeGame ? styles.gameShell : ""}`}>
       <header className={styles.header}>
-        <a
-          className={styles.brand}
-          href="/"
-          onClick={(event) => {
-            event.preventDefault();
-            navigate("");
-          }}
-        >
-          大怪路子
-        </a>
+        {!showNavigation ? (
+          <span className={styles.brand}>大怪路子</span>
+        ) : (
+          <a
+            className={styles.brand}
+            href="/"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("");
+            }}
+          >
+            大怪路子
+          </a>
+        )}
         {account && (
           <div className={styles.account}>
             <span>{account.username}</span>
-            <a
-              href="/account"
-              onClick={(event) => {
-                event.preventDefault();
-                navigatePath("/account");
-              }}
-            >
-              修改密码
-            </a>
-            <a
-              href="/history"
-              onClick={(event) => {
-                event.preventDefault();
-                navigatePath("/history");
-              }}
-            >
-              牌局记录
-            </a>
-            <button
-              disabled={busy}
-              onClick={() => {
-                void logout();
-              }}
-            >
-              退出登录
-            </button>
+            {!showNavigation ? (
+              <ConnectionStatus state={roomState} />
+            ) : (
+              <>
+                <a
+                  href="/account"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigatePath("/account");
+                  }}
+                >
+                  修改密码
+                </a>
+                <a
+                  href="/history"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigatePath("/history");
+                  }}
+                >
+                  牌局记录
+                </a>
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    void logout();
+                  }}
+                >
+                  退出登录
+                </button>
+              </>
+            )}
           </div>
         )}
       </header>
@@ -585,32 +598,26 @@ function App() {
           </section>
         ) : (
           <>
-            <div className={styles.roomToolbar}>
-              <div className={styles.roomBar}>
-                <button onClick={() => navigate("")}>返回开桌</button>
-                <details className={styles.invite}>
-                  <summary>邀请好友</summary>
-                  <label>
-                    邀请链接
-                    <input
-                      readOnly
-                      aria-label="邀请链接"
-                      value={`${location.origin}/rooms/${roomId}`}
-                      onFocus={(event) => event.target.select()}
-                    />
-                  </label>
-                </details>
+            {showNavigation && (
+              <div className={styles.roomToolbar}>
+                <div className={styles.roomBar}>
+                  <button onClick={() => navigate("")}>返回开桌</button>
+                  <details className={styles.invite}>
+                    <summary>邀请好友</summary>
+                    <label>
+                      邀请链接
+                      <input
+                        readOnly
+                        aria-label="邀请链接"
+                        value={`${location.origin}/rooms/${roomId}`}
+                        onFocus={(event) => event.target.select()}
+                      />
+                    </label>
+                  </details>
+                </div>
+                <ConnectionStatus state={roomState} />
               </div>
-              <div className={styles.connection} role="status">
-                {!roomState.synced || !roomState.connected
-                  ? "正在同步牌局…"
-                  : roomState.pending
-                    ? "正在提交…"
-                    : roomState.uncertain
-                      ? "等待确认操作结果"
-                      : "已连接 · 牌局已同步"}
-              </div>
-            </div>
+            )}
             {roomState.error && (
               <div className={styles.notice} role="alert">
                 {roomState.error}

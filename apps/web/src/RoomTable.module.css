@@ -68,10 +68,8 @@
 
 .sectionHeading,
 .tableHeading,
-.handHeading,
 .panelHeading,
 .seatTopline,
-.tableMeta,
 .policyLine {
   align-items: center;
   display: flex;
@@ -123,7 +121,6 @@
 
 .sectionHeading,
 .tableHeading,
-.handHeading,
 .panelHeading {
   justify-content: space-between;
 }
@@ -462,7 +459,7 @@
 
 .tableHeading {
   min-height: 44px;
-  gap: 24px;
+  gap: 8px;
   padding-right: 150px;
   justify-content: flex-start;
   flex-wrap: wrap;
@@ -472,7 +469,7 @@
 .trumpBadge {
   align-items: center;
   display: flex;
-  gap: 8px;
+  gap: 4px;
 }
 
 .trumpBadge span {
@@ -481,8 +478,15 @@
 }
 
 .trumpBadge strong {
-  color: var(--brass-light);
-  font-size: 1.35rem;
+  font-size: 1.6rem;
+}
+
+.trumpBadge [data-team="0"] {
+  color: #8cd6c8;
+}
+
+.trumpBadge [data-team="1"] {
+  color: #edb3c2;
 }
 
 .tableSeats {
@@ -569,31 +573,10 @@
   min-height: 16px;
 }
 
-.tableMeta {
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.tableMeta span {
-  color: var(--muted);
-  font-size: 0.74rem;
-}
-
-.tableMeta strong {
-  color: var(--ivory);
-  font-size: 1rem;
-  margin-left: 0.25rem;
-}
-
 .handPanel {
   border-top: 1px solid var(--line);
   min-width: 0;
   padding: 10px 12px 0;
-}
-
-.handPanel h2 {
-  font-size: 12px;
-  color: var(--muted);
 }
 
 .handScroll {
@@ -898,9 +881,21 @@
   margin-top: 2px;
 }
 
-.handPanel > .playActions button {
+.handPanel > .playActions button,
+.clearSelection {
   min-width: 88px;
   font-size: 14px;
+}
+
+.clearSelection button {
+  width: 100%;
+  padding-inline: 0.25rem;
+  border-color: transparent;
+  background: transparent;
+}
+
+.clearSelection {
+  width: 88px;
 }
 
 .result {
@@ -985,13 +980,9 @@
 
 @media (max-width: 1000px) {
   .tableHeading {
-    gap: 10px 16px;
-    padding-top: 44px;
-    padding-right: 0;
+    gap: 4px 8px;
+    padding-right: 125px;
     padding-bottom: 8px;
-  }
-  .tableMeta {
-    gap: 12px;
   }
   .tableSeats {
     margin: 12px 0;
@@ -1097,9 +1088,7 @@
     align-items: center;
   }
 
-  .sectionHeading,
-  .tableHeading,
-  .handHeading {
+  .sectionHeading {
     align-items: flex-start;
     gap: 0.75rem;
   }

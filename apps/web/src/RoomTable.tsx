@@ -745,23 +745,29 @@ function ActiveView({
       <section className={styles.tableStage} aria-label="牌桌">
         <div className={styles.tableHeading}>
           <h2 id="table-title">
-            {view.selectedActivity === "challenge" ? "同牌挑战" : "牌局"} · 第{" "}
+            {view.selectedActivity === "challenge" ? "同牌挑战 · " : ""}第
             {view.handNumber ??
               (view.completedHandCount ?? 0) +
-                (view.handResult === undefined ? 1 : 0)}{" "}
+                (view.handResult === undefined ? 1 : 0)}
             局
           </h2>
-          <div className={styles.tableMeta}>
-            <span>
-              一队等级 <strong>{view.teamLevels[0]}</strong>
-            </span>
-            <span>
-              二队等级 <strong>{view.teamLevels[1]}</strong>
-            </span>
-          </div>
           <div className={styles.trumpBadge}>
-            <span>当前级牌</span>
-            <strong>{view.trumpRank}</strong>
+            <span aria-hidden="true">· 级牌</span>
+            <strong
+              role="img"
+              data-team={view.dealerTeam}
+              aria-label={`${view.dealerTeam === 0 ? "一队" : "二队"}，当前级牌 ${view.trumpRank}`}
+            >
+              {view.trumpRank}
+            </strong>
+            <span aria-hidden="true">:</span>
+            <b
+              role="img"
+              data-team={1 - view.dealerTeam}
+              aria-label={`${view.dealerTeam === 0 ? "二队" : "一队"}等级 ${view.teamLevels[1 - view.dealerTeam]}`}
+            >
+              {view.teamLevels[1 - view.dealerTeam]}
+            </b>
           </div>
         </div>
 
@@ -794,16 +800,16 @@ function ActiveView({
                 }
                 data-self={isCurrent}
                 data-team={seat.seatIndex % 2}
+                aria-label={`${positionLabel(seat.seatIndex)}，${seat.seatIndex % 2 === 0 ? "一队" : "二队"}`}
               >
                 <div className={styles.seatIdentity}>
                   <span className={styles.avatar} aria-hidden="true">
                     {POSITION_NAMES[seat.seatIndex]}
                   </span>
                   <div className={styles.seatInfo}>
-                    <span className={styles.tableSeatPosition}>
-                      {positionLabel(seat.seatIndex)}
-                      {isCurrent ? " · 本人" : ""}
-                    </span>
+                    {isCurrent && (
+                      <span className={styles.tableSeatPosition}>本人</span>
+                    )}
                     <span className={styles.tableSeatTeam}>
                       {seat.seatIndex % 2 === 0 ? "一队" : "二队"}
                     </span>
@@ -881,10 +887,7 @@ function ActiveView({
         )}
       </section>
 
-      <section className={styles.handPanel} aria-labelledby="hand-title">
-        <div className={styles.handHeading}>
-          <h2 id="hand-title">你的手牌</h2>
-        </div>
+      <section className={styles.handPanel} aria-label="你的手牌">
         <div className={styles.handScroll}>
           <ul className={styles.hand} aria-label="你的手牌">
             {handGroups.map((group) => (
@@ -1115,14 +1118,18 @@ function ActiveView({
               >
                 不出
               </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                disabled={!canSelect || selected.length === 0}
-                onClick={() => setSelection({ handKey, cards: [] })}
-              >
-                清空选择
-              </button>
+              <span className={styles.clearSelection}>
+                {selected.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!canSelect}
+                    onClick={() => setSelection({ handKey, cards: [] })}
+                  >
+                    清空选择
+                  </button>
+                )}
+              </span>
             </div>
           </>
         )}

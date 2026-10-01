@@ -31,6 +31,26 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     let current = await room(page);
     expect(current.view.seats).toHaveLength(4);
     await expect(page.getByTestId("remaining-count")).toHaveCount(1);
+    for (const name of ["修改密码", "牌局记录", "大怪路子"]) {
+      await expect(page.getByRole("link", { name, exact: true })).toHaveCount(
+        0,
+      );
+    }
+    for (const name of ["退出登录", "返回开桌", "清空选择"]) {
+      await expect(page.getByRole("button", { name, exact: true })).toHaveCount(
+        0,
+      );
+    }
+    await expect(page.getByText("邀请好友", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "你的手牌" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("button", { name: "终止比赛" })).toBeVisible();
+    const status = page.locator("header").first().getByRole("status");
+    await expect(status).toHaveAttribute("data-state", "ready");
+    await expect(status.locator("svg")).toBeVisible();
+    const playButton = page.getByRole("button", { name: "出牌", exact: true });
+    const playBounds = await playButton.boundingBox();
     await page.screenshot({
       path: test.info().outputPath("four-player-desktop.png"),
       fullPage: true,
@@ -39,9 +59,12 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     const selectedCard = page.getByTestId("hand-card").first();
     await selectedCard.click({ position: { x: 12, y: 32 } });
     await expect(selectedCard).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "清空选择" })).toBeVisible();
+    expect(await playButton.boundingBox()).toEqual(playBounds);
     expect((await room(page)).revision).toBe(pausedRevision);
     await selectedCard.press("Enter");
     await expect(selectedCard).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByRole("button", { name: "清空选择" })).toHaveCount(0);
     // The driver runs in Node, so browser clock mocking cannot verify the pause.
     await page.waitForTimeout(1500);
     expect((await room(page)).revision).toBe(pausedRevision);

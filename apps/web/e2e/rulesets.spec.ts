@@ -49,15 +49,23 @@ async function loginUi(
   await page.getByLabel("用户名").fill(account.username);
   await page.getByLabel("密码").fill(account.password);
   await page.getByRole("button", { name: "登录" }).click();
-  await expect(
-    page.getByRole("button", { name: "退出登录", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator("header").first()).toContainText(account.username);
   await expect(page.getByRole("contentinfo")).toHaveCount(0);
   if (destination === `${url}/`) {
     await expect(
       page.getByRole("heading", { name: "今晚，怎么打？" }),
     ).toBeVisible();
   }
+}
+
+async function logoutFromHome(page: Page, url: string): Promise<void> {
+  const destination = page.url();
+  await page.goto(url);
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录", exact: true }),
+  ).toBeVisible();
+  await page.goto(destination);
 }
 
 async function createRoom(
@@ -370,7 +378,7 @@ async function completeSetup(
     if (!browserSubmitted) {
       const account = accounts.find((entry) => entry.accountId === actor);
       if (account === undefined) throw new Error("missing-setup-account");
-      await page.getByRole("button", { name: "退出登录" }).click();
+      await logoutFromHome(page, url);
       await expect(
         page.getByRole("button", { name: "登录", exact: true }),
       ).toBeVisible();
@@ -524,7 +532,9 @@ async function runHappyPath(
     ).toBeVisible();
 
     await ownerContext.setOffline(true);
-    await expect(ownerPage.getByRole("status")).toContainText("正在同步牌局…");
+    await expect(ownerPage.getByRole("status")).toContainText(
+      "连接已断开，正在重连…",
+    );
     await expect(
       ownerPage.getByRole("button", { name: "选择比赛" }),
     ).toBeDisabled();
@@ -690,7 +700,9 @@ async function runHappyPath(
 
     await server.restart(async () => {
       for (const page of [ownerPage, joinerPage]) {
-        await expect(page.getByRole("status")).toContainText("正在同步牌局…");
+        await expect(page.getByRole("status")).toContainText(
+          "连接已断开，正在重连…",
+        );
         await expect(
           page.getByRole("button", { name: "出牌", exact: true }),
         ).toBeDisabled();
@@ -713,7 +725,9 @@ async function runHappyPath(
     }
 
     await ownerContext.setOffline(true);
-    await expect(ownerPage.getByRole("status")).toContainText("正在同步牌局…");
+    await expect(ownerPage.getByRole("status")).toContainText(
+      "连接已断开，正在重连…",
+    );
     await ownerContext.setOffline(false);
     await expect(ownerPage.getByRole("status")).toHaveText(
       "已连接 · 牌局已同步",
@@ -728,7 +742,7 @@ async function runHappyPath(
     await ownerPage.setViewportSize({ width: 1280, height: 900 });
     await assertNoHorizontalOverflow(ownerPage);
     await captureScreenshot(ownerPage, `${rulesetId}-desktop.png`);
-    await ownerPage.getByRole("button", { name: "退出登录" }).click();
+    await logoutFromHome(ownerPage, server.url);
     await expect(
       ownerPage.getByRole("button", { name: "登录", exact: true }),
     ).toBeVisible();
@@ -745,7 +759,7 @@ async function runHappyPath(
         ),
     ).toEqual(joinerCards);
 
-    await ownerPage.getByRole("button", { name: "退出登录" }).click();
+    await logoutFromHome(ownerPage, server.url);
     await expect(
       ownerPage.getByRole("button", { name: "登录", exact: true }),
     ).toBeVisible();
@@ -770,7 +784,7 @@ async function runHappyPath(
       server.accounts,
     );
     // Setup may have signed this page into another player's account.
-    await ownerPage.getByRole("button", { name: "退出登录" }).click();
+    await logoutFromHome(ownerPage, server.url);
     await expect(
       ownerPage.getByRole("button", { name: "登录", exact: true }),
     ).toBeVisible();
@@ -1692,7 +1706,8 @@ test("修改密码后清除各标签页手牌并可用新密码返回牌局", as
       .evaluateAll((nodes) =>
         nodes.map((node) => node.getAttribute("data-card")),
       );
-    await page.getByRole("link", { name: "修改密码" }).click();
+    // A saved account URL remains valid outside the playing interface.
+    await page.goto(`${testServer.url}/account`);
     await page.reload();
     await expect(page.getByRole("form", { name: "修改密码" })).toBeVisible();
 
@@ -1824,7 +1839,7 @@ test("修改密码拒绝过期账户页面并处理响应丢失", async ({
     await expect(page.getByTestId("hand-card")).toHaveCount(27);
     await other.goto(invite);
     await expect(other.getByTestId("hand-card")).toHaveCount(27);
-    await page.getByRole("link", { name: "修改密码" }).click();
+    await page.goto(`${testServer.url}/account`);
     const password = "password-after-lost-response";
     let committed = false;
     const held = new Promise<void>((resolve) => {
