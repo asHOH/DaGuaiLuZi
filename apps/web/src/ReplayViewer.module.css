@@ -203,6 +203,10 @@
   gap: 0.1em;
 }
 
+.card:not(.cardJoker) > span {
+  letter-spacing: -0.06em;
+}
+
 .cardRed {
   color: #ad4339;
 }

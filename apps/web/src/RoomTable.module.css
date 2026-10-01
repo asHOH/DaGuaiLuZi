@@ -672,6 +672,11 @@
 
 .cardRank {
   font-size: 29px;
+  letter-spacing: -0.095em;
+}
+
+.cardFace:not([data-joker="true"]) .cardRank {
+  padding-right: 0.09em;
 }
 
 .cardSuit {
@@ -691,8 +696,10 @@
 
 .cardFace[data-joker="true"] .cardRank {
   width: 1em;
+  margin-top: 0.1em;
   overflow-wrap: anywhere;
   font-size: 24px;
+  letter-spacing: normal;
   line-height: 1.1;
 }
 
