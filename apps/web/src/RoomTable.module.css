@@ -8,7 +8,6 @@
   --muted: #b9c8b6;
   --line: rgba(229, 219, 195, 0.16);
   color: var(--ivory);
-  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   line-height: 1.5;
   padding: 0 0 1rem;
 }
@@ -50,8 +49,12 @@
   min-width: 0;
 }
 
+.challengePanel input,
 .challengeShare input {
-  font-family: monospace;
+  font-family: var(--font-code);
+}
+
+.challengeShare input {
   font-size: 0.85rem;
 }
 
@@ -127,7 +130,7 @@
 
 .roomTable h2,
 .roomTable h3 {
-  font-family: "Noto Serif SC", "Songti SC", serif;
+  font-family: var(--font-heading);
   letter-spacing: 0.05em;
   margin: 0.25rem 0 0;
 }
@@ -540,7 +543,7 @@
   background: #223d3e;
   color: var(--team-color);
   font-size: 25px;
-  font-family: "Songti SC", serif;
+  font-family: var(--font-heading);
 }
 
 .tableSeatActor .avatar {
@@ -647,7 +650,8 @@
   border-radius: 6px;
   box-shadow: 0 2px 4px #081a1833;
   color: #171e1d;
-  font-family: Georgia, "Songti SC", serif;
+  font-family: var(--font-card);
+  font-variant-numeric: lining-nums tabular-nums;
   font-weight: 700;
   pointer-events: none;
 }

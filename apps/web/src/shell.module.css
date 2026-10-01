@@ -7,7 +7,11 @@
   --ivory: #f5efdf;
   --brass: #d4b776;
   --muted: #b3c6b8;
-  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-ui: "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-heading: "Songti SC", "SimSun", serif;
+  --font-card: "Times New Roman", Times, var(--font-heading);
+  --font-code: monospace;
+  font-family: var(--font-ui);
   color: var(--ivory);
   background: #102e28;
 }
@@ -61,7 +65,7 @@
 }
 :global(h1),
 :global(h2) {
-  font-family: "Songti SC", "SimSun", serif;
+  font-family: var(--font-heading);
   font-weight: 600;
 }
 :global(h1) {
@@ -93,7 +97,7 @@
 }
 .brand {
   color: var(--ivory);
-  font-family: "Songti SC", "SimSun", serif;
+  font-family: var(--font-heading);
   font-size: 1.7rem;
   text-decoration: none;
   letter-spacing: 0.14em;

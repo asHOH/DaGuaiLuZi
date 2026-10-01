@@ -58,7 +58,7 @@
 .lookupControls input {
   flex: 1;
   min-width: 0;
-  font-family: monospace;
+  font-family: var(--font-code);
 }
 
 .lookupControls button {
@@ -189,6 +189,8 @@
 .card {
   background: var(--ivory);
   border-radius: 0.3rem;
+  font-family: var(--font-card);
+  font-variant-numeric: lining-nums tabular-nums;
   font-weight: 700;
   min-width: 2.1rem;
   padding: 0.5rem 0.25rem;

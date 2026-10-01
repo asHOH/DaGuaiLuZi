@@ -17,4 +17,6 @@ Existing account/lobby baseline:
 
 Deep green felt, warm ivory cards, muted brass accents. Chinese headings use Songti/SimSun; controls use PingFang SC/Microsoft YaHei. Thin table borders and soft card shadows; no artwork dependency. Keep the hand and current actor prominent on mobile. Restrict motion to brief focus/hover transitions and disable it for reduced-motion preferences.
 
+Share font roles across pages: UI, decorative headings/avatars, cards, and codes. Live/replay card ranks use bold Times New Roman/Times with Chinese heading fallbacks and lining, tabular numerals; all Challenge Code fields use monospace. Active-game headings retain UI typography. Use local fonts; no font downloads.
+
 Account settings reuse these controls in one narrow, centered form; keep password-change consequences beside the fields.
