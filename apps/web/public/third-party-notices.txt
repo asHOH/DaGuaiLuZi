@@ -1,0 +1,20 @@
+花色图标
+
+作品：Spades、Clubs（黑色花色）
+作者：Skoll（Game-icons.net）
+许可：Creative Commons Attribution 3.0 Unported（CC BY 3.0）
+https://creativecommons.org/licenses/by/3.0/
+
+来源：
+https://game-icons.net/1x1/skoll/spades.html
+https://game-icons.net/1x1/skoll/clubs.html
+
+作品：poker-hearts-fill、poker-diamonds-fill（红色花色）
+作者：Remix Design
+许可：Remix Icon License v1.0
+https://github.com/Remix-Design/RemixIcon/blob/master/License
+来源：https://remixicon.com
+
+调整：使用 Iconify 提供的轮廓路径，移除背景，填色跟随界面文字颜色；等比例缩放并居中，调整视觉平衡。
+https://icon-sets.iconify.design/game-icons/
+https://icon-sets.iconify.design/ri/

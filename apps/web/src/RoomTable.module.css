@@ -411,7 +411,7 @@
 .activeLayout {
   --card-width: 80px;
   --card-height: 114px;
-  --card-step: 36px;
+  --card-step: 34px;
   grid-template-columns: minmax(0, 1fr);
   max-width: none;
   gap: 0;
