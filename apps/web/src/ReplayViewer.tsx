@@ -11,6 +11,7 @@ import { ApiError, api } from "./api";
 import { PLAY_FORM_LABELS } from "./play-feedback";
 import { RULE_LABELS, RULE_VALUES } from "./RoomTable";
 import { cardLabel } from "./card-display";
+import { SuitIcon } from "./SuitIcon";
 import { ChallengeShare } from "./ChallengeControls";
 import { type ReplaySource } from "./replay-links";
 
@@ -96,7 +97,8 @@ function CardList({
               data-testid={testId}
               title={card.aria}
             >
-              {card.display}
+              {card.rank}
+              {card.suit !== undefined && <SuitIcon suit={card.suit} />}
             </span>
           </li>
         );

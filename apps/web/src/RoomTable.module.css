@@ -670,11 +670,13 @@
 }
 
 .cardSuit {
+  display: flex;
   font-size: 25px;
   margin-top: 2px;
 }
 
 .cardPip {
+  display: flex;
   position: absolute;
   bottom: 5px;
   right: 7px;

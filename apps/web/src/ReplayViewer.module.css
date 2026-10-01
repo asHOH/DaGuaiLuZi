@@ -195,6 +195,12 @@
   text-align: center;
 }
 
+.card > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1em;
+}
+
 .cardRed {
   color: #ad4339;
 }

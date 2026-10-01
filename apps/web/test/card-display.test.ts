@@ -26,7 +26,8 @@ it("sorts by rule strength, then SHCD, then copy without mutating the hand", () 
   expect(hand).toEqual(original);
   expect(cardLabel("10H#2")).toMatchObject({
     rank: "10",
-    symbol: "♥",
+    suit: "H",
+    display: "红桃10",
     aria: "红桃10，第2张",
     red: true,
   });

@@ -59,7 +59,7 @@ it.each([4, 6])(
         failureCounters: [0, 0],
         completedHandCount: 0,
         handSizes: [27, 11, 10, 0, 9, 26].slice(0, count),
-        hand: ["AS#2", "AH#1", "AS#1"],
+        hand: ["AS#2", "AH#1", "AS#1", "AC#1", "AD#1", "SMALL#1", "BIG#1"],
         latestPlays,
         unbeatenPlay: latestPlays[1],
         currentActor: "p0",
@@ -84,6 +84,11 @@ it.each([4, 6])(
         />,
       );
     const markup = render();
+    expect(markup.match(/<svg\b/g)).toHaveLength(14);
+    expect(markup).not.toMatch(/[♠♥♣♦]|<text\b/);
+    for (const label of ["黑桃A", "红桃A", "梅花A", "方块A", "小王", "大王"]) {
+      expect(markup).toContain(`aria-label="${label}，第1张"`);
+    }
     expect(
       [...markup.matchAll(/data-testid="remaining-count">(\d+) 张/g)].map(
         (match) => Number(match[1]),

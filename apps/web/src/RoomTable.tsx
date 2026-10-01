@@ -11,6 +11,7 @@ import { errorMessage } from "./api";
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
 import { ChallengeEntry, ChallengeShare } from "./ChallengeControls";
 import { cardLabel, groupCards } from "./card-display";
+import { SuitIcon } from "./SuitIcon";
 
 import styles from "./RoomTable.module.css";
 
@@ -101,9 +102,17 @@ function CardFace({ code }: { code: string }) {
     >
       <span className={styles.cardCorner}>
         <span className={styles.cardRank}>{card.rank}</span>
-        {card.symbol && <span className={styles.cardSuit}>{card.symbol}</span>}
+        {card.suit !== undefined && (
+          <span className={styles.cardSuit}>
+            <SuitIcon suit={card.suit} />
+          </span>
+        )}
       </span>
-      <span className={styles.cardPip}>{card.symbol}</span>
+      {card.suit !== undefined && (
+        <span className={styles.cardPip}>
+          <SuitIcon suit={card.suit} />
+        </span>
+      )}
     </span>
   );
 }

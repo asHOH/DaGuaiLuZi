@@ -15,6 +15,7 @@
   "dependencies": {
     "@dglz/game-rules": "workspace:*",
     "@dglz/protocol": "workspace:*",
+    "@phosphor-icons/react": "2.1.10",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "socket.io-client": "4.8.3"

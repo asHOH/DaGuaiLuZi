@@ -14,6 +14,7 @@ import { ReplayViewer } from "./ReplayViewer";
 import { HandHistory } from "./HandHistory";
 import { replayHash, replaySource, type ReplaySource } from "./replay-links";
 import { RoomTable } from "./RoomTable";
+import { SuitIcon } from "./SuitIcon";
 import styles from "./shell.module.css";
 
 type Account = { accountId: string; username: string };
@@ -381,9 +382,15 @@ function App() {
                 熟悉的大怪路子，现在随时开桌。
               </p>
               <div className={styles.motif} aria-hidden="true">
-                <span>♠</span>
-                <span>♥</span>
-                <span>♣</span>
+                <span>
+                  <SuitIcon suit="S" />
+                </span>
+                <span>
+                  <SuitIcon suit="H" />
+                </span>
+                <span>
+                  <SuitIcon suit="C" />
+                </span>
               </div>
             </div>
             <form

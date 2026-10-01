@@ -7,10 +7,10 @@ import {
 } from "@dglz/game-rules";
 
 const SUITS = {
-  S: { name: "黑桃", symbol: "♠", order: 0 },
-  H: { name: "红桃", symbol: "♥", order: 1 },
-  C: { name: "梅花", symbol: "♣", order: 2 },
-  D: { name: "方块", symbol: "♦", order: 3 },
+  S: { name: "黑桃", order: 0 },
+  H: { name: "红桃", order: 1 },
+  C: { name: "梅花", order: 2 },
+  D: { name: "方块", order: 3 },
 };
 
 export function cardLabel(code: string) {
@@ -21,8 +21,8 @@ export function cardLabel(code: string) {
   const suit = face.kind === "suited" ? SUITS[face.suit] : undefined;
   return {
     rank: suit === undefined ? joker : face.rank,
-    symbol: suit?.symbol ?? "",
-    display: suit === undefined ? joker : `${face.rank}${suit.symbol}`,
+    suit: face.kind === "suited" ? face.suit : undefined,
+    display: suit === undefined ? joker : `${suit.name}${face.rank}`,
     aria: `${suit === undefined ? joker : `${suit.name}${face.rank}`}，第${copyNumber}张`,
     tone:
       face.kind === "joker"
