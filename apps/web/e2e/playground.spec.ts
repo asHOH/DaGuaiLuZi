@@ -81,6 +81,7 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await selectedCard.click({ position: { x: 12, y: 32 } });
     await expect(selectedCard).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: "清空选择" })).toBeVisible();
+    await expect(handPanel.locator('p[aria-live="polite"]')).toBeEmpty();
     expect(await ownCount.boundingBox()).toEqual(countBounds);
     expect((await room(page)).revision).toBe(pausedRevision);
     await selectedCard.press("Enter");
@@ -182,7 +183,9 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await expect(handPanel).toHaveCSS("border-top-width", "3px");
     await expect(handPanel).toHaveCSS("border-top-color", "rgb(236, 199, 104)");
     await expect(playButton).toBeVisible();
-    await expect(passButton).toBeVisible();
+    await expect(passButton).toHaveCount(
+      current.view.unbeatenPlay === undefined ? 0 : 1,
+    );
     await controls.getByRole("button", { name: "执行下一步" }).click();
     await expect(controls.getByRole("status")).toHaveText(
       "等待你操作，或本局已结束。",
@@ -198,10 +201,12 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       .getByTestId("hand-card")
       .first()
       .click({ position: { x: 12, y: 32 } });
-    await expect(clearButton).toHaveAttribute(
-      "class",
-      (await passButton.getAttribute("class"))!,
-    );
+    if (current.view.unbeatenPlay !== undefined) {
+      await expect(clearButton).toHaveAttribute(
+        "class",
+        (await passButton.getAttribute("class"))!,
+      );
+    }
     const actionBounds = await playButton.boundingBox();
     const cardBounds = await page
       .getByTestId("hand-card")
@@ -217,6 +222,44 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await clearButton.click();
     for (const width of [1920, 1024, 768, 320, 390]) {
       await page.setViewportSize({ width, height: 844 });
+      const initialPlayBounds = await playButton.boundingBox();
+      const initialPassBounds =
+        current.view.unbeatenPlay === undefined
+          ? null
+          : await passButton.boundingBox();
+      for (const selected of [true, false]) {
+        await page
+          .getByTestId("hand-card")
+          .first()
+          .click({
+            position: { x: 12, y: 32 },
+          });
+        const firstAction = await playButton.boundingBox();
+        const lastAction = await (
+          current.view.unbeatenPlay === undefined ? playButton : passButton
+        ).boundingBox();
+        const panel = await handPanel.boundingBox();
+        expect(firstAction!.x).toBe(initialPlayBounds!.x);
+        if (initialPassBounds !== null) {
+          expect((await passButton.boundingBox())!.x).toBe(initialPassBounds.x);
+        }
+        await expect(clearButton).toHaveCount(selected ? 1 : 0);
+        if (selected) {
+          const clearBounds = await clearButton.boundingBox();
+          expect(clearBounds!.x).toBeGreaterThan(
+            lastAction!.x + lastAction!.width,
+          );
+          expect(clearBounds!.x + clearBounds!.width).toBeLessThanOrEqual(
+            panel!.x + panel!.width,
+          );
+        }
+        expect(
+          Math.abs(
+            (firstAction!.x + lastAction!.x + lastAction!.width) / 2 -
+              (panel!.x + panel!.width / 2),
+          ),
+        ).toBeLessThan(2);
+      }
       for (const group of await page
         .locator('[aria-label="你的手牌"] [data-rank]')
         .all()) {

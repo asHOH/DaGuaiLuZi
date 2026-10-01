@@ -8,7 +8,7 @@ PC-first game surface: one continuous table, spatial four/six-player seating, lo
 - Keep selection and explicit submission separate; retain off-turn selection, keyboard operation, and setup/result/recovery actions.
 - Use Phosphor for suits and UI icons. Active play hides account/history/logout/home navigation and invitations; retain owner termination. Use accessible icons for connection/sync/command states.
 - Show numbered avatars only for other players; omit the entire self-seat display, team/turn/play captions, and visible hand heading. Keep other players' yellow turn markers and the current-play marker. Indicate your turn with a bold accent divider above the hand; hide it otherwise.
-- Above the hand, place your card count at the row's left and the play/pass/clear controls alongside. Show play/pass only on your turn and clear only with a selection; pass and clear share styling. Metadata: enlarged Trump Rank first, then the other Team Level, in team colors and baseline-aligned.
+- Above the hand, keep your card count left and center only play/pass; clear appears to their right without shifting them. On narrow screens, place the count on its own row. Show play/pass only on your turn, hide pass on an open lead, and show clear only with a selection. Pass and clear share styling. Selection feedback shows only the recognized type for five cards. Metadata: enlarged Trump Rank first, then the other Team Level, in team colors and baseline-aligned.
 
 Existing account/lobby baseline:
 

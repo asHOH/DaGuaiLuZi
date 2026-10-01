@@ -7,7 +7,6 @@ import {
   type RoomViewData,
 } from "@dglz/protocol";
 
-import { errorMessage } from "./api";
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
 import { ChallengeEntry, ChallengeShare } from "./ChallengeControls";
 import { cardLabel, groupCards } from "./card-display";
@@ -915,18 +914,20 @@ function ActiveView({
                   >
                     出牌
                   </button>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={!canAct || view.unbeatenPlay === undefined}
-                    onClick={() => onCommand({ type: "Pass" })}
-                  >
-                    不出
-                  </button>
+                  {view.unbeatenPlay !== undefined && (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!canAct}
+                      onClick={() => onCommand({ type: "Pass" })}
+                    >
+                      不出
+                    </button>
+                  )}
                 </>
               )}
-              <span className={styles.clearSelection}>
-                {selected.length > 0 && (
+              {selected.length > 0 && (
+                <span className={styles.clearSelection}>
                   <button
                     type="button"
                     className={styles.secondaryButton}
@@ -935,18 +936,16 @@ function ActiveView({
                   >
                     清空选择
                   </button>
-                )}
-              </span>
+                </span>
+              )}
             </div>
           )}
         </div>
         {view.handResult === undefined && view.setupStage === "play" && (
           <p className={styles.handNote} aria-live="polite">
-            {feedback === undefined
-              ? null
-              : feedback.ok
-                ? `已选 ${selected.length} 张 · ${PLAY_FORM_LABELS[feedback.play.form]} · ${feedback.play.rank === "BIG" ? "大王" : feedback.play.rank === "SMALL" ? "小王" : feedback.play.rank}`
-                : errorMessage("domain-rejected", feedback.reason)}
+            {selected.length === 5 && feedback?.ok
+              ? PLAY_FORM_LABELS[feedback.play.form]
+              : null}
           </p>
         )}
         <div className={styles.handScroll}>

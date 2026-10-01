@@ -564,9 +564,9 @@
 }
 
 .handToolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   min-height: 44px;
 }
@@ -863,6 +863,9 @@
 }
 
 .handToolbar .playActions {
+  position: relative;
+  grid-column: 2;
+  justify-self: center;
   flex-wrap: nowrap;
   gap: 6px;
   margin: 0;
@@ -874,13 +877,14 @@
   font-size: 14px;
 }
 
-.clearSelection button {
-  width: 100%;
+.clearSelection {
+  position: absolute;
+  left: calc(100% + 6px);
+  white-space: nowrap;
 }
 
-.clearSelection {
-  width: 80px;
-  flex-shrink: 0;
+.clearSelection:only-child {
+  position: static;
 }
 
 .result {
@@ -1057,6 +1061,19 @@
 }
 
 @media (max-width: 420px) {
+  .handToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .handToolbar .playActions {
+    grid-column: 1;
+    min-height: 44px;
+  }
+
+  .handToolbar .playActions button {
+    min-width: 56px;
+  }
+
   .roomHeader {
     align-items: center;
   }

@@ -139,6 +139,9 @@ it.each([4, 6])(
         levels.indexOf(otherLabel),
       );
     }
+    delete room.view.unbeatenPlay;
+    expect(render()).toContain(">出牌</button>");
+    expect(render()).not.toContain(">不出</button>");
   },
 );
 
