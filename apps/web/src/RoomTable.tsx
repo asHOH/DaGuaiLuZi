@@ -861,6 +861,13 @@ function ActiveView({
         className={styles.handPanel}
         aria-label="你的手牌"
         data-own-turn={isOwnTurn}
+        data-selection-state={
+          feedback?.ok
+            ? "playable"
+            : feedback?.reason === "response-not-stronger"
+              ? "beaten"
+              : "incomplete"
+        }
         aria-description={isOwnTurn ? "轮到你出牌" : undefined}
       >
         <div className={styles.handToolbar}>

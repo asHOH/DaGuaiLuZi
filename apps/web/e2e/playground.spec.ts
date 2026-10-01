@@ -3,6 +3,7 @@ import { decodeCardInstance } from "@dglz/game-rules";
 import { RoomResponseEnvelopeSchema } from "@dglz/protocol";
 import { openPlayground } from "../dev/playground";
 import { protocolHeaders } from "./support";
+import { selectionFeedback } from "../src/play-feedback";
 
 async function room(page: Page) {
   const response = await page.request.get(
@@ -138,6 +139,43 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await selectedCard.press("Enter");
     await expect(selectedCard).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByRole("button", { name: "清空选择" })).toHaveCount(0);
+    for (const [playable, color] of [
+      [true, "rgb(217, 245, 230)"],
+      [false, "rgb(255, 226, 226)"],
+    ] as const) {
+      const card = current.view.hand.find((code) => {
+        const feedback = selectionFeedback(current.view, [code]);
+        return playable
+          ? feedback.ok
+          : !feedback.ok && feedback.reason === "response-not-stronger";
+      });
+      if (card === undefined) continue;
+      const button = page.locator(
+        `[data-testid="hand-card"][data-card="${card}"]`,
+      );
+      await button.click({ position: { x: 12, y: 32 } });
+      await expect(button.locator(":scope > span")).toHaveCSS(
+        "background-color",
+        color,
+      );
+      await clearButton.click();
+      await expect(button.locator(":scope > span")).toHaveCSS(
+        "background-color",
+        "rgb(255, 254, 251)",
+      );
+    }
+    for (let index = 0; index < 4; index += 1) {
+      await page
+        .getByTestId("hand-card")
+        .nth(index)
+        .click({ position: { x: 12, y: 32 } });
+    }
+    for (const card of await page
+      .locator('[data-testid="hand-card"][aria-pressed="true"] > span')
+      .all()) {
+      await expect(card).toHaveCSS("background-color", "rgb(255, 246, 205)");
+    }
+    await clearButton.click();
     // The driver runs in Node, so browser clock mocking cannot verify the pause.
     await page.waitForTimeout(1500);
     expect((await room(page)).revision).toBe(pausedRevision);
@@ -284,7 +322,7 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       fullPage: true,
     });
     await clearButton.click();
-    for (const width of [1920, 1024, 768, 320, 390]) {
+    for (const width of [1920, 1024, 768, 320, 1920, 390]) {
       await page.setViewportSize({ width, height: 844 });
       await expectTableAlignment(page, 6);
       const initialPlayBounds = await playButton.boundingBox();
@@ -330,16 +368,46 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
         .all()) {
         await expect
           .poll(async () => {
-            const rows = await group
-              .locator("button")
-              .evaluateAll((cards) =>
-                cards.map((card) =>
-                  Math.round(card.getBoundingClientRect().top),
-                ),
-              );
+            const rows = await group.locator("button").evaluateAll((cards) =>
+              cards.map((card) =>
+                // Card hover/selection lifts do not change the layout row.
+                Math.round(card.parentElement!.getBoundingClientRect().top),
+              ),
+            );
             return new Set(rows).size;
           })
           .toBe(1);
+      }
+      const hand = handPanel.getByRole("list", {
+        name: "你的手牌",
+        exact: true,
+      });
+      const rows = await hand
+        .locator(":scope > li")
+        .evaluateAll(
+          (groups) =>
+            new Set(groups.map((group) => group.getBoundingClientRect().top))
+              .size,
+        );
+      const first = (await page
+        .getByTestId("hand-card")
+        .first()
+        .boundingBox())!;
+      const last = (await page.getByTestId("hand-card").last().boundingBox())!;
+      if (width === 1920) expect(rows).toBe(1);
+      else expect(rows).toBeGreaterThan(1);
+      const panelBounds = (await handPanel.boundingBox())!;
+      if (rows === 1) {
+        expect(
+          Math.abs(
+            (first.x + last.x + last.width) / 2 -
+              (panelBounds.x + panelBounds.width / 2),
+          ),
+        ).toBeLessThan(1);
+      } else {
+        const handBounds = (await hand.boundingBox())!;
+        expect(first.x).toBe(handBounds.x);
+        expect(handBounds.width).toBeGreaterThan(panelBounds.width - 32);
       }
       expect(
         await page.evaluate(

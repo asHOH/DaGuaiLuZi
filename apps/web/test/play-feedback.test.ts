@@ -86,3 +86,36 @@ it("gives actionable Chinese feedback for invalid selection and server rejection
     "所选牌不在你的手牌中，请重新选择。",
   );
 });
+
+it.each([
+  { cards: ["9C#1", "9D#1"], reason: undefined },
+  { cards: ["7C#1", "7D#1"], reason: "response-not-stronger" },
+  { cards: ["8C#1", "8D#1"], reason: "response-not-stronger" },
+  { cards: ["7C#1", "BIG#1"], reason: "response-not-stronger" },
+  { cards: ["9C#1"], reason: "response-card-count-mismatch" },
+  { cards: ["7C#1", "9D#1"], reason: "cards-do-not-form-legal-play" },
+  { cards: ["7C#1", "7D#1", "9C#1", "9D#1"], reason: "unsupported-card-count" },
+] as const)(
+  "distinguishes selected-card feedback for $cards",
+  ({ cards, reason }) => {
+    const result = selectionFeedback(
+      {
+        ...view,
+        hand: [...cards, "AS#1"],
+        unbeatenPlay: {
+          playerId: "other",
+          seatIndex: 1,
+          cards: ["8S#1", "8H#1"],
+          form: "pair",
+          rank: "8",
+          comparisonRanks: ["8"],
+          representedFaces: ["8S", "8H"],
+        },
+      },
+      cards,
+    );
+    expect(result).toMatchObject(
+      reason === undefined ? { ok: true } : { ok: false, reason },
+    );
+  },
+);
