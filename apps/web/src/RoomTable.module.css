@@ -427,10 +427,18 @@
 }
 
 .roomActive .roomHeader {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 1;
+  max-width: none;
+  min-height: 48px;
+  margin-bottom: 0;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.roomActive .roomHeader button {
+  padding: 0.5rem;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .roomActive .lifecycle {
@@ -459,15 +467,21 @@
 
 .tableHeading {
   align-items: baseline;
+  min-width: 0;
   min-height: 44px;
   gap: 8px;
-  padding-right: 150px;
+  margin-right: auto;
   justify-content: flex-start;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.tableHeading h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .trumpBadge {
+  flex-shrink: 0;
   align-items: baseline;
   display: flex;
   gap: 4px;
@@ -510,6 +524,7 @@
 .seatIdentity {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   height: 100%;
 }
@@ -535,6 +550,8 @@
 }
 
 .seatInfo {
+  position: absolute;
+  left: calc(50% + 36px);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -769,8 +786,9 @@
 }
 
 .passTag {
-  font-size: 14px;
-  color: #d3dcd4;
+  font-size: 22px;
+  font-weight: 600;
+  color: #f09595;
   white-space: nowrap;
 }
 
@@ -781,6 +799,7 @@
 }
 
 .tableSeat[data-position="0"] .seatPlay {
+  flex-direction: column;
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
@@ -795,6 +814,7 @@
 
 .tableSeats[data-player-count="4"] .tableSeat[data-position="2"] .seatPlay,
 .tableSeats[data-player-count="6"] .tableSeat[data-position="3"] .seatPlay {
+  flex-direction: column;
   top: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
@@ -875,6 +895,20 @@
   min-width: 64px;
   padding: 0.5rem 0.65rem;
   font-size: 14px;
+}
+
+.playButton {
+  --brass: #74d4a5;
+  --brass-light: #a6edc9;
+}
+
+.passButton {
+  --brass: #f09595;
+  --brass-light: #ffc2c2;
+}
+
+.handToolbar .playActions > button:hover:not(:disabled) {
+  background: var(--brass);
 }
 
 .clearSelection {
@@ -969,9 +1003,7 @@
 
 @media (max-width: 1000px) {
   .tableHeading {
-    gap: 4px 8px;
-    padding-right: 125px;
-    padding-bottom: 8px;
+    gap: 4px;
   }
   .tableSeats {
     margin: 12px 0;
@@ -982,6 +1014,7 @@
     height: 78px;
   }
   .seatIdentity {
+    justify-content: flex-start;
     gap: 5px;
     flex-direction: column;
     text-align: center;
@@ -994,6 +1027,7 @@
     border-bottom-width: 2px;
   }
   .seatInfo {
+    position: static;
     gap: 0;
   }
   .tableSeatName {
@@ -1030,7 +1064,7 @@
     font-size: 14px;
   }
   .passTag {
-    font-size: 12px;
+    font-size: 18px;
   }
   .tableSeats[data-player-count] .tableSeat[data-position] .seatPlay {
     left: 50%;

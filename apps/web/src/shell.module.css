@@ -260,21 +260,24 @@
   padding: 0 24px;
   background: #163c35;
 }
-.gameShell .header {
-  padding: 6px 0;
-}
-.gameShell .brand {
-  font-size: 21px;
-  letter-spacing: 0;
-}
 .gameShell .account {
   font-size: 12px;
+  flex-wrap: nowrap;
+}
+.gameAccountName {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .gameShell .connection {
   font-size: 11px;
   margin: 4px 0;
 }
 @media (max-width: 640px) {
+  .gameAccountName {
+    display: none;
+  }
   .shell {
     padding: 0 16px;
   }

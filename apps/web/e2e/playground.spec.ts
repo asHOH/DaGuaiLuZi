@@ -17,6 +17,52 @@ async function room(page: Page) {
   return { ...data, view: data.view };
 }
 
+async function expectTableAlignment(page: Page, playerCount: number) {
+  const header = page.locator("header");
+  await expect(header).toHaveCount(1);
+  const headerBounds = (await header.boundingBox())!;
+  expect(headerBounds.height).toBeLessThanOrEqual(50);
+  for (const element of [
+    header.getByRole("heading"),
+    header.getByRole("status"),
+    header.getByRole("button", { name: "终止比赛" }),
+  ]) {
+    const bounds = (await element.boundingBox())!;
+    expect(bounds.y).toBeGreaterThanOrEqual(headerBounds.y);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(
+      headerBounds.y + headerBounds.height,
+    );
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(
+      headerBounds.x + headerBounds.width,
+    );
+  }
+  for (let position = 1; position < playerCount; position += 1) {
+    const seat = page.locator(`[data-position="${position}"]`);
+    const bounds = (await seat.boundingBox())!;
+    const avatar = (await seat.getByTestId("player-avatar").boundingBox())!;
+    expect(
+      Math.abs(avatar.x + avatar.width / 2 - (bounds.x + bounds.width / 2)),
+    ).toBeLessThan(1);
+    const play = (await seat.locator(":scope > div").last().boundingBox())!;
+    if (position === playerCount / 2 || page.viewportSize()!.width <= 1000) {
+      expect(
+        Math.abs(play.x + play.width / 2 - (avatar.x + avatar.width / 2)),
+      ).toBeLessThan(1);
+    } else {
+      expect(
+        Math.abs(play.y + play.height / 2 - (avatar.y + avatar.height / 2)),
+      ).toBeLessThan(1);
+    }
+    for (const pass of await seat.getByText("不出", { exact: true }).all()) {
+      await expect(pass).toHaveCSS("color", "rgb(240, 149, 149)");
+      await expect(pass).toHaveCSS(
+        "font-size",
+        page.viewportSize()!.width <= 1000 ? "18px" : "22px",
+      );
+    }
+  }
+}
+
 test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ browser }) => {
   const playground = await openPlayground(browser);
   const page = playground.page;
@@ -56,6 +102,11 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     const status = page.locator("header").first().getByRole("status");
     await expect(status).toHaveAttribute("data-state", "ready");
     await expect(status.locator("svg")).toBeVisible();
+    for (const width of [1280, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectTableAlignment(page, 4);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
     const playButton = page.getByRole("button", { name: "出牌", exact: true });
     const passButton = page.getByRole("button", { name: "不出", exact: true });
     const clearButton = page.getByRole("button", { name: "清空选择" });
@@ -136,6 +187,7 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     expect((await room(page)).view.hand).toEqual(current.view.hand);
 
     const retained = (await room(page)).view.latestPlays;
+    await expectTableAlignment(page, 4);
     await expect(page.getByTestId("played-hand")).toHaveCount(retained.length);
     await page.reload();
     await expect(
@@ -201,11 +253,23 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       .getByTestId("hand-card")
       .first()
       .click({ position: { x: 12, y: 32 } });
+    await expect(playButton).toHaveCSS(
+      "background-color",
+      "rgb(116, 212, 165)",
+    );
+    await expect(clearButton).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     if (current.view.unbeatenPlay !== undefined) {
-      await expect(clearButton).toHaveAttribute(
-        "class",
-        (await passButton.getAttribute("class"))!,
+      await expect(passButton).toHaveCSS(
+        "background-color",
+        "rgb(240, 149, 149)",
       );
+      await expect(passButton).toHaveCSS("font-weight", "800");
+      await passButton.hover();
+      await expect(passButton).toHaveCSS(
+        "background-color",
+        "rgb(240, 149, 149)",
+      );
+      await page.mouse.move(0, 0);
     }
     const actionBounds = await playButton.boundingBox();
     const cardBounds = await page
@@ -222,6 +286,7 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await clearButton.click();
     for (const width of [1920, 1024, 768, 320, 390]) {
       await page.setViewportSize({ width, height: 844 });
+      await expectTableAlignment(page, 6);
       const initialPlayBounds = await playButton.boundingBox();
       const initialPassBounds =
         current.view.unbeatenPlay === undefined

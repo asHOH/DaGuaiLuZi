@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   RulesConfigurationSchema,
   SeatingPolicySchema,
@@ -21,6 +21,7 @@ type RoomTableProps = {
   pending: boolean;
   onCommand: (payload: RoomCommandPayload) => void;
   onFailure?: ((reason: unknown) => void) | undefined;
+  accountStatus?: ReactNode;
 };
 
 const POSITION_NAMES = ["一", "二", "三", "四", "五", "六"];
@@ -745,34 +746,6 @@ function ActiveView({
   return (
     <div className={styles.activeLayout}>
       <section className={styles.tableStage} aria-label="牌桌">
-        <div className={styles.tableHeading}>
-          <h2 id="table-title">
-            {view.selectedActivity === "challenge" ? "同牌挑战 · " : ""}第
-            {view.handNumber ??
-              (view.completedHandCount ?? 0) +
-                (view.handResult === undefined ? 1 : 0)}
-            局
-          </h2>
-          <div className={styles.trumpBadge}>
-            <span aria-hidden="true">· 级牌</span>
-            <strong
-              role="img"
-              data-team={view.dealerTeam}
-              aria-label={`${view.dealerTeam === 0 ? "一队" : "二队"}，当前级牌 ${view.trumpRank}`}
-            >
-              {view.trumpRank}
-            </strong>
-            <span aria-hidden="true">:</span>
-            <b
-              role="img"
-              data-team={1 - view.dealerTeam}
-              aria-label={`${view.dealerTeam === 0 ? "二队" : "一队"}等级 ${view.teamLevels[1 - view.dealerTeam]}`}
-            >
-              {view.teamLevels[1 - view.dealerTeam]}
-            </b>
-          </div>
-        </div>
-
         <ol
           className={styles.tableSeats}
           data-player-count={view.seats.length}
@@ -908,7 +881,7 @@ function ActiveView({
                 <>
                   <button
                     type="button"
-                    className={styles.primaryButton}
+                    className={`${styles.primaryButton} ${styles.playButton}`}
                     disabled={!canAct || feedback?.ok !== true}
                     onClick={() => onCommand({ type: "Play", cards: selected })}
                   >
@@ -917,7 +890,7 @@ function ActiveView({
                   {view.unbeatenPlay !== undefined && (
                     <button
                       type="button"
-                      className={styles.secondaryButton}
+                      className={`${styles.primaryButton} ${styles.passButton}`}
                       disabled={!canAct}
                       onClick={() => onCommand({ type: "Pass" })}
                     >
@@ -1164,7 +1137,9 @@ export function RoomTable({
   pending,
   onCommand,
   onFailure,
+  accountStatus,
 }: RoomTableProps) {
+  const view = room.view;
   const lifecycleLabel = {
     LOBBY: "大厅",
     ACTIVE: "牌局进行中",
@@ -1177,6 +1152,36 @@ export function RoomTable({
       className={`${styles.roomTable} ${room.view.lifecycle === "ACTIVE" ? styles.roomActive : ""}`}
     >
       <header className={styles.roomHeader}>
+        {view.lifecycle === "ACTIVE" && (
+          <div className={styles.tableHeading}>
+            <h2 id="table-title">
+              {view.selectedActivity === "challenge" ? "同牌挑战 · " : ""}第
+              {view.handNumber ??
+                (view.completedHandCount ?? 0) +
+                  (view.handResult === undefined ? 1 : 0)}
+              局
+            </h2>
+            <div className={styles.trumpBadge}>
+              <span aria-hidden="true">· 级牌</span>
+              <strong
+                role="img"
+                data-team={view.dealerTeam}
+                aria-label={`${view.dealerTeam === 0 ? "一队" : "二队"}，当前级牌 ${view.trumpRank}`}
+              >
+                {view.trumpRank}
+              </strong>
+              <span aria-hidden="true">:</span>
+              <b
+                role="img"
+                data-team={1 - view.dealerTeam}
+                aria-label={`${view.dealerTeam === 0 ? "二队" : "一队"}等级 ${view.teamLevels[1 - view.dealerTeam]}`}
+              >
+                {view.teamLevels[1 - view.dealerTeam]}
+              </b>
+            </div>
+          </div>
+        )}
+        {view.lifecycle === "ACTIVE" && accountStatus}
         {room.view.lifecycle === "ACTIVE" &&
           room.view.ownerId === accountId && (
             <button

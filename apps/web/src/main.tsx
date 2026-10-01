@@ -312,59 +312,61 @@ function App() {
     (!validRoom || roomState.room !== null || roomState.error !== "");
   return (
     <div className={`${styles.shell} ${activeGame ? styles.gameShell : ""}`}>
-      <header className={styles.header}>
-        {!showNavigation ? (
-          <span className={styles.brand}>大怪路子</span>
-        ) : (
-          <a
-            className={styles.brand}
-            href="/"
-            onClick={(event) => {
-              event.preventDefault();
-              navigate("");
-            }}
-          >
-            大怪路子
-          </a>
-        )}
-        {account && (
-          <div className={styles.account}>
-            <span>{account.username}</span>
-            {!showNavigation ? (
-              <ConnectionStatus state={roomState} />
-            ) : (
-              <>
-                <a
-                  href="/account"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigatePath("/account");
-                  }}
-                >
-                  修改密码
-                </a>
-                <a
-                  href="/history"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigatePath("/history");
-                  }}
-                >
-                  牌局记录
-                </a>
-                <button
-                  disabled={busy}
-                  onClick={() => {
-                    void logout();
-                  }}
-                >
-                  退出登录
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </header>
+      {!activeGame && (
+        <header className={styles.header}>
+          {!showNavigation ? (
+            <span className={styles.brand}>大怪路子</span>
+          ) : (
+            <a
+              className={styles.brand}
+              href="/"
+              onClick={(event) => {
+                event.preventDefault();
+                navigate("");
+              }}
+            >
+              大怪路子
+            </a>
+          )}
+          {account && (
+            <div className={styles.account}>
+              <span>{account.username}</span>
+              {!showNavigation ? (
+                <ConnectionStatus state={roomState} />
+              ) : (
+                <>
+                  <a
+                    href="/account"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigatePath("/account");
+                    }}
+                  >
+                    修改密码
+                  </a>
+                  <a
+                    href="/history"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      navigatePath("/history");
+                    }}
+                  >
+                    牌局记录
+                  </a>
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      void logout();
+                    }}
+                  >
+                    退出登录
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </header>
+      )}
       <main>
         {notice && (
           <p className={styles.connection} role="status">
@@ -642,6 +644,14 @@ function App() {
                 key={`${account.accountId}:${roomId}`}
                 room={roomState.room}
                 accountId={account.accountId}
+                accountStatus={
+                  <div className={styles.account}>
+                    <span className={styles.gameAccountName}>
+                      {account.username}
+                    </span>
+                    <ConnectionStatus state={roomState} />
+                  </div>
+                }
                 locked={
                   !roomState.synced ||
                   !roomState.connected ||
