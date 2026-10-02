@@ -19,6 +19,7 @@ import {
   RoomCommandAckSchema,
   type RoomCommandAck,
   RoomIdSchema,
+  RulesetIdSchema,
   RulesConfigurationSchema,
   RoomViewDataSchema,
   TerminalPlayerViewSchema,
@@ -146,21 +147,19 @@ const SeatAssignmentsClearedPayloadSchema = z
   .object({ type: z.literal("SeatAssignmentsCleared") })
   .strict();
 
-const MatchStartedPayloadSchema = z
+const HandStartPayloadSchema = z
   .object({
-    type: z.literal("MatchStarted"),
-    rulesetId: z.enum(["dglz-6p-3d-v1", "dglz-4p-2d-v1"]),
+    rulesetId: RulesetIdSchema,
     rulesConfiguration: RulesConfigurationSchema,
     seatingPolicy: SeatingPolicySchema,
+    playerIds: z.array(PlayerIdSchema).min(1).max(6),
+    dealerTeam: TeamIndexSchema,
+    teamLevels: TeamLevelsSchema,
+    failureCounters: FailureCountersSchema,
+    trumpRank: TrumpRankSchema,
     handSeed: z.string().min(1).max(256),
     randomnessVersion: z.literal(RANDOMNESS_VERSION),
     shuffleVersion: z.literal(SHUFFLE_VERSION),
-    playerIds: z.array(PlayerIdSchema).min(1).max(6),
-    dealerSeat: z.number().int().nonnegative(),
-    dealerTeam: TeamIndexSchema,
-    teamLevels: TeamLevelsSchema,
-    trumpRank: TrumpRankSchema,
-    failureCounters: FailureCountersSchema,
   })
   .strict()
   .superRefine((event, context) => {
@@ -186,20 +185,6 @@ const MatchStartedPayloadSchema = z
         path: ["playerIds"],
       });
     }
-    if (event.dealerSeat >= playerCount) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "invalid-dealer-seat",
-        path: ["dealerSeat"],
-      });
-    }
-    if (event.dealerTeam !== event.dealerSeat % 2) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "dealer-team-mismatch",
-        path: ["dealerTeam"],
-      });
-    }
     if (event.trumpRank !== event.teamLevels[event.dealerTeam]) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -208,6 +193,27 @@ const MatchStartedPayloadSchema = z
       });
     }
   });
+
+const MatchStartedPayloadSchema = HandStartPayloadSchema.safeExtend({
+  type: z.literal("MatchStarted"),
+  dealerSeat: z.number().int().nonnegative(),
+}).superRefine((event, context) => {
+  const playerCount = event.rulesetId === "dglz-6p-3d-v1" ? 6 : 4;
+  if (event.dealerSeat >= playerCount) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "invalid-dealer-seat",
+      path: ["dealerSeat"],
+    });
+  }
+  if (event.dealerTeam !== event.dealerSeat % 2) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "dealer-team-mismatch",
+      path: ["dealerTeam"],
+    });
+  }
+});
 
 const EventCardCodesSchema = z
   .array(CardInstanceCodeSchema)
@@ -346,54 +352,10 @@ const MatchAbortedPayloadSchema = z
   })
   .strict();
 
-const HandStartedPayloadSchema = z
-  .object({
-    type: z.literal("HandStarted"),
-    handNumber: z.number().int().positive(),
-    rulesetId: z.enum(["dglz-6p-3d-v1", "dglz-4p-2d-v1"]),
-    rulesConfiguration: RulesConfigurationSchema,
-    seatingPolicy: SeatingPolicySchema,
-    playerIds: z.array(PlayerIdSchema).min(1).max(6),
-    dealerTeam: TeamIndexSchema,
-    teamLevels: TeamLevelsSchema,
-    failureCounters: FailureCountersSchema,
-    trumpRank: TrumpRankSchema,
-    handSeed: z.string().min(1).max(256),
-    randomnessVersion: z.literal(RANDOMNESS_VERSION),
-    shuffleVersion: z.literal(SHUFFLE_VERSION),
-  })
-  .strict()
-  .superRefine((event, context) => {
-    const playerCount = event.rulesetId === "dglz-6p-3d-v1" ? 6 : 4;
-    if (event.rulesConfiguration.rulesetId !== event.rulesetId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "ruleset-mismatch",
-        path: ["rulesConfiguration", "rulesetId"],
-      });
-    }
-    if (event.playerIds.length !== playerCount) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "invalid-player-count",
-        path: ["playerIds"],
-      });
-    }
-    if (new Set(event.playerIds).size !== event.playerIds.length) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "duplicate-player",
-        path: ["playerIds"],
-      });
-    }
-    if (event.trumpRank !== event.teamLevels[event.dealerTeam]) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "trump-rank-mismatch",
-        path: ["trumpRank"],
-      });
-    }
-  });
+const HandStartedPayloadSchema = HandStartPayloadSchema.safeExtend({
+  type: z.literal("HandStarted"),
+  handNumber: z.number().int().positive(),
+});
 
 const TributeCardSelectedPayloadSchema = z
   .object({

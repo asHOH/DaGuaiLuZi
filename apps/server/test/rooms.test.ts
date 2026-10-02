@@ -14,7 +14,11 @@ import {
 } from "../src/rooms.js";
 import { describe, expect, it } from "vitest";
 
-import { PROTOCOL_VERSION, rulesConfigurationPreset } from "@dglz/protocol";
+import {
+  PROTOCOL_VERSION,
+  rulesConfigurationPreset,
+  type RulesetId,
+} from "@dglz/protocol";
 import { decodePersistedRoomCommandAck } from "../src/rooms.js";
 
 describe("persisted room acknowledgements", () => {
@@ -67,6 +71,82 @@ describe("persisted room acknowledgements", () => {
     },
   );
 });
+
+it.each<RulesetId>(["dglz-4p-2d-v1", "dglz-6p-3d-v1"])(
+  "preserves shared and Match-only Hand-start validation for %s",
+  (rulesetId) => {
+    const database = openDatabase(":memory:");
+    try {
+      const roomId = randomUUID();
+      const rulesConfiguration = rulesConfigurationPreset(rulesetId, "省心");
+      appendRoomCreated(database, {
+        type: "RoomCreated",
+        roomId,
+        ownerId: "p1",
+        rulesConfiguration,
+        seatingPolicy: "fixed",
+      });
+      const common = {
+        rulesetId,
+        rulesConfiguration,
+        seatingPolicy: "fixed" as const,
+        handSeed: "private",
+        randomnessVersion: RANDOMNESS_VERSION,
+        shuffleVersion: SHUFFLE_VERSION,
+        playerIds: Array.from(
+          { length: rulesetId === "dglz-4p-2d-v1" ? 4 : 6 },
+          (_, index) => `p${index + 1}`,
+        ),
+        dealerTeam: 0 as const,
+        teamLevels: ["2", "2"] as const,
+        trumpRank: "2" as const,
+        failureCounters: [0, 0] as const,
+      };
+      const events = [
+        { ...common, type: "MatchStarted", dealerSeat: 0 },
+        { ...common, type: "HandStarted", handNumber: 2 },
+      ] as const;
+      appendRoomEvents(database, {
+        roomId,
+        expectedRevision: 1,
+        causationCommandId: null,
+        events,
+      });
+      expect(
+        [...readRoomEvents(database, roomId)].slice(1).map((row) => row.event),
+      ).toEqual(events);
+      const update = database.sqlite.prepare(
+        "UPDATE room_events SET payload = ? WHERE room_id = ? AND sequence = ?",
+      );
+      for (const [index, event] of events.entries()) {
+        const invalid = [
+          { playerIds: common.playerIds.slice(1) },
+          { playerIds: common.playerIds.map(() => "p1") },
+          {
+            rulesConfiguration: rulesConfigurationPreset(
+              rulesetId === "dglz-4p-2d-v1" ? "dglz-6p-3d-v1" : "dglz-4p-2d-v1",
+              "省心",
+            ),
+          },
+          { trumpRank: "3" },
+          { extra: true },
+          ...(event.type === "MatchStarted"
+            ? [{ dealerSeat: common.playerIds.length }, { dealerSeat: 1 }]
+            : [{ dealerSeat: 0 }, { handNumber: 0 }]),
+        ];
+        for (const patch of invalid) {
+          update.run(JSON.stringify({ ...event, ...patch }), roomId, index + 2);
+          expect(() => [...readRoomEvents(database, roomId)]).toThrow(
+            "unsupported-persisted-event",
+          );
+        }
+        update.run(JSON.stringify(event), roomId, index + 2);
+      }
+    } finally {
+      database.close();
+    }
+  },
+);
 
 it("roundtrips frozen subsequent Challenge Templates and validates event identities", () => {
   const template: ChallengeTemplate = {
