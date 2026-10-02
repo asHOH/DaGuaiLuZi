@@ -336,24 +336,28 @@ function App() {
                 <ConnectionStatus state={roomState} />
               ) : (
                 <>
-                  <a
-                    href="/account"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      navigatePath("/account");
-                    }}
-                  >
-                    修改密码
-                  </a>
-                  <a
-                    href="/history"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      navigatePath("/history");
-                    }}
-                  >
-                    牌局记录
-                  </a>
+                  {route.path !== "/account" && (
+                    <a
+                      href="/account"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigatePath("/account");
+                      }}
+                    >
+                      修改密码
+                    </a>
+                  )}
+                  {route.path !== "/history" && (
+                    <a
+                      href="/history"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        navigatePath("/history");
+                      }}
+                    >
+                      牌局记录
+                    </a>
+                  )}
                   <button
                     disabled={busy}
                     onClick={() => {

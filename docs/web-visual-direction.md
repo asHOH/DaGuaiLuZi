@@ -20,3 +20,5 @@ Deep green felt, warm ivory cards, muted brass accents. Chinese headings use Son
 Share font roles across pages: UI, decorative headings/avatars, cards, and codes. Live/replay card ranks use bold Times New Roman/Times with Chinese heading fallbacks and lining, tabular numerals; all Challenge Code fields use monospace. Active-game headings retain UI typography. Use local fonts; no font downloads.
 
 Account settings reuse these controls in one narrow, centered form; keep password-change consequences beside the fields.
+
+Information density: keep current decisions visible; collapse previous-Hand details, optional Challenge entry, and Replay sharing by default. Open Challenge entry for a prefilled Challenge link. Remove repeated headings, decorative login copy, and idle-table prompts; retain results, errors, privacy warnings, and recovery actions.

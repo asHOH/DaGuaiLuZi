@@ -52,9 +52,7 @@ async function loginUi(
   await expect(page.locator("header").first()).toContainText(account.username);
   await expect(page.getByRole("contentinfo")).toHaveCount(0);
   if (destination === `${url}/`) {
-    await expect(
-      page.getByRole("heading", { name: "今晚，怎么打？" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "开一桌" })).toBeVisible();
   }
 }
 
@@ -82,6 +80,13 @@ async function createRoom(
   expect(page.url()).toContain("/rooms/");
   expect(new URL(page.url()).origin).toBe(url);
   return page.url();
+}
+
+async function openChallengeEntry(page: Page): Promise<void> {
+  const summary = page.locator("summary").filter({ hasText: "用挑战码开局" });
+  if ((await summary.locator("..").getAttribute("open")) === null)
+    await summary.click();
+  await expect(page.getByLabel("同牌挑战码", { exact: true })).toBeVisible();
 }
 
 async function chooseFirstSeat(page: Page): Promise<void> {
@@ -393,7 +398,10 @@ async function completeSetup(
       if (actor === own.ownerId) await expect(setupAbort).toBeEnabled();
       else await expect(setupAbort).toHaveCount(0);
       const summary = page.getByRole("region", { name: "上一局结果" });
-      await expect(summary.getByRole("heading")).toContainText("第 1 局");
+      await expect(summary.locator("summary")).toContainText("第 1 局");
+      await expect(
+        summary.getByRole("button", { name: "生成同牌挑战码" }),
+      ).not.toBeVisible();
       const summaryText = await summary.innerText();
       await page.reload();
       await expect(
@@ -407,8 +415,14 @@ async function completeSetup(
       expect(reloaded.pendingPlayerIds).toEqual(own.pendingPlayerIds);
       expect(reloaded.hand).toEqual(own.hand);
       expect(reloaded.lastHandResult).toEqual(own.lastHandResult);
-      await page.getByRole("button", { name: "收起上一局结果" }).click();
-      await expect(summary.getByRole("heading")).toHaveCount(0);
+      await summary.locator("summary").press("Enter");
+      await expect(
+        summary.getByRole("button", { name: "生成同牌挑战码" }),
+      ).toBeVisible();
+      await summary.locator("summary").press("Enter");
+      await expect(
+        summary.getByRole("button", { name: "生成同牌挑战码" }),
+      ).not.toBeVisible();
       for (const card of selectedCards) {
         await page
           .locator(
@@ -464,14 +478,20 @@ async function runHappyPath(
     if (owner === undefined || joiner === undefined)
       throw new Error("missing-test-accounts");
 
+    await ownerPage.goto(server.url);
+    await expect(
+      ownerPage.getByRole("heading", { name: "登录入座" }),
+    ).toBeVisible();
+    await captureScreenshot(ownerPage, `${rulesetId}-login.png`);
     await loginUi(ownerPage, server.url, owner);
+    await captureScreenshot(ownerPage, `${rulesetId}-room-entry.png`);
     // Closing a sole-member lobby is distinct from navigating away.
     const closedInvite = await createRoom(ownerPage, server.url, rulesetId);
     await ownerPage
       .getByRole("button", { name: "退出并关闭房间", exact: true })
       .click();
     await expect(
-      ownerPage.getByRole("heading", { name: "今晚，怎么打？" }),
+      ownerPage.getByRole("heading", { name: "开一桌" }),
     ).toBeVisible();
     await ownerPage.goto(closedInvite);
     await expect(ownerPage.getByRole("alert")).toContainText(
@@ -571,9 +591,7 @@ async function runHappyPath(
     await leave.focus();
     await leave.press("Enter");
     for (const page of [ownerPage, otherOwnerTab])
-      await expect(
-        page.getByRole("heading", { name: "今晚，怎么打？" }),
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "开一桌" })).toBeVisible();
     await otherOwnerTab.close();
     await expect(
       joinerPage.getByLabel("座位安排", { exact: true }),
@@ -587,7 +605,7 @@ async function runHappyPath(
       .getByRole("button", { name: "退出房间", exact: true })
       .click();
     await expect(
-      joinerPage.getByRole("heading", { name: "今晚，怎么打？" }),
+      joinerPage.getByRole("heading", { name: "开一桌" }),
     ).toBeVisible();
     await expect(
       ownerPage.getByLabel("座位安排", { exact: true }),
@@ -791,6 +809,10 @@ async function runHappyPath(
     const beforeAbort = activeView(
       await readRoom(server.url, roomId, currentCookie),
     );
+    await ownerPage
+      .getByRole("region", { name: "上一局结果" })
+      .locator("summary")
+      .click();
     await ownerPage.getByRole("button", { name: "生成同牌挑战码" }).click();
     const codeField = ownerPage.getByLabel("本局同牌挑战码", { exact: true });
     await expect(codeField).toHaveValue(/^[0-9a-f]{12}$/);
@@ -916,6 +938,10 @@ async function runHappyPath(
       .getByRole("button", { name: "终止比赛", exact: true })
       .click();
     await expect(ownerPage.getByTestId("room-lifecycle")).toHaveText("大厅");
+    await expect(
+      ownerPage.getByLabel("同牌挑战码", { exact: true }),
+    ).not.toBeVisible();
+    await openChallengeEntry(ownerPage);
     if (playerCount === 4) {
       await ownerPage
         .getByLabel("同牌挑战码", { exact: true })
@@ -974,6 +1000,7 @@ async function runHappyPath(
         ownerPage.getByRole("button", { name: "使用此牌局", exact: true }),
       ).toHaveCount(0);
     }
+    await openChallengeEntry(ownerPage);
     await ownerPage
       .getByLabel("同牌挑战码", { exact: true })
       .fill(challengeCode);
@@ -1120,6 +1147,7 @@ async function runHappyPath(
               { times: 1 },
             );
             if (operation === "lookup") {
+              await openChallengeEntry(ownerPage);
               await ownerPage
                 .getByLabel("同牌挑战码", { exact: true })
                 .fill(challengeCode);
@@ -1186,6 +1214,7 @@ async function runHappyPath(
         `${rulesetId}-challenge-result-${width}.png`,
       );
     }
+    await openChallengeEntry(ownerPage);
     await ownerPage
       .getByLabel("同牌挑战码", { exact: true })
       .fill(challengeCode);
@@ -1302,6 +1331,13 @@ async function runHappyPath(
       .getByTestId("replay-card")
       .allTextContents();
     const privateReplayUrl = ownerPage.url();
+    await expect(
+      ownerPage.getByRole("button", { name: "复制回放链接" }),
+    ).not.toBeVisible();
+    await ownerPage
+      .locator("summary")
+      .filter({ hasText: "分享或再打一局" })
+      .click();
     const sharedReplayUrl = await ownerPage
       .getByLabel("回放分享链接", { exact: true })
       .inputValue();
@@ -1410,6 +1446,10 @@ async function runHappyPath(
     await expect(joinerPage.getByTestId("replay-position")).toHaveText(
       /^第 1 \/ \d+ 步$/,
     );
+    await joinerPage
+      .locator("summary")
+      .filter({ hasText: "分享或再打一局" })
+      .click();
     // The existing Challenge selector receives the code in a fresh Room, including after reload.
     await joinerPage
       .getByRole("button", { name: "用此牌局开一桌", exact: true })
@@ -1856,9 +1896,7 @@ test("修改密码拒绝过期账户页面并处理响应丢失", async ({
     await expect.poll(() => committed).toBe(true);
     // Keep the same App mounted, but change its operation generation before failure.
     await page.getByRole("link", { name: "大怪路子", exact: true }).click();
-    await expect(
-      page.getByRole("heading", { name: "今晚，怎么打？" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "开一桌" })).toBeVisible();
     await expect(other.getByTestId("hand-card")).toHaveCount(27);
     releaseResponse();
     await expect(
@@ -1877,9 +1915,7 @@ test("修改密码拒绝过期账户页面并处理响应丢失", async ({
     await page.getByLabel("用户名").fill(alice.username);
     await page.getByLabel("密码", { exact: true }).fill(password);
     await page.getByRole("button", { name: "登录", exact: true }).click();
-    await expect(
-      page.getByRole("heading", { name: "今晚，怎么打？" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "开一桌" })).toBeVisible();
     await page.goto(invite);
     await expect(page.getByTestId("hand-card")).toHaveCount(27);
   } finally {

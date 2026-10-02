@@ -174,10 +174,6 @@
   margin: 1rem 0 0.85rem;
 }
 
-.seatOpen {
-  color: var(--muted);
-}
-
 .currentSeatHint,
 .actionHint,
 .selectionNotice {
@@ -657,16 +653,6 @@
   background: #d8ddd8;
 }
 
-.tablePrompt {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: var(--muted);
-  font-size: 0.8rem;
-  pointer-events: none;
-}
-
 .result p {
   margin: 0.4rem 0;
 }
@@ -869,6 +855,13 @@
   margin-bottom: 1.5rem;
 }
 
+.previousHand summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0.7rem 0;
+  color: var(--muted);
+}
+
 .previousHand {
   max-width: 76rem;
   margin: 0 auto 1rem;
@@ -1017,9 +1010,6 @@
   .tableSeats[data-player-count="6"] .tableSeat[data-position="1"],
   .tableSeats[data-player-count="6"] .tableSeat[data-position="5"] {
     top: 61%;
-  }
-  .tablePrompt {
-    font-size: 11px;
   }
   .handPanel {
     padding: 8px 0 0;

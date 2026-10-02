@@ -1,5 +1,4 @@
 import type { FormEvent } from "react";
-import { SuitIcon } from "./SuitIcon";
 import controls from "./controls.module.css";
 import styles from "./shell.module.css";
 
@@ -16,29 +15,6 @@ export function LoginPage({
 }) {
   return (
     <section className={styles.welcome}>
-      <div className={styles.intro}>
-        <h1>
-          坐下来，
-          <br />
-          打几手。
-        </h1>
-        <p>
-          四人或六人，邀好友入座。
-          <br />
-          熟悉的大怪路子，现在随时开桌。
-        </p>
-        <div className={styles.motif} aria-hidden="true">
-          <span>
-            <SuitIcon suit="S" />
-          </span>
-          <span>
-            <SuitIcon suit="H" />
-          </span>
-          <span>
-            <SuitIcon suit="C" />
-          </span>
-        </div>
-      </div>
       <form
         className={styles.panel}
         onSubmit={(event) => {

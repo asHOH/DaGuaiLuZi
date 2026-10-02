@@ -362,9 +362,7 @@ export function ReplayViewer({
     <section className={styles.viewer} aria-labelledby="replay-viewer-title">
       <div className={styles.lookupPanel}>
         <div>
-          <p className={styles.eyebrow}>完成牌局 · 只读回放</p>
           <h2 id="replay-viewer-title">查看一手牌的回放</h2>
-          <p>输入同牌挑战码，按步骤回看原始发牌和每次行动。</p>
         </div>
         <form
           className={styles.lookupForm}
@@ -412,30 +410,27 @@ export function ReplayViewer({
                 <dt>完成时间</dt>
                 <dd>{completionLabel(replay.summary.completedAt)}</dd>
               </div>
-              {replay.summary.challengeCode !== undefined && (
-                <div>
-                  <dt>挑战码</dt>
-                  <dd>{replay.summary.challengeCode}</dd>
-                </div>
-              )}
             </dl>
           </header>
 
           <RulesSummary replay={replay} />
-          <ChallengeShare
-            key={`${replay.summary.roomId}:${replay.summary.handStartSequence}`}
-            roomId={replay.summary.roomId}
-            handStartSequence={replay.summary.handStartSequence}
-            initialCode={replay.summary.challengeCode}
-            disabled={disabled}
-            onFailure={onFailure}
-            onChallenge={(challengeCode) =>
-              onChallenge(
-                challengeCode,
-                replay.summary.rulesConfiguration.rulesetId,
-              )
-            }
-          />
+          <details className={styles.rules}>
+            <summary>分享或再打一局</summary>
+            <ChallengeShare
+              key={`${replay.summary.roomId}:${replay.summary.handStartSequence}`}
+              roomId={replay.summary.roomId}
+              handStartSequence={replay.summary.handStartSequence}
+              initialCode={replay.summary.challengeCode}
+              disabled={disabled}
+              onFailure={onFailure}
+              onChallenge={(challengeCode) =>
+                onChallenge(
+                  challengeCode,
+                  replay.summary.rulesConfiguration.rulesetId,
+                )
+              }
+            />
+          </details>
 
           <div className={styles.stepToolbar}>
             <button

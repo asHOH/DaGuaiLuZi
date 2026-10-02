@@ -80,12 +80,8 @@
   min-height: 44px;
 }
 .welcome {
-  min-height: 70vh;
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  align-items: center;
-  gap: 70px;
-  padding: 55px 0;
+  max-width: 480px;
+  margin: 48px auto;
 }
 .panel {
   border: 1px solid #b7b28a50;
@@ -101,30 +97,6 @@
   margin: 0;
   font-size: 0.9rem;
 }
-.motif {
-  display: flex;
-  gap: 10px;
-  margin: 35px 0 0 10px;
-}
-.motif span {
-  display: grid;
-  place-items: center;
-  width: 57px;
-  height: 78px;
-  background: var(--ivory);
-  color: #233d34;
-  font-size: 2rem;
-  border-radius: 5px;
-  transform: rotate(-10deg);
-  box-shadow: 2px 5px 8px #0003;
-}
-.motif span:nth-child(2) {
-  color: #a33933;
-  transform: translateY(-5px);
-}
-.motif span:nth-child(3) {
-  transform: rotate(10deg);
-}
 .home {
   padding: 40px 0;
 }
@@ -139,7 +111,6 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
-  margin-top: 28px;
 }
 .notice {
   margin: 16px 0;
@@ -251,17 +222,6 @@
   }
   .account button {
     padding: 0.5rem;
-  }
-  .welcome {
-    grid-template-columns: 1fr;
-    gap: 28px;
-    padding: 30px 0;
-  }
-  .intro h1 br {
-    display: none;
-  }
-  .motif {
-    display: none;
   }
   .panel {
     padding: 24px;

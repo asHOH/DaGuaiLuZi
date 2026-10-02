@@ -1,7 +1,7 @@
 .challengePanel {
   border-top: 1px solid var(--line);
   margin-top: 1.5rem;
-  padding-top: 1.2rem;
+  padding-top: 0.4rem;
 }
 
 .challengePanel form,
@@ -37,4 +37,11 @@
   border-left: 3px solid var(--brass);
   margin-top: 1rem;
   padding-left: 1rem;
+}
+
+.challengePanel summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0.7rem 0;
+  color: var(--muted);
 }

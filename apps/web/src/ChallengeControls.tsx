@@ -38,11 +38,15 @@ export function ChallengeEntry({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const request = useRef(0);
+  const entry = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const parsed = ChallengeCodeSchema.safeParse(
       new URLSearchParams(location.hash.slice(1)).get("challenge"),
     );
-    if (parsed.success) setCode(parsed.data);
+    if (parsed.success) {
+      setCode(parsed.data);
+      if (entry.current) entry.current.open = true;
+    }
     return () => {
       request.current++;
     };
@@ -75,9 +79,8 @@ export function ChallengeEntry({
   }
 
   return (
-    <section className={styles.challengePanel} aria-label="选择同牌挑战">
-      <h3>同一手牌，换你来打</h3>
-      <p>使用好友分享的挑战码，重现相同的开局。每次挑战只打一局。</p>
+    <details ref={entry} className={styles.challengePanel}>
+      <summary>用挑战码开局</summary>
       <form
         onSubmit={(event) => {
           void lookup(event);
@@ -130,7 +133,7 @@ export function ChallengeEntry({
           </button>
         </div>
       )}
-    </section>
+    </details>
   );
 }
 

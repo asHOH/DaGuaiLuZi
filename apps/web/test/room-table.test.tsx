@@ -236,7 +236,9 @@ it("offers vacating only the current member's seat and disables it while syncing
     expect(
       render(accountId).match(/<button[^>]*>离座<\/button>/g),
     ).toHaveLength(1);
-    expect(render(accountId)).toContain("离座将取消准备");
+    expect(render(accountId).includes("离座将取消准备")).toBe(
+      accountId === "alice",
+    );
     expect(render(accountId)).not.toMatch(
       /<button[^>]*disabled[^>]*>离座<\/button>/,
     );

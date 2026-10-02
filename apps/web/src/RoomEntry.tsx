@@ -13,9 +13,6 @@ export function RoomEntry({
 }) {
   return (
     <section className={styles.home}>
-      <div>
-        <h1>今晚，怎么打？</h1>
-      </div>
       <div className={styles.forms}>
         <form
           className={styles.panel}

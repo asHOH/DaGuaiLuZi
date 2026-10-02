@@ -10,7 +10,7 @@ import {
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
 import { ChallengeEntry, ChallengeShare } from "./ChallengeControls";
 import { cardLabel, groupCards } from "./card-display";
-import { RULE_LABELS, RULE_VALUES } from "./game-display";
+import { RULE_LABELS, RULE_VALUES, resultLabel } from "./game-display";
 import { SuitIcon } from "./SuitIcon";
 
 import controls from "./controls.module.css";
@@ -127,9 +127,7 @@ function SeatCard({
               {ready ? "已准备" : "未准备"}
             </span>
           </>
-        ) : (
-          <span className={styles.seatOpen}>空位</span>
-        )}
+        ) : null}
       </div>
       {!occupant && (
         <button
@@ -153,7 +151,9 @@ function SeatCard({
           >
             离座
           </button>
-          <span className={styles.currentSeatHint}>离座将取消准备</span>
+          {ready && (
+            <span className={styles.currentSeatHint}>离座将取消准备</span>
+          )}
         </>
       )}
     </li>
@@ -477,15 +477,6 @@ function LobbyView({
           disabled={actionsDisabled}
           {...(view.ownerId === accountId ? { onCommand } : {})}
         />
-        <div className={styles.rulesBody}>
-          <p className={styles.actionHint}>
-            {view.members.length === 1
-              ? "退出后房间关闭，已完成的牌局记录仍可查看。"
-              : view.ownerId === accountId
-                ? "退出后，房主由最早加入的其余成员接任。"
-                : "退出后将腾出座位，并取消你的准备状态。"}
-          </p>
-        </div>
       </aside>
     </div>
   );
@@ -502,49 +493,33 @@ function PreviousHand({
   disabled: boolean;
   onFailure: RoomTableProps["onFailure"];
 }) {
-  const [open, setOpen] = useState(true);
   return (
-    <section
-      className={`${styles.result} ${styles.previousHand}`}
-      aria-label="上一局结果"
-    >
-      <button
-        type="button"
-        className={controls.secondaryButton}
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-      >
-        {open ? "收起上一局结果" : "上一局结果"}
-      </button>
-      {open && (
-        <>
-          <h3>第 {summary.handNumber} 局</h3>
-          <p>
-            {summary.result.outcome === "draw"
-              ? "本局平局"
-              : `${summary.result.winningTeam === 0 ? "一队" : "二队"}获胜`}{" "}
-            · 一队等级 {summary.teamLevels[0]} · 二队等级{" "}
-            {summary.teamLevels[1]}
-          </p>
-          <p>
-            {summary.seats
-              .map(
-                (seat) =>
-                  `${positionLabel(seat.seatIndex)}：${summary.finishPositions[seat.seatIndex] == null ? (seat.playerId !== undefined && summary.result.caughtPlayerIds.includes(seat.playerId) ? "被捉" : "未完牌") : `第${summary.finishPositions[seat.seatIndex]}名`}`,
-              )
-              .join(" · ")}
-          </p>
-          {summary.handStartSequence !== undefined && (
-            <ChallengeShare
-              key={summary.handStartSequence}
-              roomId={roomId}
-              handStartSequence={summary.handStartSequence}
-              disabled={disabled}
-              onFailure={onFailure}
-            />
-          )}
-        </>
-      )}
+    <section className={styles.previousHand} aria-label="上一局结果">
+      <details>
+        <summary>
+          上一局 · 第 {summary.handNumber} 局 · {resultLabel(summary.result)}
+        </summary>
+        <p>
+          一队等级 {summary.teamLevels[0]} · 二队等级 {summary.teamLevels[1]}
+        </p>
+        <p>
+          {summary.seats
+            .map(
+              (seat) =>
+                `${positionLabel(seat.seatIndex)}：${summary.finishPositions[seat.seatIndex] == null ? (seat.playerId !== undefined && summary.result.caughtPlayerIds.includes(seat.playerId) ? "被捉" : "未完牌") : `第${summary.finishPositions[seat.seatIndex]}名`}`,
+            )
+            .join(" · ")}
+        </p>
+        {summary.handStartSequence !== undefined && (
+          <ChallengeShare
+            key={summary.handStartSequence}
+            roomId={roomId}
+            handStartSequence={summary.handStartSequence}
+            disabled={disabled}
+            onFailure={onFailure}
+          />
+        )}
+      </details>
     </section>
   );
 }
@@ -1132,12 +1107,6 @@ function ActiveView({
             );
           })}
         </ol>
-
-        {view.unbeatenPlay === undefined && view.handResult === undefined && (
-          <p className={styles.tablePrompt}>
-            {view.setupStage === "play" ? "新一轮领牌" : "等待开局选择"}
-          </p>
-        )}
 
         {view.handResult !== undefined && (
           <section className={styles.result} aria-label="本局结果">

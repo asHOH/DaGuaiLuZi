@@ -143,8 +143,7 @@ export function HandHistory({
     <section className={styles.history} aria-labelledby="history-title">
       <div className={styles.heading}>
         <div>
-          <p className={styles.eyebrow}>已完成牌局</p>
-          <h2 id="history-title">牌局历史</h2>
+          <h2 id="history-title">已完成牌局</h2>
         </div>
         {busy && (
           <p className={styles.status} role="status">
