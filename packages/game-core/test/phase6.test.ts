@@ -1,3 +1,4 @@
+import { apply, fold, playFirstHand, startMatch } from "./support.js";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -5,7 +6,6 @@ import type { RulesConfiguration } from "@dglz/game-rules";
 import {
   decide,
   derivePlayerView,
-  evolve,
   RANDOMNESS_VERSION,
   SHUFFLE_VERSION,
   type Event,
@@ -50,23 +50,6 @@ const FOUR_PLAYER_CONFIGURATION: RulesConfiguration = {
   tributeRecipientPairing: "finish-position-by-tribute-rank",
   matchEnding: "no-failure-limit-at-5",
 };
-
-function fold(state: State | undefined, events: readonly Event[]): State {
-  let next = state;
-  for (const event of events) next = evolve(next, event);
-  if (next === undefined) throw new Error("Event fold produced no state");
-  return next;
-}
-
-function apply(
-  state: State,
-  command: Parameters<typeof decide>[1],
-): { state: State; events: readonly Event[] } {
-  const decision = decide(state, command);
-  expect(decision.ok).toBe(true);
-  if (!decision.ok) throw new Error(decision.rejection.reason);
-  return { state: fold(state, decision.events), events: decision.events };
-}
 
 function applyRecorded(
   history: Event[],
@@ -114,83 +97,11 @@ function submitTieRound(
   return next;
 }
 
-function readyMatch(
-  configuration: RulesConfiguration,
-  initialSeed: string,
-): { state: State; history: Event[] } {
-  const playerCount = configuration.rulesetId === "dglz-6p-3d-v1" ? 6 : 4;
-  const created: Event = {
-    type: "RoomCreated",
-    roomId: "phase-6-room",
-    ownerId: "p1",
-    rulesConfiguration: configuration,
-    seatingPolicy: "fixed",
-  };
-  const history: Event[] = [created];
-  let state = evolve(undefined, created);
-  for (let index = 2; index <= playerCount; index += 1) {
-    const joined = apply(state, { type: "JoinRoom", playerId: `p${index}` });
-    history.push(...joined.events);
-    state = joined.state;
-  }
-  for (let seatIndex = 0; seatIndex < playerCount; seatIndex += 1) {
-    const playerId = `p${seatIndex + 1}`;
-    let result = apply(state, { type: "AssignSeat", playerId, seatIndex });
-    history.push(...result.events);
-    state = result.state;
-    result = apply(state, { type: "SetReadiness", playerId, ready: true });
-    history.push(...result.events);
-    state = result.state;
-  }
-  let result = apply(state, { type: "SelectMatch", playerId: "p1" });
-  history.push(...result.events);
-  state = result.state;
-  result = apply(state, {
-    type: "StartMatch",
-    handSeed: initialSeed,
-    randomnessVersion: RANDOMNESS_VERSION,
-    shuffleVersion: SHUFFLE_VERSION,
-  });
-  history.push(...result.events);
-  return { state: result.state, history };
-}
-
-function playFirstHand(state: State, history: Event[]): State {
-  let next = state;
-  for (let step = 0; step < 1500; step += 1) {
-    const current = view(next);
-    if (current.handResult !== undefined) return next;
-    const actor = current.currentActor;
-    if (actor === undefined) throw new Error("Missing current actor");
-    const actorView = view(next, actor);
-    const card =
-      current.unbeatenPlay === undefined
-        ? actorView.hand?.[0]
-        : actorView.hand?.find(
-            (candidate) =>
-              decide(next, {
-                type: "Play",
-                playerId: actor,
-                cards: [candidate],
-              }).ok,
-          );
-    const result = apply(
-      next,
-      card === undefined
-        ? { type: "Pass", playerId: actor }
-        : { type: "Play", playerId: actor, cards: [card] },
-    );
-    history.push(...result.events);
-    next = result.state;
-  }
-  throw new Error("First Hand did not finish");
-}
-
 function startInitialHand(
   configuration: RulesConfiguration,
   initialSeed: string,
 ): { state: State; history: Event[] } {
-  const started = readyMatch(configuration, initialSeed);
+  const started = startMatch(configuration, initialSeed, "phase-6-room");
   started.state = playFirstHand(started.state, started.history);
   return started;
 }

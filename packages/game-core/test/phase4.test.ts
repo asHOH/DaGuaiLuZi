@@ -1,3 +1,4 @@
+import { apply, fold, startMatch } from "./support.js";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -6,8 +7,6 @@ import {
   decide,
   derivePlayerView,
   evolve,
-  RANDOMNESS_VERSION,
-  SHUFFLE_VERSION,
   type Event,
   type PlayerView,
   type State,
@@ -37,93 +36,8 @@ const FOUR_PLAYER_CONFIGURATION: RulesConfiguration = {
   matchEnding: "no-failure-limit-at-5",
 };
 
-function playerCount(configuration: RulesConfiguration): number {
-  return configuration.rulesetId === "dglz-6p-3d-v1" ? 6 : 4;
-}
-
-function fold(state: State | undefined, events: readonly Event[]): State {
-  let next = state;
-  for (const event of events) next = evolve(next, event);
-  if (next === undefined) throw new Error("Event fold produced no state");
-  return next;
-}
-
-function readyLobby(configuration: RulesConfiguration): {
-  state: State;
-  history: Event[];
-} {
-  const count = playerCount(configuration);
-  const created: Event = {
-    type: "RoomCreated",
-    roomId: "phase-4-room",
-    ownerId: "p1",
-    rulesConfiguration: configuration,
-    seatingPolicy: "fixed",
-  };
-  const history: Event[] = [created];
-  let state = evolve(undefined, created);
-
-  for (let index = 2; index <= count; index += 1) {
-    const events = acceptedEvents(state, {
-      type: "JoinRoom",
-      playerId: `p${index}`,
-    });
-    history.push(...events);
-    state = fold(state, events);
-  }
-  for (let seatIndex = 0; seatIndex < count; seatIndex += 1) {
-    const playerId = `p${seatIndex + 1}`;
-    const seatEvents = acceptedEvents(state, {
-      type: "AssignSeat",
-      playerId,
-      seatIndex,
-    });
-    history.push(...seatEvents);
-    state = fold(state, seatEvents);
-    const readyEvents = acceptedEvents(state, {
-      type: "SetReadiness",
-      playerId,
-      ready: true,
-    });
-    history.push(...readyEvents);
-    state = fold(state, readyEvents);
-  }
-  const selectedEvents = acceptedEvents(state, {
-    type: "SelectMatch",
-    playerId: "p1",
-  });
-  history.push(...selectedEvents);
-  return { state: fold(state, selectedEvents), history };
-}
-
-function acceptedEvents(
-  state: State,
-  command: Parameters<typeof decide>[1],
-): readonly Event[] {
-  const decision = decide(state, command);
-  expect(decision.ok).toBe(true);
-  if (!decision.ok) throw new Error(decision.rejection.reason);
-  return decision.events;
-}
-
 function start(configuration: RulesConfiguration, handSeed: string) {
-  const lobby = readyLobby(configuration);
-  const decision = decide(lobby.state, {
-    type: "StartMatch",
-    handSeed,
-    randomnessVersion: RANDOMNESS_VERSION,
-    shuffleVersion: SHUFFLE_VERSION,
-  });
-  expect(decision.ok).toBe(true);
-  if (!decision.ok) throw new Error(decision.rejection.reason);
-  return {
-    state: fold(lobby.state, decision.events),
-    history: [...lobby.history, ...decision.events],
-    playerIds: Array.from(
-      { length: playerCount(configuration) },
-      (_, index) => `p${index + 1}`,
-    ),
-  };
+  return startMatch(configuration, handSeed, "phase-4-room");
 }
 
 function replaceMatchStartContext(
@@ -143,16 +57,6 @@ function replaceMatchStartContext(
       : event,
   );
   return { ...started, history, state: fold(undefined, history) };
-}
-
-function apply(
-  state: State,
-  command: Parameters<typeof decide>[1],
-): { state: State; events: readonly Event[] } {
-  const decision = decide(state, command);
-  expect(decision.ok).toBe(true);
-  if (!decision.ok) throw new Error(decision.rejection.reason);
-  return { state: fold(state, decision.events), events: decision.events };
 }
 
 function view(state: State, playerId = "p1"): PlayerView {

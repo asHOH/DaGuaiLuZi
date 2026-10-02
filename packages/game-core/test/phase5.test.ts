@@ -1,3 +1,4 @@
+import { apply, fold, playFirstHand, startMatch } from "./support.js";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -9,7 +10,6 @@ import {
 import {
   decide,
   derivePlayerView,
-  evolve,
   RANDOMNESS_VERSION,
   SHUFFLE_VERSION,
   type Event,
@@ -45,117 +45,8 @@ function count(configuration: RulesConfiguration): number {
   return configuration.rulesetId === "dglz-6p-3d-v1" ? 6 : 4;
 }
 
-function fold(state: State | undefined, events: readonly Event[]): State {
-  let next = state;
-  for (const event of events) next = evolve(next, event);
-  if (next === undefined) throw new Error("Event fold produced no state");
-  return next;
-}
-
-function apply(
-  state: State,
-  command: Parameters<typeof decide>[1],
-): { state: State; events: readonly Event[] } {
-  const decision = decide(state, command);
-  expect(decision.ok).toBe(true);
-  if (!decision.ok) throw new Error(decision.rejection.reason);
-  return { state: fold(state, decision.events), events: decision.events };
-}
-
 function view(state: State, playerId = "p1"): PlayerView {
   return derivePlayerView(state, playerId);
-}
-
-function readyMatch(
-  configuration: RulesConfiguration,
-  initialSeed = "phase-5-initial",
-): {
-  state: State;
-  history: Event[];
-  playerIds: readonly string[];
-} {
-  const playerCount = count(configuration);
-  const created: Event = {
-    type: "RoomCreated",
-    roomId: "phase-5-room",
-    ownerId: "p1",
-    rulesConfiguration: configuration,
-    seatingPolicy: "fixed",
-  };
-  const history: Event[] = [created];
-  let state = evolve(undefined, created);
-
-  for (let index = 2; index <= playerCount; index += 1) {
-    const joined = apply(state, { type: "JoinRoom", playerId: `p${index}` });
-    history.push(...joined.events);
-    state = joined.state;
-  }
-  for (let seatIndex = 0; seatIndex < playerCount; seatIndex += 1) {
-    const playerId = `p${seatIndex + 1}`;
-    const seated = apply(state, {
-      type: "AssignSeat",
-      playerId,
-      seatIndex,
-    });
-    history.push(...seated.events);
-    state = seated.state;
-    const ready = apply(state, {
-      type: "SetReadiness",
-      playerId,
-      ready: true,
-    });
-    history.push(...ready.events);
-    state = ready.state;
-  }
-  const selected = apply(state, { type: "SelectMatch", playerId: "p1" });
-  history.push(...selected.events);
-  state = selected.state;
-  const started = apply(state, {
-    type: "StartMatch",
-    handSeed: initialSeed,
-    randomnessVersion: RANDOMNESS_VERSION,
-    shuffleVersion: SHUFFLE_VERSION,
-  });
-  history.push(...started.events);
-  return {
-    state: started.state,
-    history,
-    playerIds: Array.from(
-      { length: playerCount },
-      (_, index) => `p${index + 1}`,
-    ),
-  };
-}
-
-function playFirstHand(state: State, history: Event[]): State {
-  let next = state;
-  for (let step = 0; step < 1500; step += 1) {
-    const current = view(next);
-    if (current.handResult !== undefined) return next;
-    const actor = current.currentActor;
-    if (actor === undefined) throw new Error("Missing current actor");
-    const actorView = view(next, actor);
-    const card =
-      current.unbeatenPlay === undefined
-        ? actorView.hand?.[0]
-        : actorView.hand?.find(
-            (candidate) =>
-              decide(next, {
-                type: "Play",
-                playerId: actor,
-                cards: [candidate],
-              }).ok,
-          );
-    const applied = apply(
-      next,
-      card === undefined
-        ? { type: "Pass", playerId: actor }
-        : { type: "Play", playerId: actor, cards: [card] },
-    );
-    history.push(...applied.events);
-    next = applied.state;
-  }
-  throw new Error("First Hand did not finish");
 }
 
 function startInitialHand(
@@ -166,7 +57,7 @@ function startInitialHand(
   history: Event[];
   playerIds: readonly string[];
 } {
-  const started = readyMatch(configuration, initialSeed);
+  const started = startMatch(configuration, initialSeed, "phase-5-room");
   started.state = playFirstHand(started.state, started.history);
   return started;
 }
