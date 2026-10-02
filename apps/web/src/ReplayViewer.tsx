@@ -9,7 +9,13 @@ import {
 
 import { ApiError, api } from "./api";
 import { PLAY_FORM_LABELS } from "./play-feedback";
-import { RULE_LABELS, RULE_VALUES } from "./RoomTable";
+import {
+  ACTIVITY_LABELS,
+  completionLabel,
+  resultLabel,
+  RULE_LABELS,
+  RULE_VALUES,
+} from "./game-display";
 import { cardLabel } from "./card-display";
 import { SuitIcon } from "./SuitIcon";
 import { ChallengeShare } from "./ChallengeControls";
@@ -27,11 +33,6 @@ type ReplayViewerProps = {
   disabled: boolean;
 };
 
-const ACTIVITY_LABELS = {
-  match: "比赛",
-  challenge: "同牌挑战",
-} as const;
-
 const SETUP_STAGE_LABELS: Record<HandReplayStep["setupStage"], string> = {
   "tribute-selection": "进贡选牌",
   "recipient-pairing-tie": "进贡配对",
@@ -39,18 +40,6 @@ const SETUP_STAGE_LABELS: Record<HandReplayStep["setupStage"], string> = {
   "leader-selection-tie": "领牌选择",
   play: "出牌阶段",
 };
-
-const resultLabel = (result: NonNullable<HandReplayStep["result"]>) =>
-  result.outcome === "draw"
-    ? "平局"
-    : `${result.winningTeam === 0 ? "一队" : "二队"}获胜`;
-
-function completionLabel(value: number): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
 
 function replayError(reason: unknown): string {
   const code = reason instanceof ApiError ? reason.code : "unsupported";

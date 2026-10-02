@@ -5,7 +5,12 @@ import {
 } from "@dglz/protocol";
 
 import { ApiError, api } from "./api";
-import { RULE_VALUES } from "./RoomTable";
+import {
+  ACTIVITY_LABELS,
+  completionLabel,
+  resultLabel,
+  RULE_VALUES,
+} from "./game-display";
 
 import styles from "./HandHistory.module.css";
 
@@ -14,24 +19,6 @@ type HandHistoryProps = {
   onOpen: (hand: CompletedHandSummary) => void;
   onFailure: (reason: unknown) => void;
 };
-
-const ACTIVITY_LABELS = {
-  match: "比赛",
-  challenge: "同牌挑战",
-} as const;
-
-function completionLabel(value: number): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function resultLabel(hand: CompletedHandSummary): string {
-  return hand.result.outcome === "draw"
-    ? "平局"
-    : `${hand.result.winningTeam === 0 ? "一队" : "二队"}获胜`;
-}
 
 function ownFinishLabel(hand: CompletedHandSummary, accountId: string): string {
   const seatIndex = hand.playerIds.indexOf(accountId);
@@ -84,7 +71,7 @@ function HandRow({
         </div>
         <div>
           <dt>结果</dt>
-          <dd>{resultLabel(hand)}</dd>
+          <dd>{resultLabel(hand.result)}</dd>
         </div>
         <div>
           <dt>等级</dt>
