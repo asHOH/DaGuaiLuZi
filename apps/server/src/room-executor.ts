@@ -157,15 +157,8 @@ export class RoomExecutor {
     return deriveRoomView(this.current, accountId);
   }
 
-  public execute(
-    accountId: PlayerAccountId,
-    envelope: RoomCommandEnvelope,
-    presence?: RoomPresence,
-    authorize?: () => void,
-  ): Promise<RoomCommandAck> {
-    const result = this.queue.then(() =>
-      this.executeSerialized(accountId, envelope, presence, authorize),
-    );
+  private enqueue<T>(operation: () => T | Promise<T>): Promise<T> {
+    const result = this.queue.then(operation);
     this.queue = result.then(
       () => undefined,
       () => undefined,
@@ -173,13 +166,19 @@ export class RoomExecutor {
     return result;
   }
 
-  public autoStart(presence: RoomPresence): Promise<void> {
-    const result = this.queue.then(() => this.autoStartSerialized(presence));
-    this.queue = result.then(
-      () => undefined,
-      () => undefined,
+  public execute(
+    accountId: PlayerAccountId,
+    envelope: RoomCommandEnvelope,
+    presence?: RoomPresence,
+    authorize?: () => void,
+  ): Promise<RoomCommandAck> {
+    return this.enqueue(() =>
+      this.executeSerialized(accountId, envelope, presence, authorize),
     );
-    return result;
+  }
+
+  public autoStart(presence: RoomPresence): Promise<void> {
+    return this.enqueue(() => this.autoStartSerialized(presence));
   }
 
   public resumeSettledHand(
@@ -187,7 +186,7 @@ export class RoomExecutor {
     presence: RoomPresence,
     authorize?: () => void,
   ): Promise<void> {
-    const result = this.queue.then(async () => {
+    return this.enqueue(async () => {
       authorize?.();
       if ("recovery" in this.current) return;
       if (!(await canStartNextHand(this.viewFor(accountId)?.view, presence)))
@@ -211,11 +210,6 @@ export class RoomExecutor {
       );
       this.current = candidate;
     });
-    this.queue = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
   }
 
   public createChallengeCode(
@@ -223,7 +217,7 @@ export class RoomExecutor {
     handStartSequence: number,
     authorize?: () => void,
   ): Promise<ChallengePreview | "not-found" | "forbidden"> {
-    const result = this.queue.then(() =>
+    return this.enqueue(() =>
       this.database.sqlite
         .transaction(() => {
           authorize?.();
@@ -236,11 +230,6 @@ export class RoomExecutor {
         })
         .immediate(),
     );
-    this.queue = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
   }
 
   private async executeSerialized(
