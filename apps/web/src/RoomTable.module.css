@@ -28,47 +28,6 @@
   margin-bottom: 0.75rem;
 }
 
-.challengePanel {
-  border-top: 1px solid var(--line);
-  margin-top: 1.5rem;
-  padding-top: 1.2rem;
-}
-
-.challengePanel form,
-.challengeShare {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.challengePanel label,
-.challengeShare label {
-  flex: 1 1 16rem;
-  min-width: 0;
-}
-
-.challengePanel input,
-.challengeShare input {
-  font-family: var(--font-code);
-}
-
-.challengeShare input {
-  font-size: 0.85rem;
-}
-
-.challengeShare p {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-.challengePreview {
-  border-left: 3px solid var(--brass);
-  margin-top: 1rem;
-  padding-left: 1rem;
-}
-
 .sectionHeading,
 .tableHeading,
 .panelHeading,
@@ -217,54 +176,6 @@
 
 .seatOpen {
   color: var(--muted);
-}
-
-.seatButton,
-.primaryButton,
-.readyButton,
-.secondaryButton {
-  border-radius: 0.55rem;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.8rem;
-  padding: 0.5rem 0.7rem;
-  transition:
-    opacity 160ms ease,
-    background 160ms ease,
-    transform 160ms ease;
-}
-
-.seatButton,
-.secondaryButton {
-  background: transparent;
-  border: 1px solid var(--line, var(--muted));
-  color: var(--ivory-muted, var(--ivory));
-}
-
-.primaryButton,
-.readyButton {
-  background: var(--brass);
-  border: 1px solid var(--brass-light, var(--brass));
-  color: var(--felt-deep, var(--felt));
-  font-weight: 800;
-}
-
-.seatButton:hover:not(:disabled),
-.primaryButton:hover:not(:disabled),
-.readyButton:hover:not(:disabled),
-.secondaryButton:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.roomTable button:disabled {
-  cursor: wait;
-  opacity: 0.45;
-}
-
-.roomTable button:focus-visible,
-.roomTable summary:focus-visible {
-  outline: 2px solid var(--brass-light);
-  outline-offset: 3px;
 }
 
 .currentSeatHint,
@@ -990,11 +901,6 @@
   padding: 0.4rem;
 }
 
-.roomTable select:focus-visible {
-  outline: 2px solid var(--brass-light);
-  outline-offset: 3px;
-}
-
 .setupChoices {
   border-top: 1px solid #8b836f;
   margin-top: 1rem;
@@ -1170,10 +1076,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .seatCard,
-  .seatButton,
-  .primaryButton,
-  .readyButton,
-  .secondaryButton,
   .card {
     transition: none;
   }

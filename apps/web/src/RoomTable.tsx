@@ -13,6 +13,7 @@ import { cardLabel, groupCards } from "./card-display";
 import { RULE_LABELS, RULE_VALUES } from "./game-display";
 import { SuitIcon } from "./SuitIcon";
 
+import controls from "./controls.module.css";
 import styles from "./RoomTable.module.css";
 
 type RoomTableProps = {
@@ -132,7 +133,7 @@ function SeatCard({
       </div>
       {!occupant && (
         <button
-          className={styles.seatButton}
+          className={controls.secondaryButton}
           type="button"
           disabled={actionsDisabled}
           onClick={() =>
@@ -145,7 +146,7 @@ function SeatCard({
       {isCurrentAccount && (
         <>
           <button
-            className={styles.seatButton}
+            className={controls.secondaryButton}
             type="button"
             disabled={actionsDisabled}
             onClick={() => onCommand({ type: "RemoveSeat" })}
@@ -234,7 +235,7 @@ function RulesDetails({
                 return (
                   <button
                     type="button"
-                    className={styles.primaryButton}
+                    className={controls.primaryButton}
                     key={preset}
                     disabled={Object.entries(configuration).every(
                       ([key, value]) =>
@@ -376,7 +377,7 @@ function LobbyView({
         <div className={styles.lobbyActions}>
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={controls.secondaryButton}
             disabled={actionsDisabled}
             onClick={() => onCommand({ type: "LeaveRoom" })}
           >
@@ -384,7 +385,7 @@ function LobbyView({
           </button>
           {view.ownerId === accountId && view.selectedActivity !== "match" && (
             <button
-              className={styles.primaryButton}
+              className={controls.primaryButton}
               type="button"
               disabled={actionsDisabled}
               onClick={() => onCommand({ type: "SelectMatch" })}
@@ -406,8 +407,8 @@ function LobbyView({
             <button
               className={
                 currentMember.ready
-                  ? styles.secondaryButton
-                  : styles.readyButton
+                  ? controls.secondaryButton
+                  : controls.primaryButton
               }
               type="button"
               disabled={actionsDisabled}
@@ -509,7 +510,7 @@ function PreviousHand({
     >
       <button
         type="button"
-        className={styles.secondaryButton}
+        className={controls.secondaryButton}
         onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
@@ -597,7 +598,7 @@ function TieChoice({
           </label>
           <button
             type="button"
-            className={styles.primaryButton}
+            className={controls.primaryButton}
             disabled={disabled}
             onClick={() => {
               if (view.tieKind !== undefined && view.tieRound !== undefined)
@@ -708,7 +709,7 @@ function SetupChoices({
               <p>请选择一张可进贡的最高牌。</p>
               <button
                 type="button"
-                className={styles.primaryButton}
+                className={controls.primaryButton}
                 disabled={disabled || selected.length !== 1}
                 onClick={() =>
                   onCommand({ type: "SelectTributeCard", card: selected[0]! })
@@ -734,7 +735,7 @@ function SetupChoices({
               <p>已选 {selected.length} 张</p>
               <button
                 type="button"
-                className={styles.primaryButton}
+                className={controls.primaryButton}
                 disabled={
                   disabled ||
                   (candidateCount > 0
@@ -790,7 +791,7 @@ function SetupChoices({
               </ul>
               <button
                 type="button"
-                className={styles.primaryButton}
+                className={controls.primaryButton}
                 disabled={disabled || selected.length !== 1}
                 onClick={() =>
                   onCommand({ type: "SelectReturnCard", card: selected[0]! })
@@ -890,7 +891,7 @@ function HandControls({
               <>
                 <button
                   type="button"
-                  className={`${styles.primaryButton} ${styles.playButton}`}
+                  className={`${controls.primaryButton} ${styles.playButton}`}
                   disabled={!canAct || feedback?.ok !== true}
                   onClick={() => onCommand({ type: "Play", cards: selected })}
                 >
@@ -899,7 +900,7 @@ function HandControls({
                 {view.unbeatenPlay !== undefined && (
                   <button
                     type="button"
-                    className={`${styles.primaryButton} ${styles.passButton}`}
+                    className={`${controls.primaryButton} ${styles.passButton}`}
                     disabled={!canAct}
                     onClick={() => onCommand({ type: "Pass" })}
                   >
@@ -912,7 +913,7 @@ function HandControls({
               <span className={styles.clearSelection}>
                 <button
                   type="button"
-                  className={styles.secondaryButton}
+                  className={controls.secondaryButton}
                   disabled={!canSelect}
                   onClick={() => setSelection({ handKey, cards: [] })}
                 >
@@ -1223,7 +1224,7 @@ export function RoomTable({
           room.view.ownerId === accountId && (
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={controls.secondaryButton}
               disabled={locked || pending}
               onClick={() =>
                 onCommand({
@@ -1288,7 +1289,7 @@ export function RoomTable({
               <div className={styles.lobbyActions}>
                 <button
                   type="button"
-                  className={styles.primaryButton}
+                  className={controls.primaryButton}
                   disabled={locked || pending}
                   onClick={() => onCommand({ type: "ReplaceInterruptedRoom" })}
                 >
@@ -1296,7 +1297,7 @@ export function RoomTable({
                 </button>
                 <button
                   type="button"
-                  className={styles.secondaryButton}
+                  className={controls.secondaryButton}
                   disabled={locked || pending}
                   onClick={() => onCommand({ type: "ArchiveRoom" })}
                 >

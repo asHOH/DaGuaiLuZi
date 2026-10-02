@@ -20,46 +20,6 @@
   background: radial-gradient(ellipse at 30% 15%, #245647 0, transparent 65%);
   min-width: 320px;
 }
-:global(button),
-:global(input),
-:global(select) {
-  font: inherit;
-}
-:global(button) {
-  min-height: 44px;
-  padding: 0.7rem 1.1rem;
-  border: 1px solid #78917d;
-  border-radius: 6px;
-  color: var(--ivory);
-  background: #214c3e;
-  cursor: pointer;
-}
-:global(button:hover:not(:disabled)) {
-  background: #32644f;
-}
-:global(button:disabled) {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-:global(:focus-visible) {
-  outline: 3px solid var(--brass);
-  outline-offset: 4px;
-}
-:global(input),
-:global(select) {
-  width: 100%;
-  min-height: 46px;
-  padding: 0.7rem;
-  border-radius: 5px;
-  border: 1px solid #6e8272;
-  background: #102e28;
-  color: var(--ivory);
-}
-:global(label) {
-  display: grid;
-  gap: 0.55rem;
-  font-size: 0.9rem;
-}
 :global(a) {
   color: var(--brass);
 }
@@ -140,15 +100,6 @@
 .panel p {
   margin: 0;
   font-size: 0.9rem;
-}
-.primary {
-  background: var(--brass);
-  color: #203a2e;
-  border-color: var(--brass);
-  font-weight: bold;
-}
-.primary:hover:not(:disabled) {
-  background: #e3c995;
 }
 .motif {
   display: flex;

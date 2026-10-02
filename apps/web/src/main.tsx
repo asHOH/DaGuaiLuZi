@@ -16,6 +16,7 @@ import { replayHash, replaySource, type ReplaySource } from "./replay-links";
 import { RoomTable } from "./RoomTable";
 import { SuitIcon } from "./SuitIcon";
 import { ConnectionStatus } from "./ConnectionStatus";
+import controls from "./controls.module.css";
 import styles from "./shell.module.css";
 
 type Account = { accountId: string; username: string };
@@ -435,7 +436,7 @@ function App() {
                   maxLength={1024}
                 />
               </label>
-              <button className={styles.primary} disabled={busy}>
+              <button className={controls.primary} disabled={busy}>
                 登录
               </button>
               {error && (
@@ -510,7 +511,7 @@ function App() {
                   onInput={(event) => event.currentTarget.setCustomValidity("")}
                 />
               </label>
-              <button className={styles.primary} disabled={busy}>
+              <button className={controls.primary} disabled={busy}>
                 {busy ? "正在修改…" : "确认修改"}
               </button>
               <button
@@ -579,7 +580,7 @@ function App() {
                     <option value="randomized">开局随机分配</option>
                   </select>
                 </label>
-                <button className={styles.primary} disabled={busy}>
+                <button className={controls.primary} disabled={busy}>
                   创建房间
                 </button>
               </form>

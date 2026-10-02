@@ -1,0 +1,81 @@
+:global(button),
+:global(input),
+:global(select) {
+  font: inherit;
+}
+:global(button) {
+  min-height: 44px;
+  padding: 0.7rem 1.1rem;
+  border: 1px solid #78917d;
+  border-radius: 6px;
+  color: var(--ivory);
+  background: #214c3e;
+  cursor: pointer;
+}
+:global(button:hover:not(:disabled)) {
+  background: #32644f;
+}
+:global(button:disabled) {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+:global(:focus-visible) {
+  outline: 2px solid var(--brass-light, var(--brass));
+  outline-offset: 3px;
+}
+:global(input),
+:global(select) {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.7rem;
+  border-radius: 5px;
+  border: 1px solid #6e8272;
+  background: #102e28;
+  color: var(--ivory);
+}
+:global(label) {
+  display: grid;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+}
+
+.primary {
+  background: var(--brass);
+  color: #203a2e;
+  border-color: var(--brass);
+  font-weight: bold;
+}
+.primary:hover:not(:disabled) {
+  background: #e3c995;
+}
+
+.primaryButton,
+.secondaryButton {
+  border-radius: 0.55rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.7rem;
+  transition:
+    opacity 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.secondaryButton {
+  background: transparent;
+  border: 1px solid var(--line, var(--muted));
+  color: var(--ivory-muted, var(--ivory));
+}
+
+.primaryButton {
+  background: var(--brass);
+  border: 1px solid var(--brass-light, var(--brass));
+  color: var(--felt-deep, var(--felt));
+  font-weight: 800;
+}
+
+.primaryButton:hover:not(:disabled),
+.secondaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+}

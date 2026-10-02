@@ -7,7 +7,8 @@ import {
 } from "@dglz/protocol";
 import { api, ApiError, errorMessage } from "./api";
 import { replayLink } from "./replay-links";
-import styles from "./RoomTable.module.css";
+import controls from "./controls.module.css";
+import styles from "./ChallengeControls.module.css";
 
 type ControlsProps = {
   disabled: boolean;
@@ -101,7 +102,7 @@ export function ChallengeEntry({
         </label>
         <button
           type="submit"
-          className={styles.secondaryButton}
+          className={controls.secondaryButton}
           disabled={disabled || busy || code.trim() === ""}
         >
           {busy ? "正在查找…" : "查看牌局"}
@@ -119,7 +120,7 @@ export function ChallengeEntry({
           </p>
           <button
             type="button"
-            className={styles.primaryButton}
+            className={controls.primaryButton}
             disabled={disabled || busy}
             onClick={() =>
               onCommand({ type: "SelectChallengeHand", code: preview.code })
@@ -210,7 +211,7 @@ export function ChallengeShare({
           </label>
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={controls.secondaryButton}
             disabled={disabled}
             onClick={() => {
               void copy();
@@ -220,7 +221,7 @@ export function ChallengeShare({
           </button>
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={controls.secondaryButton}
             disabled={disabled}
             onClick={() => void copy(true)}
           >
@@ -229,7 +230,7 @@ export function ChallengeShare({
           {onChallenge ? (
             <button
               type="button"
-              className={styles.primaryButton}
+              className={controls.primaryButton}
               disabled={disabled}
               onClick={() => void onChallenge(code)}
             >
@@ -243,7 +244,7 @@ export function ChallengeShare({
       ) : (
         <button
           type="button"
-          className={styles.secondaryButton}
+          className={controls.secondaryButton}
           disabled={disabled || busy}
           onClick={() => {
             void generate();

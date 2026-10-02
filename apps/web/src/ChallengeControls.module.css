@@ -1,0 +1,40 @@
+.challengePanel {
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1.2rem;
+}
+
+.challengePanel form,
+.challengeShare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.challengePanel label,
+.challengeShare label {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.challengePanel input,
+.challengeShare input {
+  font-family: var(--font-code);
+}
+
+.challengeShare input {
+  font-size: 0.85rem;
+}
+
+.challengeShare p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.challengePreview {
+  border-left: 3px solid var(--brass);
+  margin-top: 1rem;
+  padding-left: 1rem;
+}
