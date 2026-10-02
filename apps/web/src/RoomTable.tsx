@@ -620,19 +620,7 @@ function TieChoice({
   );
 }
 
-function ActiveView({
-  view,
-  accountId,
-  locked,
-  pending,
-  onCommand,
-}: {
-  view: Extract<RoomViewData["view"], { lifecycle: "ACTIVE" }>;
-  accountId: string;
-  locked: boolean;
-  pending: boolean;
-  onCommand: (payload: RoomCommandPayload) => void;
-}) {
+function handSetup(view: ActivePlayerView, accountId: string) {
   const pendingActor = view.pendingPlayerIds[0];
   const ownSetupTurn = view.pendingPlayerIds.includes(accountId);
   const offer =
@@ -667,6 +655,183 @@ function ActiveView({
     view.setupStage === "return-card-selection" &&
     ownSetupTurn &&
     offer === undefined;
+  return {
+    ownSetupTurn,
+    offer,
+    transfer,
+    candidateCount,
+    tributeSelection,
+    returnSelection,
+  };
+}
+
+function SetupChoices({
+  view,
+  accountId,
+  disabled,
+  setup,
+  selected,
+  onSelect,
+  onCommand,
+}: {
+  view: ActivePlayerView;
+  accountId: string;
+  disabled: boolean;
+  setup: ReturnType<typeof handSetup>;
+  selected: ActivePlayerView["hand"];
+  onSelect: (cards: ActivePlayerView["hand"]) => void;
+  onCommand: RoomTableProps["onCommand"];
+}) {
+  const {
+    ownSetupTurn,
+    offer,
+    transfer,
+    candidateCount,
+    tributeSelection,
+    returnSelection,
+  } = setup;
+  return (
+    <>
+      {view.setupStage !== "play" && view.handResult === undefined && (
+        <section className={styles.setupChoices} aria-label="开局选择">
+          {view.tieKind !== undefined ? (
+            <TieChoice
+              key={`${view.tieKind}:${view.tieRound}:${view.tieCandidateIds?.join(",")}`}
+              view={view}
+              accountId={accountId}
+              disabled={disabled}
+              onCommand={onCommand}
+            />
+          ) : tributeSelection ? (
+            <>
+              <h3>选择进贡牌</h3>
+              <p>请选择一张可进贡的最高牌。</p>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={disabled || selected.length !== 1}
+                onClick={() =>
+                  onCommand({ type: "SelectTributeCard", card: selected[0]! })
+                }
+              >
+                确认进贡
+              </button>
+            </>
+          ) : returnSelection ? (
+            <>
+              <h3>{candidateCount > 0 ? "提供还牌候选" : "选择还牌"}</h3>
+              {transfer !== undefined && (
+                <p>
+                  收到{positionLabel(transfer.giverSeat)}的贡牌：
+                  {cardLabel(transfer.card).display}
+                </p>
+              )}
+              <p>
+                {candidateCount > 0
+                  ? `请选择 ${candidateCount} 张不同点数的手牌，由进贡方选回一张。`
+                  : "请选择一张手牌还给进贡方，也可归还收到的贡牌。"}
+              </p>
+              <p>已选 {selected.length} 张</p>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={
+                  disabled ||
+                  (candidateCount > 0
+                    ? selected.length !== candidateCount ||
+                      new Set(
+                        selected.map((code) =>
+                          code.split("#")[0]!.replace(/[SHDC]$/, ""),
+                        ),
+                      ).size !== candidateCount
+                    : selected.length !== 1)
+                }
+                onClick={() =>
+                  onCommand(
+                    candidateCount > 0
+                      ? {
+                          type: "OfferReturnCandidates",
+                          candidateCards: selected,
+                        }
+                      : { type: "SelectReturnCard", card: selected[0]! },
+                  )
+                }
+              >
+                {candidateCount > 0 ? "提交还牌候选" : "确认还牌"}
+              </button>
+            </>
+          ) : ownSetupTurn && offer !== undefined ? (
+            <>
+              <h3>从候选中选择还牌</h3>
+              <p>
+                {positionLabel(offer.recipientSeat)}
+                已提供候选牌，点选一张并确认收回。
+              </p>
+              <ul className={styles.candidateCards}>
+                {offer.candidateCards.map((code) => {
+                  const card = cardLabel(code);
+                  return (
+                    <li key={code}>
+                      <button
+                        type="button"
+                        data-testid="return-candidate"
+                        data-card={code}
+                        aria-label={card.aria}
+                        aria-pressed={selected.includes(code)}
+                        className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
+                        disabled={disabled}
+                        onClick={() => onSelect([code])}
+                      >
+                        <CardFace code={code} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={disabled || selected.length !== 1}
+                onClick={() =>
+                  onCommand({ type: "SelectReturnCard", card: selected[0]! })
+                }
+              >
+                确认还牌
+              </button>
+            </>
+          ) : (
+            <p role="status">
+              {(view.setupStage === "tribute-selection" &&
+                view.lastHandResult?.result.caughtPlayerIds.includes(
+                  accountId,
+                )) ||
+              offer?.recipientId === accountId
+                ? "已提交，等待其他玩家"
+                : "等待其他玩家完成开局选择"}
+            </p>
+          )}
+        </section>
+      )}
+    </>
+  );
+}
+
+function HandControls({
+  view,
+  accountId,
+  locked,
+  pending,
+  onCommand,
+}: {
+  view: Extract<RoomViewData["view"], { lifecycle: "ACTIVE" }>;
+  accountId: string;
+  locked: boolean;
+  pending: boolean;
+  onCommand: (payload: RoomCommandPayload) => void;
+}) {
+  const setup = handSetup(view, accountId);
+  const { offer, transfer, candidateCount, tributeSelection, returnSelection } =
+    setup;
   const handKey = `${view.hand.join(",")}:${view.setupStage}:${view.pendingPlayerIds.includes(accountId)}:${offer?.tributeCard ?? transfer?.card ?? ""}`;
   const [selection, setSelection] = useState({
     handKey,
@@ -691,12 +856,192 @@ function ActiveView({
     selected.length === 0 || view.setupStage !== "play"
       ? undefined
       : selectionFeedback(view, selected);
+  const ownSeat = memberSeatIndex(view, accountId) ?? 0;
+  const handGroups = groupCards(view.hand, view.trumpRank);
+  return (
+    <section
+      className={styles.handPanel}
+      aria-label="你的手牌"
+      data-own-turn={isOwnTurn}
+      data-selection-state={
+        feedback?.ok
+          ? "playable"
+          : feedback?.reason === "response-not-stronger"
+            ? "beaten"
+            : "incomplete"
+      }
+      aria-description={isOwnTurn ? "轮到你出牌" : undefined}
+    >
+      <div className={styles.handToolbar}>
+        <span
+          className={styles.handCount}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <span data-testid="remaining-count">
+            {view.handSizes[ownSeat] ?? 0} 张
+          </span>
+          {view.finishPositions[ownSeat] != null &&
+            ` · 第${view.finishPositions[ownSeat]}名`}
+        </span>
+        {view.handResult === undefined && view.setupStage === "play" && (
+          <div className={styles.playActions}>
+            {isOwnTurn && (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.primaryButton} ${styles.playButton}`}
+                  disabled={!canAct || feedback?.ok !== true}
+                  onClick={() => onCommand({ type: "Play", cards: selected })}
+                >
+                  出牌
+                </button>
+                {view.unbeatenPlay !== undefined && (
+                  <button
+                    type="button"
+                    className={`${styles.primaryButton} ${styles.passButton}`}
+                    disabled={!canAct}
+                    onClick={() => onCommand({ type: "Pass" })}
+                  >
+                    不出
+                  </button>
+                )}
+              </>
+            )}
+            {selected.length > 0 && (
+              <span className={styles.clearSelection}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={!canSelect}
+                  onClick={() => setSelection({ handKey, cards: [] })}
+                >
+                  清空选择
+                </button>
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      {view.handResult === undefined && view.setupStage === "play" && (
+        <p className={styles.handNote} aria-live="polite">
+          {selected.length === 5 && feedback?.ok
+            ? PLAY_FORM_LABELS[feedback.play.form]
+            : null}
+        </p>
+      )}
+      <div className={styles.handScroll}>
+        <ul className={styles.hand} aria-label="你的手牌">
+          {handGroups.map((group) => (
+            <li key={group.rank} data-rank={group.rank}>
+              <ul className={styles.rankGroup}>
+                {group.cards.map((code) => {
+                  const card = cardLabel(code);
+                  return (
+                    <li key={code}>
+                      <button
+                        type="button"
+                        className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
+                        data-card={code}
+                        data-testid="hand-card"
+                        aria-label={card.aria}
+                        aria-pressed={selected.includes(code)}
+                        disabled={
+                          !canSelect ||
+                          (tributeSelection &&
+                            !view.eligibleTributeCards.includes(code))
+                        }
+                        onClick={() =>
+                          setSelection({
+                            handKey,
+                            cards: selected.includes(code)
+                              ? selected.filter((card) => card !== code)
+                              : view.setupStage !== "play" &&
+                                  candidateCount === 0
+                                ? [code]
+                                : [...selected, code],
+                          })
+                        }
+                      >
+                        <CardFace code={code} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <SetupChoices
+        view={view}
+        accountId={accountId}
+        disabled={locked || pending}
+        setup={setup}
+        selected={selected}
+        onSelect={(cards) => setSelection({ handKey, cards })}
+        onCommand={onCommand}
+      />
+      {view.tieResolvedRounds !== undefined &&
+        view.tieResolvedRounds.length > 0 && (
+          <details>
+            <summary>已公开的选择结果</summary>
+            {view.tieResolvedRounds.map((round, index) => (
+              <div key={index}>
+                <p>
+                  {round.tieKind === "recipient-pairing"
+                    ? "进贡配对"
+                    : "首家选择"}{" "}
+                  · 第 {round.round} 轮
+                  {round.fallback ? " · 已使用三轮后规则" : ""}
+                </p>
+                <p>
+                  {round.ballots
+                    .map(
+                      (ballot) =>
+                        `${positionLabel(memberSeatIndex(view, ballot.voterId)!)}：${ballot.candidateId === null ? "放弃" : positionLabel(memberSeatIndex(view, ballot.candidateId)!)}`,
+                    )
+                    .join(" · ")}
+                </p>
+                {round.committedPairs.map((pair) => (
+                  <p key={pair.giverId}>
+                    {positionLabel(pair.giverSeat)} →{" "}
+                    {positionLabel(pair.recipientSeat)}
+                  </p>
+                ))}
+                {round.selectedLeaderId !== undefined && (
+                  <p>
+                    首家：
+                    {positionLabel(
+                      memberSeatIndex(view, round.selectedLeaderId)!,
+                    )}
+                  </p>
+                )}
+              </div>
+            ))}
+          </details>
+        )}
+    </section>
+  );
+}
+
+function ActiveView({
+  view,
+  accountId,
+  locked,
+  pending,
+  onCommand,
+}: {
+  view: Extract<RoomViewData["view"], { lifecycle: "ACTIVE" }>;
+  accountId: string;
+  locked: boolean;
+  pending: boolean;
+  onCommand: (payload: RoomCommandPayload) => void;
+}) {
   const currentActorSeat = view.seats.find(
     (seat) => seat.playerId === view.currentActor,
   )?.seatIndex;
   const ownSeat = memberSeatIndex(view, accountId) ?? 0;
-  const handGroups = groupCards(view.hand, view.trumpRank);
-
   return (
     <div className={styles.activeLayout}>
       <section className={styles.tableStage} aria-label="牌桌">
@@ -811,282 +1156,13 @@ function ActiveView({
         )}
       </section>
 
-      <section
-        className={styles.handPanel}
-        aria-label="你的手牌"
-        data-own-turn={isOwnTurn}
-        data-selection-state={
-          feedback?.ok
-            ? "playable"
-            : feedback?.reason === "response-not-stronger"
-              ? "beaten"
-              : "incomplete"
-        }
-        aria-description={isOwnTurn ? "轮到你出牌" : undefined}
-      >
-        <div className={styles.handToolbar}>
-          <span
-            className={styles.handCount}
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <span data-testid="remaining-count">
-              {view.handSizes[ownSeat] ?? 0} 张
-            </span>
-            {view.finishPositions[ownSeat] != null &&
-              ` · 第${view.finishPositions[ownSeat]}名`}
-          </span>
-          {view.handResult === undefined && view.setupStage === "play" && (
-            <div className={styles.playActions}>
-              {isOwnTurn && (
-                <>
-                  <button
-                    type="button"
-                    className={`${styles.primaryButton} ${styles.playButton}`}
-                    disabled={!canAct || feedback?.ok !== true}
-                    onClick={() => onCommand({ type: "Play", cards: selected })}
-                  >
-                    出牌
-                  </button>
-                  {view.unbeatenPlay !== undefined && (
-                    <button
-                      type="button"
-                      className={`${styles.primaryButton} ${styles.passButton}`}
-                      disabled={!canAct}
-                      onClick={() => onCommand({ type: "Pass" })}
-                    >
-                      不出
-                    </button>
-                  )}
-                </>
-              )}
-              {selected.length > 0 && (
-                <span className={styles.clearSelection}>
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={!canSelect}
-                    onClick={() => setSelection({ handKey, cards: [] })}
-                  >
-                    清空选择
-                  </button>
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        {view.handResult === undefined && view.setupStage === "play" && (
-          <p className={styles.handNote} aria-live="polite">
-            {selected.length === 5 && feedback?.ok
-              ? PLAY_FORM_LABELS[feedback.play.form]
-              : null}
-          </p>
-        )}
-        <div className={styles.handScroll}>
-          <ul className={styles.hand} aria-label="你的手牌">
-            {handGroups.map((group) => (
-              <li key={group.rank} data-rank={group.rank}>
-                <ul className={styles.rankGroup}>
-                  {group.cards.map((code) => {
-                    const card = cardLabel(code);
-                    return (
-                      <li key={code}>
-                        <button
-                          type="button"
-                          className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
-                          data-card={code}
-                          data-testid="hand-card"
-                          aria-label={card.aria}
-                          aria-pressed={selected.includes(code)}
-                          disabled={
-                            !canSelect ||
-                            (tributeSelection &&
-                              !view.eligibleTributeCards.includes(code))
-                          }
-                          onClick={() =>
-                            setSelection({
-                              handKey,
-                              cards: selected.includes(code)
-                                ? selected.filter((card) => card !== code)
-                                : view.setupStage !== "play" &&
-                                    candidateCount === 0
-                                  ? [code]
-                                  : [...selected, code],
-                            })
-                          }
-                        >
-                          <CardFace code={code} />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        </div>
-        {view.setupStage !== "play" && view.handResult === undefined && (
-          <section className={styles.setupChoices} aria-label="开局选择">
-            {view.tieKind !== undefined ? (
-              <TieChoice
-                key={`${view.tieKind}:${view.tieRound}:${view.tieCandidateIds?.join(",")}`}
-                view={view}
-                accountId={accountId}
-                disabled={locked || pending}
-                onCommand={onCommand}
-              />
-            ) : tributeSelection ? (
-              <>
-                <h3>选择进贡牌</h3>
-                <p>请选择一张可进贡的最高牌。</p>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={!canSelect || selected.length !== 1}
-                  onClick={() =>
-                    onCommand({ type: "SelectTributeCard", card: selected[0]! })
-                  }
-                >
-                  确认进贡
-                </button>
-              </>
-            ) : returnSelection ? (
-              <>
-                <h3>{candidateCount > 0 ? "提供还牌候选" : "选择还牌"}</h3>
-                {transfer !== undefined && (
-                  <p>
-                    收到{positionLabel(transfer.giverSeat)}的贡牌：
-                    {cardLabel(transfer.card).display}
-                  </p>
-                )}
-                <p>
-                  {candidateCount > 0
-                    ? `请选择 ${candidateCount} 张不同点数的手牌，由进贡方选回一张。`
-                    : "请选择一张手牌还给进贡方，也可归还收到的贡牌。"}
-                </p>
-                <p>已选 {selected.length} 张</p>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={
-                    !canSelect ||
-                    (candidateCount > 0
-                      ? selected.length !== candidateCount ||
-                        new Set(
-                          selected.map((code) =>
-                            code.split("#")[0]!.replace(/[SHDC]$/, ""),
-                          ),
-                        ).size !== candidateCount
-                      : selected.length !== 1)
-                  }
-                  onClick={() =>
-                    onCommand(
-                      candidateCount > 0
-                        ? {
-                            type: "OfferReturnCandidates",
-                            candidateCards: selected,
-                          }
-                        : { type: "SelectReturnCard", card: selected[0]! },
-                    )
-                  }
-                >
-                  {candidateCount > 0 ? "提交还牌候选" : "确认还牌"}
-                </button>
-              </>
-            ) : ownSetupTurn && offer !== undefined ? (
-              <>
-                <h3>从候选中选择还牌</h3>
-                <p>
-                  {positionLabel(offer.recipientSeat)}
-                  已提供候选牌，点选一张并确认收回。
-                </p>
-                <ul className={styles.candidateCards}>
-                  {offer.candidateCards.map((code) => {
-                    const card = cardLabel(code);
-                    return (
-                      <li key={code}>
-                        <button
-                          type="button"
-                          data-testid="return-candidate"
-                          data-card={code}
-                          aria-label={card.aria}
-                          aria-pressed={selected.includes(code)}
-                          className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
-                          disabled={locked || pending}
-                          onClick={() =>
-                            setSelection({ handKey, cards: [code] })
-                          }
-                        >
-                          <CardFace code={code} />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={locked || pending || selected.length !== 1}
-                  onClick={() =>
-                    onCommand({ type: "SelectReturnCard", card: selected[0]! })
-                  }
-                >
-                  确认还牌
-                </button>
-              </>
-            ) : (
-              <p role="status">
-                {(view.setupStage === "tribute-selection" &&
-                  view.lastHandResult?.result.caughtPlayerIds.includes(
-                    accountId,
-                  )) ||
-                offer?.recipientId === accountId
-                  ? "已提交，等待其他玩家"
-                  : "等待其他玩家完成开局选择"}
-              </p>
-            )}
-          </section>
-        )}
-        {view.tieResolvedRounds !== undefined &&
-          view.tieResolvedRounds.length > 0 && (
-            <details>
-              <summary>已公开的选择结果</summary>
-              {view.tieResolvedRounds.map((round, index) => (
-                <div key={index}>
-                  <p>
-                    {round.tieKind === "recipient-pairing"
-                      ? "进贡配对"
-                      : "首家选择"}{" "}
-                    · 第 {round.round} 轮
-                    {round.fallback ? " · 已使用三轮后规则" : ""}
-                  </p>
-                  <p>
-                    {round.ballots
-                      .map(
-                        (ballot) =>
-                          `${positionLabel(memberSeatIndex(view, ballot.voterId)!)}：${ballot.candidateId === null ? "放弃" : positionLabel(memberSeatIndex(view, ballot.candidateId)!)}`,
-                      )
-                      .join(" · ")}
-                  </p>
-                  {round.committedPairs.map((pair) => (
-                    <p key={pair.giverId}>
-                      {positionLabel(pair.giverSeat)} →{" "}
-                      {positionLabel(pair.recipientSeat)}
-                    </p>
-                  ))}
-                  {round.selectedLeaderId !== undefined && (
-                    <p>
-                      首家：
-                      {positionLabel(
-                        memberSeatIndex(view, round.selectedLeaderId)!,
-                      )}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </details>
-          )}
-      </section>
+      <HandControls
+        view={view}
+        accountId={accountId}
+        locked={locked}
+        pending={pending}
+        onCommand={onCommand}
+      />
     </div>
   );
 }
