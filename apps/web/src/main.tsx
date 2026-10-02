@@ -14,9 +14,9 @@ import { ReplayViewer } from "./ReplayViewer";
 import { HandHistory } from "./HandHistory";
 import { replayHash, replaySource, type ReplaySource } from "./replay-links";
 import { RoomTable } from "./RoomTable";
-import { SuitIcon } from "./SuitIcon";
+import { LoginPage, PasswordPage } from "./AccountPages";
+import { RoomEntry } from "./RoomEntry";
 import { ConnectionStatus } from "./ConnectionStatus";
-import controls from "./controls.module.css";
 import styles from "./shell.module.css";
 
 type Account = { accountId: string; username: string };
@@ -385,144 +385,21 @@ function App() {
         {booting ? (
           <p role="status">正在恢复登录…</p>
         ) : reloadRequired ? null : account === null ? (
-          <section key="login" className={styles.welcome}>
-            <div className={styles.intro}>
-              <h1>
-                坐下来，
-                <br />
-                打几手。
-              </h1>
-              <p>
-                四人或六人，邀好友入座。
-                <br />
-                熟悉的大怪路子，现在随时开桌。
-              </p>
-              <div className={styles.motif} aria-hidden="true">
-                <span>
-                  <SuitIcon suit="S" />
-                </span>
-                <span>
-                  <SuitIcon suit="H" />
-                </span>
-                <span>
-                  <SuitIcon suit="C" />
-                </span>
-              </div>
-            </div>
-            <form
-              className={styles.panel}
-              onSubmit={(event) => {
-                void login(event);
-              }}
-            >
-              <h2>登录入座</h2>
-              <p>使用管理员为你开通的账号。</p>
-              <label>
-                用户名
-                <input
-                  name="username"
-                  autoComplete="username"
-                  required
-                  maxLength={64}
-                />
-              </label>
-              <label>
-                密码
-                <input
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  maxLength={1024}
-                />
-              </label>
-              <button className={controls.primary} disabled={busy}>
-                登录
-              </button>
-              {error && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    void restore();
-                  }}
-                >
-                  重试恢复登录
-                </button>
-              )}
-            </form>
-          </section>
+          <LoginPage
+            key="login"
+            busy={busy}
+            canRetry={error !== ""}
+            onSubmit={login}
+            onRestore={restore}
+          />
         ) : route.path === "/account" ? (
-          <section key={account.accountId} className={styles.passwordPage}>
-            <h1>修改密码</h1>
-            <form
-              className={styles.panel}
-              aria-label="修改密码"
-              onSubmit={(event) => {
-                void submitPassword(event);
-              }}
-            >
-              <p>修改后，所有设备都需要重新登录。</p>
-              <input
-                type="hidden"
-                name="username"
-                autoComplete="username"
-                value={account.username}
-              />
-              <label>
-                当前密码
-                <input
-                  name="currentPassword"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  maxLength={1024}
-                  disabled={busy}
-                  autoFocus
-                />
-              </label>
-              <label>
-                新密码
-                <input
-                  name="newPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  maxLength={1024}
-                  disabled={busy}
-                  onInput={(event) => {
-                    const confirmation =
-                      event.currentTarget.form?.elements.namedItem(
-                        "confirmPassword",
-                      ) as HTMLInputElement | null;
-                    confirmation?.setCustomValidity("");
-                  }}
-                />
-              </label>
-              <label>
-                确认新密码
-                <input
-                  name="confirmPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  maxLength={1024}
-                  disabled={busy}
-                  onInput={(event) => event.currentTarget.setCustomValidity("")}
-                />
-              </label>
-              <button className={controls.primary} disabled={busy}>
-                {busy ? "正在修改…" : "确认修改"}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => navigate("")}
-              >
-                返回开桌
-              </button>
-            </form>
-          </section>
+          <PasswordPage
+            key={account.accountId}
+            username={account.username}
+            busy={busy}
+            onSubmit={submitPassword}
+            onBack={() => navigate("")}
+          />
         ) : route.path === "/history" ? (
           <section className={styles.home}>
             <button onClick={() => navigate("")}>返回开桌</button>
@@ -554,46 +431,7 @@ function App() {
             />
           </section>
         ) : roomId === "" ? (
-          <section className={styles.home}>
-            <div>
-              <h1>今晚，怎么打？</h1>
-            </div>
-            <div className={styles.forms}>
-              <form
-                className={styles.panel}
-                onSubmit={(event) => {
-                  void create(event);
-                }}
-              >
-                <h2>开一桌</h2>
-                <label>
-                  人数
-                  <select name="ruleset" defaultValue="dglz-6p-3d-v1">
-                    <option value="dglz-6p-3d-v1">六人 · 三副牌</option>
-                    <option value="dglz-4p-2d-v1">四人 · 两副牌</option>
-                  </select>
-                </label>
-                <label>
-                  座位安排
-                  <select name="seating">
-                    <option value="fixed">固定座位</option>
-                    <option value="randomized">开局随机分配</option>
-                  </select>
-                </label>
-                <button className={controls.primary} disabled={busy}>
-                  创建房间
-                </button>
-              </form>
-              <form className={styles.panel} onSubmit={join}>
-                <h2>赴个约</h2>
-                <label>
-                  房间码或链接
-                  <input name="room" required autoComplete="off" />
-                </label>
-                <button disabled={busy}>加入房间</button>
-              </form>
-            </div>
-          </section>
+          <RoomEntry busy={busy} onCreate={create} onJoin={join} />
         ) : !validRoom ? (
           <section className={styles.panel}>
             <h2>房间码不正确</h2>
