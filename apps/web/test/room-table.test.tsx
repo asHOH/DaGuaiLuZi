@@ -4,6 +4,57 @@ import { rulesConfigurationPreset, type RoomViewData } from "@dglz/protocol";
 import { RoomTable } from "../src/RoomTable.js";
 
 it.each([4, 6])(
+  "renders the supported rule choices for %i players",
+  (count) => {
+    const rulesConfiguration = rulesConfigurationPreset(
+      count === 4 ? "dglz-4p-2d-v1" : "dglz-6p-3d-v1",
+      "省心",
+    );
+    const markup = renderToStaticMarkup(
+      <RoomTable
+        room={{
+          revision: 1,
+          view: {
+            lifecycle: "LOBBY",
+            roomId: "room",
+            ownerId: "alice",
+            members: [{ playerId: "alice", joinOrder: 0, ready: false }],
+            seats: Array.from({ length: count }, (_, seatIndex) => ({
+              seatIndex,
+            })),
+            rulesConfiguration,
+            seatingPolicy: "fixed",
+            matchRulesConfigurationLocked: false,
+            seatingPolicyLocked: false,
+          },
+        }}
+        accountId="alice"
+        locked={false}
+        pending={false}
+        onCommand={() => {}}
+      />,
+    );
+    const editor = markup.match(
+      /<fieldset[^>]*><legend>设置牌局规则<\/legend>(.*?)<\/fieldset>/,
+    )![1]!;
+    expect(editor.match(/<select\b/g)).toHaveLength(count === 4 ? 7 : 9);
+    expect(editor.match(/<option\b/g)).toHaveLength(count === 4 ? 14 : 18);
+    const selected = [
+      ...editor.matchAll(/<option value="([^"]+)" selected=""/g),
+    ].map((match) => match[1]!);
+    expect(selected.sort()).toEqual(
+      Object.entries(rulesConfiguration)
+        .filter(([key]) => key !== "rulesetId")
+        .map(([, value]) => value)
+        .sort(),
+    );
+    expect(editor.includes("王牌对子比较")).toBe(count === 6);
+    expect(editor.includes("还牌选牌")).toBe(count === 6);
+    expect(editor).toContain('value="weakest-rank">最弱点数</option>');
+  },
+);
+
+it.each([4, 6])(
   "renders public plays once and only declares low opponent counts at a %i-player table",
   (count) => {
     const latestPlays: Extract<

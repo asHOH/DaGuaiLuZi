@@ -62,24 +62,6 @@ export const RULE_VALUES: Record<string, string> = {
   "three-failure-limit-at-5": "到 5 级三次失败结束",
 };
 
-const RULE_OPTIONS: Record<string, string[]> = {
-  jokerPairComparison: [
-    "two-small-and-mixed-are-equal",
-    "two-small-jokers-win",
-  ],
-  wildcardRank: ["weakest-rank", "strongest-rank"],
-  finishingWildcardInterpretation: ["normal", "weakest-form-and-rank"],
-  flushTieBreaking: ["highest-card-only", "descending-ranks"],
-  nextHandLeader: ["first-finisher", "highest-tribute"],
-  tributeCardSelection: ["fair-random", "giver-choice"],
-  returnCardSelection: ["recipient-choice", "giver-choice-from-candidates"],
-  tributeRecipientPairing: [
-    "finish-position-by-tribute-rank",
-    "adjacent-first-automatic",
-  ],
-  matchEnding: ["no-failure-limit-at-5", "three-failure-limit-at-5"],
-};
-
 function positionLabel(seatIndex: number): string {
   return `${POSITION_NAMES[seatIndex] ?? seatIndex + 1}号位`;
 }
@@ -221,6 +203,11 @@ function RulesDetails({
   disabled: boolean;
   onCommand?: RoomTableProps["onCommand"];
 }) {
+  const { rulesetId: _rulesetId, ...ruleFields } =
+    RulesConfigurationSchema.options.find(
+      (schema) =>
+        schema.shape.rulesetId.value === view.rulesConfiguration.rulesetId,
+    )!.shape;
   const configuration =
     view.selectedActivity === "challenge" &&
     "effectiveRulesConfiguration" in view
@@ -303,31 +290,33 @@ function RulesDetails({
                 );
               })}
             </div>
-            {Object.entries(view.rulesConfiguration)
-              .filter(([key]) => key !== "rulesetId")
-              .map(([key, value]) => (
-                <label className={styles.ruleField} key={key}>
-                  {RULE_LABELS[key]}
-                  <select
-                    value={value}
-                    onChange={(event) =>
-                      onCommand({
-                        type: "ReplaceMatchRulesConfiguration",
-                        rulesConfiguration: RulesConfigurationSchema.parse({
-                          ...view.rulesConfiguration,
-                          [key]: event.target.value,
-                        }),
-                      })
-                    }
-                  >
-                    {RULE_OPTIONS[key]?.map((option) => (
-                      <option key={option} value={option}>
-                        {RULE_VALUES[option]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
+            {Object.entries(ruleFields).map(([key, schema]) => (
+              <label className={styles.ruleField} key={key}>
+                {RULE_LABELS[key]}
+                <select
+                  value={
+                    view.rulesConfiguration[
+                      key as keyof typeof view.rulesConfiguration
+                    ]
+                  }
+                  onChange={(event) =>
+                    onCommand({
+                      type: "ReplaceMatchRulesConfiguration",
+                      rulesConfiguration: RulesConfigurationSchema.parse({
+                        ...view.rulesConfiguration,
+                        [key]: event.target.value,
+                      }),
+                    })
+                  }
+                >
+                  {schema.options.map((option) => (
+                    <option key={option} value={option}>
+                      {RULE_VALUES[option]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
           </fieldset>
         )}
       </div>
