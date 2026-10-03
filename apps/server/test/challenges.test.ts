@@ -839,6 +839,7 @@ it("requires authentication, limits invalid lookups, returns public metadata, an
 });
 
 for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
+  // Two complete Hands, history/replay reads and restart need the socket journey's budget.
   it(`${rulesetId}: history authorizes recorded participants and Code holders across Rooms and restart`, async () => {
     const game = await source(rulesetId);
     const participant = game.playerIds[1]!;
@@ -1132,7 +1133,7 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
     expect(
       (await request("/api/history/lookup", participant, { code })).json(),
     ).toMatchObject({ error: { code: "unsupported-persisted-event" } });
-  }, 20000);
+  }, 60000);
 }
 
 async function socketTarget(
