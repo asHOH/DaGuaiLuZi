@@ -1,12 +1,14 @@
 # Gameplay integration
 
+Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
+
 Status: Phases 1–3 implemented and verified, 2026-09-11. Each phase delivers a working browser/server slice.
 
 Historical record of transport, persistence, orchestration, and UI integration using the implemented `game-core`.
 
 ## Boundary and decisions
 
-- Flow: Chinese browser controls → validated protocol → authenticated Room executor → core decisions → atomic events/deduplication → account-specific full views. Follow the [synchronization/retry contract](architecture.md#client-resynchronization) and server-only core.
+- Flow: Chinese browser controls → validated protocol → authenticated Room executor → core decisions → atomic events/deduplication → account-specific full views. Follow the [synchronization/retry contract](../architecture.md#client-resynchronization) and server-only core.
 - Extend `packages/protocol/src/index.ts`, server `rooms.ts`/`room-executor.ts`, and web `RoomTable.tsx`/styles; change socket plumbing only where required. No new package, dependency (except web → existing `@dglz/game-rules`), storage abstraction, or expected database migration.
 - This slice validated newly reachable persisted events and preserved earlier streams/acknowledgements.
 - Model play, setup, settlement, and lobby views accurately: `currentActor` is absent outside a live turn. Include unbeaten play, Finish Positions, Hand result, and retained Match summary where applicable; do not infer lifecycle from a socket or card count.
@@ -24,7 +26,7 @@ Historical record of transport, persistence, orchestration, and UI integration u
 ## 2. Continue the Match
 
 - Before setup UI, expose `省心`/`自主` presets and individual supported settings in the unlocked lobby. Reuse complete `ReplaceMatchRulesConfiguration`; keep preset mapping outside core, default new Rooms to `省心`, and preserve existing Room settings and permanent locks.
-- Implement the [next-Hand and retained-summary policies](architecture.md#match-continuation). Add persisted decoding for `HandStarted` and every automatic/manual setup event; never serialize seeds to clients.
+- Implement the [next-Hand and retained-summary policies](../architecture.md#match-continuation). Add persisted decoding for `HandStarted` and every automatic/manual setup event; never serialize seeds to clients.
 - Wire `SelectTributeCard`, `OfferReturnCandidates`, `SelectReturnCard`, and `SubmitTieChoiceBallot`. Extend full views with pending actors, eligible choices, candidate offers, own ballot, submitted-voter IDs, and revealed rounds.
 - Render one contextual setup decision at a time in rule order. Show `已提交，等待其他玩家` after a final choice; reveal other ballots only after resolution. Reuse card selection and command delivery.
 - Gate: both Rulesets continue from settlement through setup to the next legal play under both presets. Cover four-player non-joker Tribute, received-card return, candidate-rank constraints, pairing/leader ties and third-round fallback, no-Tribute flow, hidden ballots, concurrent choices, and restart/retry without duplicate deals or transfers. Reload preserves the previous result and current setup.
@@ -39,6 +41,6 @@ Historical record of transport, persistence, orchestration, and UI integration u
 
 Each phase runs `pnpm check` plus `pnpm --filter @dglz/web test:browser`. Keep at most one browser happy path per Ruleset, extending it as phases land; use real temporary SQLite and protocol clients for branch/race coverage. Verify mobile/desktop controls and keyboard access. Test integration contracts without duplicating core's exhaustive rule tests; add a core check only if a core contract changes.
 
-Follow the [phase verification workflow](development.md#phase-verification) for worker ownership, Astra review/fixes, browser drivers, and final gates.
+Follow the [phase verification workflow](../development.md#phase-verification) for worker ownership, Astra review/fixes, browser drivers, and final gates.
 
 This slice excluded Challenge Hands, history/Replay/sharing endpoints, remaining Room-management controls, account administration, deployment, and turn timing. Retaining a settlement summary does not implement Hand history or Replay.

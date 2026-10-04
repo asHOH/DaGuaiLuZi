@@ -1,16 +1,18 @@
 # Web integration slice
 
+Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
+
 Status: implemented and verified (2026-09-07). Scope: responsive Chinese browser UI through the initial Hand and successful reconnect. `pnpm check` and both Ruleset browser journeys pass; correctness, complexity, and test-coverage reviews completed.
 
 Historical record of this slice.
 
 ## Implementation
 
-1. Record a concise palette, Chinese-capable typography, material, and reduced-motion direction per [UI guidance](architecture.md#mvp-ui-guidance). Build `apps/web` with React/Vite, CSS variables/Modules, semantic cards, and local state/context.
+1. Record a concise palette, Chinese-capable typography, material, and reduced-motion direction per [UI guidance](../architecture.md#mvp-ui-guidance). Build `apps/web` with React/Vite, CSS variables/Modules, semantic cards, and local state/context.
 2. Wire same-origin HTTP and Socket.IO: Vite development proxy, Fastify delivery of built assets, existing cookie sessions, and protocol compatibility. Add authenticated `GET /api/session`, returning the existing login account shape (`accountId`, `username`) or `unauthorized`, with `Cache-Control: no-store`; restore identity before opening a Room. Reuse `packages/protocol` validation; keep `game-core` server-only.
 3. Add login/logout, Room creation for either Ruleset with fixed/randomized seating, join by code/link, owner Match selection, seats, and readiness. Use the server's `省心` default and administrator-provisioned accounts; render the server-provided Rules Configuration.
 4. Render the authoritative lobby and initial Hand: seats/teams, Trump Rank, Team Levels, current actor, and only the account's private cards. Support mobile and desktop without gameplay controls.
-5. Implement the [synchronization contract](architecture.md#client-resynchronization); document local startup and browser-test commands.
+5. Implement the [synchronization contract](../architecture.md#client-resynchronization); document local startup and browser-test commands.
 
 ## Acceptance
 

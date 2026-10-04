@@ -1,5 +1,7 @@
 # Completed-Hand History and Replay
 
+Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
+
 Status: All three phases verified.
 
 Shared contract: a completed Hand is addressed by stable `(roomId, handStartSequence)`. Its summary contains participants in recorded seat order, Ruleset and resolved Rules Configuration, Seating Policy, Hand number and activity, result, Finish Positions, Team Levels, completion time, and an optional existing Challenge Code. Code creation remains lazy through the existing participant endpoint.

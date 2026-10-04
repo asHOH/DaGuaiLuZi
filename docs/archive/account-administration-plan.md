@@ -1,8 +1,10 @@
 # Account Administration
 
+Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
+
 Status: Phase 1 verified, 2026-09-26; Phase 2 verified, 2026-09-27.
 
-Reuse existing provisioning, Argon2id, cookie sessions, HTTP/socket authorization, and client reauthentication. Follow [account policy](architecture.md#account-access).
+Reuse existing provisioning, Argon2id, cookie sessions, HTTP/socket authorization, and client reauthentication. Follow [account policy](../architecture.md#account-access).
 
 | Phase | Scope | Gate |
 | --- | --- | --- |
@@ -18,7 +20,7 @@ Proposed defaults:
 - Commit credential/session mutations and their audit record together. Guard against stale in-flight login/password checks and recheck authorization when queued work executes. Reuse session checks before private-view delivery; no periodic socket polling.
 - Reuse validation, origin protection, and throttling for password changes. CLI secrets stay out of command arguments and output; all UI/CLI messages are Chinese.
 
-Verification: focused SQLite, CLI, HTTP, and socket checks for rollback, concurrent reset/login/change, queued revocation, multiple sessions, restart persistence, and secret exclusion; then [phase verification](development.md#phase-verification).
+Verification: focused SQLite, CLI, HTTP, and socket checks for rollback, concurrent reset/login/change, queued revocation, multiple sessions, restart persistence, and secret exclusion; then [phase verification](../development.md#phase-verification).
 
 Keep administration CLI-only. Defer an admin dashboard, email recovery, roles, and a device/session inventory.
 

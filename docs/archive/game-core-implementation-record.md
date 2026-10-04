@@ -1,5 +1,7 @@
 # `game-core` Implementation Record
 
+Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
+
 Status: Complete as of 2026-09-06. Historical record of the seven implemented phases, including intermediate behavior and gates.
 
 ## Module seam

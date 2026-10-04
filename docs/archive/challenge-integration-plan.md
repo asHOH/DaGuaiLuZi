@@ -1,6 +1,8 @@
 # Challenge Hand Integration
 
-Scope: [Challenge Hand Sharing](challenge-hand-sharing.md). Reuse the existing core; history/Replay UI follows separately.
+Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
+
+Scope: [Challenge Hand Sharing](../challenge-hand-sharing.md). Reuse the existing core; history/Replay UI follows separately.
 
 | Phase | Scope | Gate |
 | --- | --- | --- |
