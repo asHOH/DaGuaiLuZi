@@ -161,7 +161,6 @@
 .tableSeat[data-team="0"] {
   --team-color: var(--team-one);
   --team-fill: var(--team-one-fill);
-  --team-symbol: "●";
 }
 
 .teamTwo,
@@ -169,21 +168,12 @@
 .tableSeat[data-team="1"] {
   --team-color: var(--team-two);
   --team-fill: var(--team-two-fill);
-  --team-symbol: "◆";
 }
 
 .teamOne,
 .teamTwo,
 .trumpBadge [data-team] {
   color: var(--team-color);
-}
-
-.teamOne::before,
-.teamTwo::before,
-.trumpBadge [data-team]::after {
-  content: var(--team-symbol);
-  font-size: 0.55rem;
-  margin-inline: 0.2rem;
 }
 
 .seatOccupant {
@@ -462,15 +452,6 @@
   color: var(--team-color);
   font-size: 25px;
   font-family: var(--font-heading);
-}
-
-.avatar::after {
-  content: var(--team-symbol);
-  position: absolute;
-  top: 1px;
-  right: 3px;
-  font-size: 8px;
-  line-height: 1;
 }
 
 .tableSeatActor .avatar {

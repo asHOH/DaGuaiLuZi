@@ -15,7 +15,7 @@ PC-first game surface: one continuous table, spatial four/six-player seating, lo
 
 Color roles (shared CSS variables):
 
-- Team one is red with a circle; team two is dark green with a diamond. Use the same identity in lobby and play, with dark badge fills and brighter text/borders on the green table. Keep team labels or symbols alongside color.
+- Team one is red; team two is dark green. Use the same colors in lobby and play, with dark badge fills and brighter text/borders on the green table. No team-symbol markers.
 - Azure means valid selection or affirmative action, including setup confirmation and readiness. Orange means pass, unable to beat, or failed/unavailable status.
 - Yellow means awaiting action or resolution: turn/current-play markers, unfinished selections, pending commands, synchronization, and uncertainty. Connected/synchronized is muted neutral; offline/failed icons are orange with visible Chinese explanations.
 - Keep card-suit colors independent of UI status colors.
