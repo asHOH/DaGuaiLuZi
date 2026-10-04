@@ -55,7 +55,7 @@ async function expectTableAlignment(page: Page, playerCount: number) {
       ).toBeLessThan(1);
     }
     for (const pass of await seat.getByText("不出", { exact: true }).all()) {
-      await expect(pass).toHaveCSS("color", "rgb(240, 149, 149)");
+      await expect(pass).toHaveCSS("color", "rgb(245, 160, 91)");
       await expect(pass).toHaveCSS(
         "font-size",
         page.viewportSize()!.width <= 1000 ? "18px" : "22px",
@@ -140,8 +140,8 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await expect(selectedCard).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByRole("button", { name: "清空选择" })).toHaveCount(0);
     for (const [playable, color] of [
-      [true, "rgb(217, 245, 230)"],
-      [false, "rgb(255, 226, 226)"],
+      [true, "rgb(223, 243, 255)"],
+      [false, "rgb(255, 234, 219)"],
     ] as const) {
       const card = current.view.hand.find((code) => {
         const feedback = selectionFeedback(current.view, [code]);
@@ -158,6 +158,14 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
         "background-color",
         color,
       );
+      await page.screenshot({
+        path: test
+          .info()
+          .outputPath(
+            playable ? "selection-playable.png" : "selection-beaten.png",
+          ),
+        fullPage: true,
+      });
       await clearButton.click();
       await expect(button.locator(":scope > span")).toHaveCSS(
         "background-color",
@@ -293,19 +301,19 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       .click({ position: { x: 12, y: 32 } });
     await expect(playButton).toHaveCSS(
       "background-color",
-      "rgb(116, 212, 165)",
+      "rgb(107, 200, 242)",
     );
     await expect(clearButton).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     if (current.view.unbeatenPlay !== undefined) {
       await expect(passButton).toHaveCSS(
         "background-color",
-        "rgb(240, 149, 149)",
+        "rgb(245, 160, 91)",
       );
       await expect(passButton).toHaveCSS("font-weight", "800");
       await passButton.hover();
       await expect(passButton).toHaveCSS(
         "background-color",
-        "rgb(240, 149, 149)",
+        "rgb(245, 160, 91)",
       );
       await page.mouse.move(0, 0);
     }
@@ -421,6 +429,32 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       .click({ position: { x: 12, y: 32 } });
     await page.screenshot({
       path: test.info().outputPath("playground-mobile.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.context().setOffline(true);
+    await expect(status).toHaveAttribute("data-state", "offline");
+    await expect(status.getByText("连接已断开，正在重连…")).toBeVisible();
+    await expect(status).toHaveCSS("color", "rgb(245, 160, 91)");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: test.info().outputPath("connection-offline-mobile.png"),
+      fullPage: true,
+    });
+    await page.context().setOffline(false);
+    await expect(status).toHaveAttribute("data-state", "ready");
+    await expect(page.getByTestId("hand-card")).toHaveCount(
+      current.view.hand.length,
+    );
+    await page.getByRole("button", { name: "终止比赛", exact: true }).click();
+    await expect(page.getByText("等人开局", { exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({
+      path: test.info().outputPath("team-colors-lobby.png"),
       fullPage: true,
     });
   } finally {

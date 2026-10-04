@@ -36,7 +36,15 @@ export function ConnectionStatus({ state }: { state: RoomState }) {
       data-state={status}
     >
       <Icon size={22} aria-hidden="true" focusable="false" />
-      <span className={styles.visuallyHidden}>{label}</span>
+      <span
+        className={
+          status === "offline" || status === "error"
+            ? styles.connectionIssue
+            : styles.visuallyHidden
+        }
+      >
+        {label}
+      </span>
     </span>
   );
 }

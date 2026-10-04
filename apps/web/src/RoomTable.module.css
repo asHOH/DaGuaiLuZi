@@ -156,12 +156,34 @@
   letter-spacing: 0.08em;
 }
 
-.teamOne {
-  color: #dbad72;
+.teamOne,
+.trumpBadge [data-team="0"],
+.tableSeat[data-team="0"] {
+  --team-color: var(--team-one);
+  --team-fill: var(--team-one-fill);
+  --team-symbol: "●";
 }
 
-.teamTwo {
-  color: #8dbbac;
+.teamTwo,
+.trumpBadge [data-team="1"],
+.tableSeat[data-team="1"] {
+  --team-color: var(--team-two);
+  --team-fill: var(--team-two-fill);
+  --team-symbol: "◆";
+}
+
+.teamOne,
+.teamTwo,
+.trumpBadge [data-team] {
+  color: var(--team-color);
+}
+
+.teamOne::before,
+.teamTwo::before,
+.trumpBadge [data-team]::after {
+  content: var(--team-symbol);
+  font-size: 0.55rem;
+  margin-inline: 0.2rem;
 }
 
 .seatOccupant {
@@ -228,11 +250,11 @@
 }
 
 .readyState {
-  color: var(--brass-light);
+  color: var(--action);
 }
 
 .waitingState {
-  color: #819b8b;
+  color: var(--attention);
 }
 
 .rulesDetails {
@@ -337,6 +359,7 @@
 }
 
 .roomActive .roomHeader {
+  flex-wrap: wrap;
   max-width: none;
   min-height: 48px;
   margin-bottom: 0;
@@ -406,14 +429,6 @@
   font-size: 1.6rem;
 }
 
-.trumpBadge [data-team="0"] {
-  color: #8cd6c8;
-}
-
-.trumpBadge [data-team="1"] {
-  color: #edb3c2;
-}
-
 .tableSeats {
   position: relative;
   height: clamp(360px, calc(100dvh - 500px), 520px);
@@ -421,14 +436,9 @@
 }
 
 .tableSeat {
-  --team-color: #8cd6c8;
   position: absolute;
   width: 154px;
   height: 68px;
-}
-
-.tableSeat[data-team="1"] {
-  --team-color: #edb3c2;
 }
 
 .seatIdentity {
@@ -440,6 +450,7 @@
 }
 
 .avatar {
+  position: relative;
   flex: 0 0 52px;
   height: 56px;
   border: 1px solid var(--team-color);
@@ -447,16 +458,24 @@
   border-radius: 6px;
   display: grid;
   place-items: center;
-  background: #223d3e;
+  background: var(--team-fill);
   color: var(--team-color);
   font-size: 25px;
   font-family: var(--font-heading);
 }
 
+.avatar::after {
+  content: var(--team-symbol);
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  font-size: 8px;
+  line-height: 1;
+}
+
 .tableSeatActor .avatar {
-  outline: 2px solid var(--brass-light);
+  outline: 2px solid var(--attention-light);
   outline-offset: 3px;
-  background: #3f4635;
 }
 
 .seatInfo {
@@ -487,7 +506,7 @@
 }
 
 .handPanel[data-own-turn="true"] {
-  border-top-color: var(--brass);
+  border-top-color: var(--attention);
 }
 
 .handToolbar {
@@ -619,21 +638,21 @@
 }
 
 .cardSelected .cardFace {
-  background: #fff6cd;
-  border-color: #b58c2b;
-  box-shadow: inset 0 0 0 2px #ecc768;
+  background: var(--attention-soft);
+  border-color: var(--attention-edge);
+  box-shadow: inset 0 0 0 2px var(--attention);
 }
 
 [data-selection-state="playable"] .cardSelected .cardFace {
-  background: #d9f5e6;
-  border-color: #288258;
-  box-shadow: inset 0 0 0 2px #74d4a5;
+  background: var(--action-soft);
+  border-color: var(--action-edge);
+  box-shadow: inset 0 0 0 2px var(--action);
 }
 
 [data-selection-state="beaten"] .cardSelected .cardFace {
-  background: #ffe2e2;
-  border-color: #b74b4b;
-  box-shadow: inset 0 0 0 2px #f09595;
+  background: var(--decline-soft);
+  border-color: var(--decline-edge);
+  box-shadow: inset 0 0 0 2px var(--decline);
 }
 
 .handNote {
@@ -696,8 +715,8 @@
 }
 
 .playedHand[data-unbeaten="true"] .cardFace {
-  border-color: var(--brass);
-  box-shadow: inset 0 0 0 1px var(--brass);
+  border-color: var(--attention);
+  box-shadow: inset 0 0 0 1px var(--attention);
 }
 
 .seatPlay {
@@ -711,7 +730,7 @@
 .passTag {
   font-size: 22px;
   font-weight: 600;
-  color: #f09595;
+  color: var(--decline);
   white-space: nowrap;
 }
 
@@ -820,18 +839,9 @@
   font-size: 14px;
 }
 
-.playButton {
-  --brass: #74d4a5;
-  --brass-light: #a6edc9;
-}
-
 .passButton {
-  --brass: #f09595;
-  --brass-light: #ffc2c2;
-}
-
-.handToolbar .playActions > button:hover:not(:disabled) {
-  background: var(--brass);
+  --button-fill: var(--decline);
+  --button-edge: var(--decline-light);
 }
 
 .clearSelection {

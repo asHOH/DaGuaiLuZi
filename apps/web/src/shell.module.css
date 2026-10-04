@@ -7,6 +7,22 @@
   --ivory: #f5efdf;
   --brass: #d4b776;
   --muted: #b3c6b8;
+  --team-one: #fa9298;
+  --team-one-fill: #633239;
+  --team-two: #92cba4;
+  --team-two-fill: #214b36;
+  --action: #6bc8f2;
+  --action-light: #b3e5fc;
+  --action-soft: #dff3ff;
+  --action-edge: #257eab;
+  --decline: #f5a05b;
+  --decline-light: #ffd0ac;
+  --decline-soft: #ffeadb;
+  --decline-edge: #a95721;
+  --attention: #ecc768;
+  --attention-light: #f4d98e;
+  --attention-soft: #fff6cd;
+  --attention-edge: #b58c2b;
   --font-ui: "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-heading: "Songti SC", "SimSun", serif;
   --font-card: "Times New Roman", Times, var(--font-heading);
@@ -157,10 +173,24 @@
 .connectionIndicator {
   display: inline-flex;
   align-items: center;
-  color: var(--brass);
+  gap: 0.35rem;
+  max-width: 100%;
+  color: var(--attention);
 }
 .connectionIndicator[data-state="ready"] {
   color: var(--muted);
+}
+.connectionIndicator[data-state="offline"],
+.connectionIndicator[data-state="error"] {
+  color: var(--decline);
+}
+.connectionIndicator svg {
+  flex-shrink: 0;
+}
+.connectionIssue {
+  max-width: 12em;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 .visuallyHidden {
   position: absolute;
@@ -188,7 +218,7 @@
 }
 .gameShell .account {
   font-size: 12px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 .gameAccountName {
   max-width: 80px;

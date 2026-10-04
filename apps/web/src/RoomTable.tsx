@@ -866,7 +866,7 @@ function HandControls({
               <>
                 <button
                   type="button"
-                  className={`${controls.primaryButton} ${styles.playButton}`}
+                  className={controls.primaryButton}
                   disabled={!canAct || feedback?.ok !== true}
                   onClick={() => onCommand({ type: "Play", cards: selected })}
                 >

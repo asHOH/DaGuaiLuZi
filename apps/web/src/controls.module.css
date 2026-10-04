@@ -40,13 +40,13 @@
 }
 
 .primary {
-  background: var(--brass);
+  background: var(--action);
   color: #203a2e;
-  border-color: var(--brass);
+  border-color: var(--action);
   font-weight: bold;
 }
 .primary:hover:not(:disabled) {
-  background: #e3c995;
+  background: var(--action-light);
 }
 
 .primaryButton,
@@ -69,10 +69,14 @@
 }
 
 .primaryButton {
-  background: var(--brass);
-  border: 1px solid var(--brass-light, var(--brass));
+  background: var(--button-fill, var(--action));
+  border: 1px solid var(--button-edge, var(--action-light));
   color: var(--felt-deep, var(--felt));
   font-weight: 800;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--button-fill, var(--action));
 }
 
 .primaryButton:hover:not(:disabled),
