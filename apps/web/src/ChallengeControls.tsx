@@ -181,14 +181,21 @@ export function ChallengeShare({
   }
   async function copy(link = false) {
     const generation = request.current;
+    setMessage("");
+    setError("");
     try {
       await navigator.clipboard.writeText(
         link ? `${location.origin}${replayLink(code)}` : code,
       );
-      if (generation === request.current) setMessage("已复制，可分享给好友。");
+      if (generation === request.current) {
+        setError("");
+        setMessage("已复制，可分享给好友。");
+      }
     } catch {
-      if (generation === request.current)
-        setMessage("未能自动复制，请选中挑战码或回放链接后手动复制。");
+      if (generation === request.current) {
+        setMessage("");
+        setError("未能自动复制，请选中挑战码或回放链接后手动复制。");
+      }
     }
   }
   return (

@@ -61,10 +61,6 @@
   flex-shrink: 0;
 }
 
-.lookupPanel .error {
-  color: var(--decline);
-}
-
 .status,
 .ruleList dt {
   color: var(--muted);

@@ -22,7 +22,7 @@
 }
 .error {
   background: var(--felt);
-  border: 1px solid var(--brass);
+  border: 1px solid var(--decline);
   margin-bottom: 1rem;
   padding: 0.8rem 1rem;
 }
@@ -65,9 +65,6 @@
   margin: 0;
 }
 .openButton {
-  background: var(--brass);
-  border-color: var(--brass);
-  color: var(--felt);
   justify-self: start;
 }
 @media (max-width: 520px) {

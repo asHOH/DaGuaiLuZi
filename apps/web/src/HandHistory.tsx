@@ -13,6 +13,7 @@ import {
 } from "./game-display";
 
 import styles from "./HandHistory.module.css";
+import controls from "./controls.module.css";
 
 type HandHistoryProps = {
   accountId: string;
@@ -85,7 +86,7 @@ function HandRow({
         </div>
       </dl>
       <button
-        className={styles.openButton}
+        className={`${controls.primary} ${styles.openButton}`}
         type="button"
         onClick={() => onOpen(hand)}
       >

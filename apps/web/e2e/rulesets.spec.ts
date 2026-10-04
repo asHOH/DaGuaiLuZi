@@ -831,7 +831,7 @@ async function runHappyPath(
       });
       await ownerPage.getByRole("button", { name: "复制同牌挑战码" }).click();
       await expect(
-        ownerPage.getByRole("status").filter({ hasText: "未能自动复制" }),
+        ownerPage.getByRole("alert").filter({ hasText: "未能自动复制" }),
       ).toHaveText("未能自动复制，请选中挑战码或回放链接后手动复制。");
       await codeField.focus();
       expect(

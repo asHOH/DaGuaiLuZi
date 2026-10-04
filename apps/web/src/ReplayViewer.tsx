@@ -371,11 +371,7 @@ export function ReplayViewer({
             正在加载回放…
           </p>
         )}
-        {error && (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        )}
+        {error && <p role="alert">{error}</p>}
       </div>
 
       {replay !== undefined && step !== undefined && (

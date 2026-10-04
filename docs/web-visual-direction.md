@@ -19,6 +19,7 @@ Color roles (shared CSS variables):
 - Azure means valid selection or affirmative action, including setup confirmation and readiness. Orange means pass, unable to beat, or failed/unavailable status.
 - Yellow means awaiting action or resolution: turn/current-play markers, unfinished selections, pending commands, synchronization, and uncertainty. Connected/synchronized is muted neutral; offline/failed icons are orange with visible Chinese explanations.
 - Keep card-suit colors independent of UI status colors.
+- Apply these meanings throughout account, history, Replay, and Challenge screens. Errors share orange alert styling; primary actions share azure default/hover styles.
 
 Existing account/lobby baseline:
 

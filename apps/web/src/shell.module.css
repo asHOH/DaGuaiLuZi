@@ -58,6 +58,9 @@
   line-height: 1.8;
   color: var(--muted);
 }
+:global([role="alert"]) {
+  color: var(--decline);
+}
 .shell {
   max-width: 1280px;
   margin: auto;
@@ -131,8 +134,8 @@
 .notice {
   margin: 16px 0;
   padding: 14px 18px;
-  background: #633d2c;
-  border: 1px solid #c89066;
+  background: color-mix(in srgb, var(--decline) 18%, var(--felt));
+  border: 1px solid var(--decline);
   border-radius: 6px;
   display: flex;
   align-items: center;
