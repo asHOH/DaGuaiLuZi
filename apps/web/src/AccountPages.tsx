@@ -8,6 +8,7 @@ export function LoginPage({
   onSubmit,
   onRestore,
   onModeChange,
+  initialMode = "login",
 }: {
   busy: boolean;
   canRetry: boolean;
@@ -17,8 +18,9 @@ export function LoginPage({
   ) => Promise<void>;
   onRestore: () => Promise<void>;
   onModeChange: () => void;
+  initialMode?: "login" | "register";
 }) {
-  const [registering, setRegistering] = useState(false);
+  const [registering, setRegistering] = useState(initialMode === "register");
   return (
     <section className={styles.welcome}>
       <form

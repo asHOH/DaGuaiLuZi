@@ -32,3 +32,5 @@ Account settings reuse these controls in one narrow, centered form; keep passwor
 Information density: keep current decisions visible; collapse previous-Hand details, optional Challenge entry, and Replay sharing by default. Open Challenge entry for a prefilled Challenge link. Remove repeated headings, decorative login copy, and idle-table prompts; retain results, errors, privacy warnings, and recovery actions.
 
 Replay shares the live table renderer, card faces, grouped hands, team colors, turn markers, and latest plays. Use a blue-gray table background and visible `回放` label. Default to the participant's seat (seat one for other viewers); allow seat switching and collapsed all-hands inspection. Replay has playback controls and recorded setup actions, never gameplay commands. Seat switching pauses playback; each viewer's seat and position remain independent.
+
+The local preview gallery keeps Chinese scenario controls outside an isolated, resizable pane. Reuse production components and colors inside it; use a light neutral surround to distinguish the tool. Default to history previews and offer the real playable table from the gallery.

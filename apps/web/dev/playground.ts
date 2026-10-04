@@ -16,7 +16,10 @@ type Controls = {
   roomUrl?: string;
 };
 
-export async function openPlayground(browser: Browser) {
+export async function openPlayground(
+  browser: Browser,
+  onGallery?: () => Promise<void>,
+) {
   const server = await startServer();
   const clients: ProtocolClient[] = [];
   const context = await browser.newContext({ viewport: null });
@@ -25,6 +28,7 @@ export async function openPlayground(browser: Browser) {
   let playerCount = 4;
   let paused = false;
   let closed = false;
+  let closing: Promise<void> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pending: Promise<unknown> = Promise.resolve();
 
@@ -36,13 +40,16 @@ export async function openPlayground(browser: Browser) {
   }
 
   async function close() {
-    if (closed) return;
+    if (closing !== undefined) return closing;
     closed = true;
     clearTimeout(timer);
-    await pending;
-    for (const client of clients) client.close();
-    await context.close();
-    await server.close();
+    closing = (async () => {
+      await pending;
+      for (const client of clients) client.close();
+      await context.close();
+      await server.close();
+    })();
+    return closing;
   }
 
   try {
@@ -148,6 +155,9 @@ export async function openPlayground(browser: Browser) {
             switch (action) {
               case "status":
                 break;
+              case "gallery":
+                await onGallery?.();
+                break;
               case "toggle":
                 paused = !paused;
                 break;
@@ -180,7 +190,7 @@ export async function openPlayground(browser: Browser) {
     );
 
     // Injected only into this launcher-owned browser, never into the shipped application.
-    await page.addInitScript(() => {
+    await page.addInitScript((withGallery: boolean) => {
       document.addEventListener(
         "DOMContentLoaded",
         () => {
@@ -201,6 +211,7 @@ export async function openPlayground(browser: Browser) {
             <button data-action="toggle">暂停自动操作</button>
             <button data-action="step">执行下一步</button>
             <button data-action="reset">重新开始</button>
+            ${withGallery ? '<button data-action="gallery">返回预览库</button>' : ""}
             <span role="status" aria-live="polite"></span>
           </section>`;
           document.body.prepend(host);
@@ -251,7 +262,7 @@ export async function openPlayground(browser: Browser) {
         },
         { once: true },
       );
-    });
+    }, onGallery !== undefined);
 
     await page.goto(await reset(4));
     await page.getByTestId("hand-card").first().waitFor();

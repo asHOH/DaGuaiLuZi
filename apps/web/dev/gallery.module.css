@@ -1,0 +1,152 @@
+:global(*) {
+  box-sizing: border-box;
+}
+:global(body) {
+  margin: 0;
+  min-width: 320px;
+  background: #e8e7de;
+  color: #233a33;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+:global(button),
+:global(select) {
+  min-height: 42px;
+  font: inherit;
+  border: 1px solid #9baca2;
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  color: inherit;
+  background: #faf9f3;
+}
+:global(button) {
+  cursor: pointer;
+}
+:global(button:hover:not(:disabled)) {
+  background: #d6e7e0;
+}
+:global(button:disabled) {
+  opacity: 0.65;
+  cursor: wait;
+}
+:global(:focus-visible) {
+  outline: 3px solid #287bad;
+  outline-offset: 3px;
+}
+.gallery {
+  min-height: 100vh;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #bcc5bc;
+  background: #faf9f3;
+}
+.eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  color: #587065;
+}
+.header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.play {
+  background: #b3e5fc;
+  border-color: #257eab;
+  font-weight: 700;
+}
+.play:hover:not(:disabled) {
+  background: #dff3ff;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+}
+.controls {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-right: 1px solid #bcc5bc;
+  background: #f3f2ea;
+}
+.controls label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.controls select {
+  width: 100%;
+  min-width: 0;
+}
+.help,
+.message {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.help {
+  color: #587065;
+}
+.help code {
+  display: block;
+  user-select: all;
+}
+.message {
+  min-height: 3em;
+}
+.canvas {
+  min-width: 0;
+  padding: 1rem;
+}
+.caption {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+.caption span {
+  color: #587065;
+}
+.scroll {
+  width: 100%;
+  overflow: auto;
+}
+.frame {
+  display: block;
+  min-width: 320px;
+  margin: 0 auto;
+  border: 0;
+  outline: 1px solid #9baca2;
+  outline-offset: -1px;
+  background: #102e28;
+}
+@media (max-width: 720px) {
+  .header {
+    padding: 1rem;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-right: 0;
+    border-bottom: 1px solid #bcc5bc;
+    gap: 0.75rem;
+  }
+  .help,
+  .message {
+    grid-column: 1 / -1;
+  }
+  .canvas {
+    padding: 0.75rem;
+  }
+}

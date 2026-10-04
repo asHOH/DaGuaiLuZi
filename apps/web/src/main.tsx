@@ -17,6 +17,7 @@ import { RoomTable } from "./RoomTable";
 import { LoginPage, PasswordPage } from "./AccountPages";
 import { RoomEntry } from "./RoomEntry";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { AppHeader } from "./AppHeader";
 import styles from "./shell.module.css";
 
 type Account = { accountId: string; username: string };
@@ -325,63 +326,17 @@ function App() {
   return (
     <div className={`${styles.shell} ${activeGame ? styles.gameShell : ""}`}>
       {!activeGame && (
-        <header className={styles.header}>
-          {!showNavigation ? (
-            <span className={styles.brand}>大怪路子</span>
-          ) : (
-            <a
-              className={styles.brand}
-              href="/"
-              onClick={(event) => {
-                event.preventDefault();
-                navigate("");
-              }}
-            >
-              大怪路子
-            </a>
-          )}
-          {account && (
-            <div className={styles.account}>
-              <span>{account.username}</span>
-              {!showNavigation ? (
-                <ConnectionStatus state={roomState} />
-              ) : (
-                <>
-                  {route.path !== "/account" && (
-                    <a
-                      href="/account"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        navigatePath("/account");
-                      }}
-                    >
-                      修改密码
-                    </a>
-                  )}
-                  {route.path !== "/history" && (
-                    <a
-                      href="/history"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        navigatePath("/history");
-                      }}
-                    >
-                      牌局记录
-                    </a>
-                  )}
-                  <button
-                    disabled={busy}
-                    onClick={() => {
-                      void logout();
-                    }}
-                  >
-                    退出登录
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </header>
+        <AppHeader
+          username={account?.username}
+          showNavigation={showNavigation}
+          path={route.path}
+          busy={busy}
+          connectionStatus={<ConnectionStatus state={roomState} />}
+          onNavigate={(path) =>
+            path === "/" ? navigate("") : navigatePath(path)
+          }
+          onLogout={() => void logout()}
+        />
       )}
       <main>
         {notice && (
