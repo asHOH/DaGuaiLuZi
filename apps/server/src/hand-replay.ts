@@ -108,17 +108,28 @@ function snapshot(
   players: readonly string[],
   sequence: number,
   actions: HandReplayStep["actions"],
+  recordedDealerTeam?: HandReplayStep["dealerTeam"],
 ): HandReplayStep {
   const view = derivePlayerView(state, "__replay__");
   if (
     view.setupStage === undefined ||
     view.finishPositions === undefined ||
-    view.teamLevels === undefined
+    view.teamLevels === undefined ||
+    view.dealerTeam === undefined ||
+    view.latestPlays === undefined
   )
     throw new UnsupportedPersistedEventError();
   return {
     sequence,
     actions,
+    // Settlement updates the engine's dealer for the next Hand.
+    dealerTeam: recordedDealerTeam ?? view.dealerTeam,
+    latestPlays: view.latestPlays.map((play) => ({
+      ...play,
+      cards: [...play.cards],
+      representedFaces: [...play.representedFaces],
+      comparisonRanks: [...play.comparisonRanks],
+    })),
     hands: players.map((player) => [
       ...(derivePlayerView(state, player).hand ?? []),
     ]),
@@ -176,7 +187,15 @@ export function readHandReplay(
     }
     if (state === undefined) throw new UnsupportedPersistedEventError();
     if (actionStarts.has(row.event.type) && actions.length > 0) {
-      steps.push(snapshot(state, summary.playerIds, sequence, actions));
+      steps.push(
+        snapshot(
+          state,
+          summary.playerIds,
+          sequence,
+          actions,
+          steps[0]!.dealerTeam,
+        ),
+      );
       actions = [];
     }
     actions.push(...describe(row.event, summary.playerIds));
@@ -185,7 +204,15 @@ export function readHandReplay(
       state = evolve(state, row.event);
     sequence = row.sequence;
     if (sequence === endSequence) {
-      steps.push(snapshot(state, summary.playerIds, sequence, actions));
+      steps.push(
+        snapshot(
+          state,
+          summary.playerIds,
+          sequence,
+          actions,
+          steps[0]!.dealerTeam,
+        ),
+      );
       break;
     }
   }

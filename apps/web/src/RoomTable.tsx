@@ -9,9 +9,15 @@ import {
 
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
 import { ChallengeEntry, ChallengeShare } from "./ChallengeControls";
-import { cardLabel, groupCards } from "./card-display";
+import { cardLabel } from "./card-display";
 import { RULE_LABELS, RULE_VALUES, resultLabel } from "./game-display";
-import { SuitIcon } from "./SuitIcon";
+import {
+  CardFace,
+  HandCards,
+  TableHeading,
+  TableSurface,
+  positionLabel,
+} from "./TableSurface";
 
 import controls from "./controls.module.css";
 import styles from "./RoomTable.module.css";
@@ -26,43 +32,11 @@ type RoomTableProps = {
   accountStatus?: ReactNode;
 };
 
-const POSITION_NAMES = ["一", "二", "三", "四", "五", "六"];
-
-function positionLabel(seatIndex: number): string {
-  return `${POSITION_NAMES[seatIndex] ?? seatIndex + 1}号位`;
-}
-
 function memberSeatIndex(
   view: RoomViewData["view"],
   playerId: string,
 ): number | undefined {
   return view.seats.find((seat) => seat.playerId === playerId)?.seatIndex;
-}
-
-function CardFace({ code }: { code: string }) {
-  const card = cardLabel(code);
-  return (
-    <span
-      className={styles.cardFace}
-      data-red={card.red}
-      data-joker={card.tone === "joker"}
-      aria-hidden="true"
-    >
-      <span className={styles.cardCorner}>
-        <span className={styles.cardRank}>{card.rank}</span>
-        {card.suit !== undefined && (
-          <span className={styles.cardSuit}>
-            <SuitIcon suit={card.suit} />
-          </span>
-        )}
-      </span>
-      {card.suit !== undefined && (
-        <span className={styles.cardPip}>
-          <SuitIcon suit={card.suit} />
-        </span>
-      )}
-    </span>
-  );
 }
 
 function rulesConfiguration(
@@ -833,7 +807,6 @@ function HandControls({
       ? undefined
       : selectionFeedback(view, selected);
   const ownSeat = memberSeatIndex(view, accountId) ?? 0;
-  const handGroups = groupCards(view.hand, view.trumpRank);
   return (
     <section
       className={styles.handPanel}
@@ -906,49 +879,37 @@ function HandControls({
             : null}
         </p>
       )}
-      <div className={styles.handScroll}>
-        <ul className={styles.hand} aria-label="你的手牌">
-          {handGroups.map((group) => (
-            <li key={group.rank} data-rank={group.rank}>
-              <ul className={styles.rankGroup}>
-                {group.cards.map((code) => {
-                  const card = cardLabel(code);
-                  return (
-                    <li key={code}>
-                      <button
-                        type="button"
-                        className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
-                        data-card={code}
-                        data-testid="hand-card"
-                        aria-label={card.aria}
-                        aria-pressed={selected.includes(code)}
-                        disabled={
-                          !canSelect ||
-                          (tributeSelection &&
-                            !view.eligibleTributeCards.includes(code))
-                        }
-                        onClick={() =>
-                          setSelection({
-                            handKey,
-                            cards: selected.includes(code)
-                              ? selected.filter((card) => card !== code)
-                              : view.setupStage !== "play" &&
-                                  candidateCount === 0
-                                ? [code]
-                                : [...selected, code],
-                          })
-                        }
-                      >
-                        <CardFace code={code} />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <HandCards
+        cards={view.hand}
+        trumpRank={view.trumpRank}
+        label="你的手牌"
+        renderCard={(code) => (
+          <button
+            type="button"
+            className={`${styles.card} ${selected.includes(code) ? styles.cardSelected : ""}`}
+            data-card={code}
+            data-testid="hand-card"
+            aria-label={cardLabel(code).aria}
+            aria-pressed={selected.includes(code)}
+            disabled={
+              !canSelect ||
+              (tributeSelection && !view.eligibleTributeCards.includes(code))
+            }
+            onClick={() =>
+              setSelection({
+                handKey,
+                cards: selected.includes(code)
+                  ? selected.filter((card) => card !== code)
+                  : view.setupStage !== "play" && candidateCount === 0
+                    ? [code]
+                    : [...selected, code],
+              })
+            }
+          >
+            <CardFace code={code} />
+          </button>
+        )}
+      />
       <SetupChoices
         view={view}
         accountId={accountId}
@@ -1008,107 +969,30 @@ function ActiveView({
   pending,
   onCommand,
 }: {
-  view: Extract<RoomViewData["view"], { lifecycle: "ACTIVE" }>;
+  view: ActivePlayerView;
   accountId: string;
   locked: boolean;
   pending: boolean;
   onCommand: (payload: RoomCommandPayload) => void;
 }) {
-  const currentActorSeat = view.seats.find(
-    (seat) => seat.playerId === view.currentActor,
-  )?.seatIndex;
-  const ownSeat = memberSeatIndex(view, accountId) ?? 0;
   return (
-    <div className={styles.activeLayout}>
-      <section className={styles.tableStage} aria-label="牌桌">
-        <ol
-          className={styles.tableSeats}
-          data-player-count={view.seats.length}
-          aria-label="牌桌座位"
-        >
-          {view.seats.map((seat) => {
-            const isActor = seat.seatIndex === currentActorSeat;
-            const isCurrent = seat.playerId === accountId;
-            const play = view.latestPlays.find(
-              (play) => play.seatIndex === seat.seatIndex,
-            );
-            const isUnbeaten =
-              play !== undefined &&
-              view.unbeatenPlay?.seatIndex === seat.seatIndex;
-            const count = view.handSizes[seat.seatIndex] ?? 0;
-            const passed =
-              seat.playerId !== undefined &&
-              view.passedPlayerIds.includes(seat.playerId);
-            return (
-              <li
-                className={`${styles.tableSeat} ${isActor ? styles.tableSeatActor : ""}`}
-                key={seat.seatIndex}
-                data-seat={seat.seatIndex}
-                data-position={
-                  (seat.seatIndex - ownSeat + view.seats.length) %
-                  view.seats.length
-                }
-                data-self={isCurrent}
-                data-team={seat.seatIndex % 2}
-                aria-current={isActor ? "true" : undefined}
-                aria-label={`${positionLabel(seat.seatIndex)}，${seat.seatIndex % 2 === 0 ? "一队" : "二队"}`}
-              >
-                {!isCurrent && (
-                  <div className={styles.seatIdentity}>
-                    <span
-                      className={styles.avatar}
-                      data-testid="player-avatar"
-                      aria-hidden="true"
-                    >
-                      {POSITION_NAMES[seat.seatIndex]}
-                    </span>
-                    <div className={styles.seatInfo}>
-                      <span
-                        className={styles.tableSeatName}
-                        aria-live="polite"
-                        aria-atomic="true"
-                      >
-                        {view.finishPositions[seat.seatIndex] != null &&
-                          `第${view.finishPositions[seat.seatIndex]}名`}
-                        {count <= 10 && (
-                          <span data-testid="remaining-count">{count} 张</span>
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                <div className={styles.seatPlay}>
-                  {play !== undefined && (
-                    <div
-                      className={styles.playedHand}
-                      data-testid="played-hand"
-                      data-unbeaten={isUnbeaten}
-                      aria-current={isUnbeaten ? "true" : undefined}
-                      aria-label={`${positionLabel(seat.seatIndex)}出牌`}
-                    >
-                      <ul className={styles.playCards}>
-                        {groupCards(play.cards, view.trumpRank)
-                          .flatMap((group) => group.cards)
-                          .map((code) => (
-                            <li
-                              key={code}
-                              aria-label={cardLabel(code).aria}
-                              data-card={code}
-                            >
-                              <CardFace code={code} />
-                            </li>
-                          ))}
-                      </ul>
-                    </div>
-                  )}
-                  {passed && <span className={styles.passTag}>不出</span>}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-
-        {view.handResult !== undefined && (
+    <TableSurface
+      perspectiveSeat={memberSeatIndex(view, accountId) ?? 0}
+      currentActorSeat={view.currentActorSeat}
+      handSizes={view.handSizes}
+      finishPositions={view.finishPositions}
+      latestPlays={view.latestPlays}
+      unbeatenSeat={view.unbeatenPlay?.seatIndex}
+      passedSeatIndices={view.seats
+        .filter(
+          (seat) =>
+            seat.playerId !== undefined &&
+            view.passedPlayerIds.includes(seat.playerId),
+        )
+        .map((seat) => seat.seatIndex)}
+      trumpRank={view.trumpRank}
+      result={
+        view.handResult !== undefined && (
           <section className={styles.result} aria-label="本局结果">
             <h3>本局结束</h3>
             <p>等待所有玩家上线后开始下一局。</p>
@@ -1123,9 +1007,9 @@ function ActiveView({
                 ` · 被捉：${view.handResult.caughtPlayerIds.map((id) => positionLabel(memberSeatIndex(view, id)!)).join("、")}`}
             </p>
           </section>
-        )}
-      </section>
-
+        )
+      }
+    >
       <HandControls
         view={view}
         accountId={accountId}
@@ -1133,10 +1017,9 @@ function ActiveView({
         pending={pending}
         onCommand={onCommand}
       />
-    </div>
+    </TableSurface>
   );
 }
-
 export function RoomTable({
   room,
   accountId,
@@ -1160,33 +1043,12 @@ export function RoomTable({
     >
       <header className={styles.roomHeader}>
         {view.lifecycle === "ACTIVE" && (
-          <div className={styles.tableHeading}>
-            <h2 id="table-title">
-              {view.selectedActivity === "challenge" ? "同牌挑战 · " : ""}第
-              {view.handNumber ??
-                (view.completedHandCount ?? 0) +
-                  (view.handResult === undefined ? 1 : 0)}
-              局
-            </h2>
-            <div className={styles.trumpBadge}>
-              <span aria-hidden="true">· 级牌</span>
-              <strong
-                role="img"
-                data-team={view.dealerTeam}
-                aria-label={`${view.dealerTeam === 0 ? "一队" : "二队"}，当前级牌 ${view.trumpRank}`}
-              >
-                {view.trumpRank}
-              </strong>
-              <span aria-hidden="true">:</span>
-              <b
-                role="img"
-                data-team={1 - view.dealerTeam}
-                aria-label={`${view.dealerTeam === 0 ? "二队" : "一队"}等级 ${view.teamLevels[1 - view.dealerTeam]}`}
-              >
-                {view.teamLevels[1 - view.dealerTeam]}
-              </b>
-            </div>
-          </div>
+          <TableHeading
+            title={`${view.selectedActivity === "challenge" ? "同牌挑战 · " : ""}第${view.handNumber ?? (view.completedHandCount ?? 0) + (view.handResult === undefined ? 1 : 0)}局`}
+            trumpRank={view.trumpRank}
+            dealerTeam={view.dealerTeam}
+            teamLevels={view.teamLevels}
+          />
         )}
         {view.lifecycle === "ACTIVE" && accountStatus}
         {room.view.lifecycle === "ACTIVE" &&

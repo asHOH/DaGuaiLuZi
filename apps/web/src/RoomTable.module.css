@@ -629,7 +629,7 @@
   line-height: 1.1;
 }
 
-.card:hover:not(:disabled) {
+button.card:hover:not(:disabled) {
   transform: translateY(-4px);
 }
 

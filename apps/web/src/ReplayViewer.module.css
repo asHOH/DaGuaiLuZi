@@ -4,19 +4,21 @@
   max-width: 76rem;
 }
 
-.lookupPanel,
-.replay {
+.lookupPanel {
   background: var(--felt);
   border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
   border-radius: 0.75rem;
   padding: clamp(1rem, 2.6vw, 2rem);
+}
+
+.lookupPanel,
+.replay {
   display: grid;
   gap: 1rem;
 }
 
 .viewer h3,
 .viewer h4,
-.viewer h5,
 .metadata,
 .ruleList,
 .ruleList dd,
@@ -25,15 +27,12 @@
 }
 
 .eyebrow,
-.lookupPanel p,
-.seat > p {
+.lookupPanel p {
   margin: 0.4rem 0;
 }
 
 .eyebrow,
-.metadata dt,
-.sectionHeading > span,
-.seatHeading > span {
+.metadata dt {
   color: var(--muted);
   font-size: 0.8rem;
 }
@@ -45,10 +44,7 @@
 
 .lookupControls,
 .replayHeader,
-.sectionHeading,
-.seatHeading,
 .metadata,
-.tableMeta,
 .stepToolbar {
   display: flex;
   gap: 0.75rem;
@@ -66,10 +62,11 @@
 }
 
 .lookupPanel .error {
-  color: #ffb4ab;
+  color: var(--decline);
 }
 
-.status {
+.status,
+.ruleList dt {
   color: var(--muted);
 }
 
@@ -77,15 +74,12 @@
   margin-top: 1rem;
 }
 
-.replayHeader,
-.sectionHeading,
-.seatHeading {
+.replayHeader {
   justify-content: space-between;
-  flex-wrap: wrap;
 }
 
+.replayHeader,
 .metadata,
-.tableMeta,
 .stepToolbar {
   flex-wrap: wrap;
 }
@@ -95,15 +89,15 @@
 }
 
 .rules,
-.tableState,
-.handsState {
+.allHands {
   border-top: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
   padding-top: 1rem;
 }
 
-.rules summary {
+.rules summary,
+.allHands summary {
   cursor: pointer;
-  margin-bottom: 0.75rem;
+  min-height: 44px;
 }
 
 .ruleList div {
@@ -111,11 +105,6 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.3rem 0;
-}
-
-.ruleList dt,
-.tableMeta {
-  color: var(--muted);
 }
 
 .ruleList dd {
@@ -144,7 +133,7 @@
 
 .playback input {
   padding: 0;
-  accent-color: var(--brass);
+  accent-color: var(--action);
 }
 
 .actions ol {
@@ -152,81 +141,26 @@
   margin: 0.5rem 0;
 }
 
-.actions li {
+.actions > ol > li {
   padding: 0.3rem 0;
 }
 
-.tableMeta,
-.unbeatenPlay {
-  margin-top: 0.75rem;
+.replay .replayTable {
+  background: #203844;
+  border-radius: 0.75rem;
+  padding: 0 12px 0.75rem;
 }
 
-.seats {
-  display: grid;
-  gap: 0.8rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  list-style: none;
-  margin: 1rem 0 0;
-  padding: 0;
-}
-
-.seat {
-  border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
-  border-radius: 0.5rem;
-  min-width: 0;
-  padding: 0.75rem;
-}
-
-.cardList {
+.perspective {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  list-style: none;
-  margin: 0.65rem 0 0;
-  padding: 0;
-}
-
-.card {
-  background: var(--ivory);
-  border-radius: 0.3rem;
-  font-family: var(--font-card);
-  font-variant-numeric: lining-nums tabular-nums;
-  font-weight: 700;
-  min-width: 2.1rem;
-  padding: 0.5rem 0.25rem;
-  text-align: center;
-}
-
-.card > span {
-  display: inline-flex;
   align-items: center;
-  gap: 0.1em;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
-.card:not(.cardJoker) > span {
-  letter-spacing: -0.06em;
-}
-
-.cardRed {
-  color: #ad4339;
-}
-
-.cardBlack {
-  color: var(--felt);
-}
-
-.cardJoker {
-  color: #795326;
-}
-
-.result {
-  color: var(--brass);
-}
-
-@media (max-width: 760px) {
-  .seats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.allHands > section {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
 }
 
 @media (max-width: 420px) {
@@ -242,9 +176,5 @@
 
   .stepToolbar button {
     flex: 1 1 calc(50% - 0.75rem);
-  }
-
-  .seats {
-    grid-template-columns: 1fr;
   }
 }

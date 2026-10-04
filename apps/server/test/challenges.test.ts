@@ -252,8 +252,10 @@ function verifyReplay(
   ).toBe(true);
   let lastSequence = start - 1;
   const expectedHands = replay.originalDeal.map((hand) => [...hand]);
+  const expectedLatest = new Map<number, readonly string[]>();
   for (const step of replay.steps) {
     expect(step.sequence).toBeGreaterThan(lastSequence);
+    expect(step.dealerTeam).toBe(replay.steps[0]!.dealerTeam);
     for (const { event } of before.filter(
       (row) => row.sequence > lastSequence && row.sequence <= step.sequence,
     )) {
@@ -264,8 +266,11 @@ function verifyReplay(
         if (index < 0) throw new Error("recorded-card-not-in-expected-hand");
         return expectedHands[seat]!.splice(index, 1)[0]!;
       };
-      if (event.type === "CardsPlayed")
+      if (event.type === "CardsPlayed") {
         for (const card of event.cards) remove(event.seatIndex, card);
+        expectedLatest.set(event.seatIndex, event.cards);
+      }
+      if (event.type === "LeadReset") expectedLatest.clear();
       if (event.type === "TributeTransferred")
         expectedHands[event.recipientSeat]!.push(
           remove(event.giverSeat, event.card),
@@ -278,6 +283,11 @@ function verifyReplay(
     expect(step.hands.map((hand) => [...hand].sort())).toEqual(
       expectedHands.map((hand) => [...hand].sort()),
     );
+    expect(
+      step.latestPlays
+        .map((play) => [play.seatIndex, play.cards] as const)
+        .sort(([a], [b]) => a - b),
+    ).toEqual([...expectedLatest].sort(([a], [b]) => a - b));
     const played = before
       .filter((row) => row.sequence > start && row.sequence <= step.sequence)
       .flatMap((row) =>

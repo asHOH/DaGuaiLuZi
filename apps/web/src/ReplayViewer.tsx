@@ -8,7 +8,6 @@ import {
 } from "@dglz/protocol";
 
 import { ApiError, api } from "./api";
-import { PLAY_FORM_LABELS } from "./play-feedback";
 import {
   ACTIVITY_LABELS,
   completionLabel,
@@ -16,12 +15,18 @@ import {
   RULE_LABELS,
   RULE_VALUES,
 } from "./game-display";
-import { cardLabel } from "./card-display";
-import { SuitIcon } from "./SuitIcon";
+import {
+  HandCards,
+  PlayedCards,
+  TableHeading,
+  TableSurface,
+  positionLabel,
+} from "./TableSurface";
 import { ChallengeShare } from "./ChallengeControls";
 import { type ReplaySource } from "./replay-links";
 
 import styles from "./ReplayViewer.module.css";
+import tableStyles from "./RoomTable.module.css";
 
 type ReplayViewerProps = {
   accountId: string;
@@ -56,46 +61,6 @@ function replayError(reason: unknown): string {
   );
 }
 
-function CardList({
-  cards,
-  label,
-  testId,
-}: {
-  cards: readonly string[];
-  label: string;
-  testId?: string;
-}) {
-  return (
-    <ul className={styles.cardList} aria-label={label}>
-      {cards.map((code, index) => {
-        const card = cardLabel(code);
-        return (
-          <li
-            className={`${styles.card} ${
-              card.tone === "red"
-                ? styles.cardRed
-                : card.tone === "joker"
-                  ? styles.cardJoker
-                  : styles.cardBlack
-            }`}
-            key={`${code}-${index}`}
-          >
-            <span
-              role="img"
-              aria-label={card.aria}
-              data-testid={testId}
-              title={card.aria}
-            >
-              {card.rank}
-              {card.suit !== undefined && <SuitIcon suit={card.suit} />}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 function RulesSummary({ replay }: { replay: HandReplay }) {
   const configuration = replay.summary.rulesConfiguration;
   return (
@@ -127,7 +92,13 @@ function RulesSummary({ replay }: { replay: HandReplay }) {
   );
 }
 
-function ActionList({ step }: { step: HandReplayStep }) {
+function ActionList({
+  step,
+  trumpRank,
+}: {
+  step: HandReplayStep;
+  trumpRank: HandReplay["summary"]["trumpRank"];
+}) {
   return (
     <section className={styles.actions} aria-labelledby="replay-actions-title">
       <h4 id="replay-actions-title">本步记录</h4>
@@ -136,7 +107,7 @@ function ActionList({ step }: { step: HandReplayStep }) {
           <li key={`${action.text}-${index}`}>
             <span>{action.text}</span>
             {action.cards !== undefined && (
-              <CardList cards={action.cards} label="本步相关牌" />
+              <PlayedCards cards={action.cards} trumpRank={trumpRank} />
             )}
           </li>
         ))}
@@ -145,112 +116,120 @@ function ActionList({ step }: { step: HandReplayStep }) {
   );
 }
 
-function TableState({
-  step,
-  trumpRank,
-}: {
-  step: HandReplayStep;
-  trumpRank: HandReplay["summary"]["trumpRank"];
-}) {
-  return (
-    <section className={styles.tableState} aria-labelledby="replay-table-title">
-      <div className={styles.sectionHeading}>
-        <h4 id="replay-table-title">牌桌状态</h4>
-        <span>{SETUP_STAGE_LABELS[step.setupStage]}</span>
-      </div>
-      <div className={styles.tableMeta}>
-        <span>本局级牌：{trumpRank}</span>
-        <span>
-          当前行动：
-          {step.currentActorSeat === undefined
-            ? "暂无"
-            : `第${step.currentActorSeat + 1}号位`}
-        </span>
-        <span>
-          已不出：
-          {step.passedSeatIndices.length === 0
-            ? "暂无"
-            : step.passedSeatIndices
-                .map((seat) => `第${seat + 1}号位`)
-                .join("、")}
-        </span>
-        <span>
-          一队等级 {step.teamLevels[0]} · 二队等级 {step.teamLevels[1]}
-        </span>
-      </div>
-      <div className={styles.unbeatenPlay}>
-        <h5>当前出牌</h5>
-        {step.unbeatenPlay === undefined ? (
-          <p>当前没有未收牌型。</p>
-        ) : (
-          <>
-            <p>
-              第{step.unbeatenPlay.seatIndex + 1}号位 ·{" "}
-              {PLAY_FORM_LABELS[step.unbeatenPlay.form] ??
-                step.unbeatenPlay.form}
-            </p>
-            <CardList cards={step.unbeatenPlay.cards} label="当前出牌" />
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function HandsState({
+function ReplayTable({
   replay,
   step,
   accountId,
-  useOriginalDeal,
+  seatIndex,
+  onSeatChange,
 }: {
   replay: HandReplay;
   step: HandReplayStep;
   accountId: string;
-  useOriginalDeal: boolean;
+  seatIndex: number;
+  onSeatChange: (seat: number) => void;
 }) {
-  const hands = useOriginalDeal ? replay.originalDeal : step.hands;
+  const { trumpRank, playerIds, handNumber } = replay.summary;
+  const hand = step.hands[seatIndex]!;
   return (
-    <section className={styles.handsState} aria-labelledby="replay-hands-title">
-      <div className={styles.sectionHeading}>
-        <h4 id="replay-hands-title">
-          {useOriginalDeal ? "原始发牌（进贡前）" : "各座位手牌"}
-        </h4>
-        <span>
-          {hands.reduce((total, hand) => total + hand.length, 0)} 张牌
-        </span>
-      </div>
-      <ol className={styles.seats}>
-        {replay.summary.playerIds.map((playerId, seatIndex) => {
-          const hand = hands[seatIndex] ?? [];
-          const finishPosition = step.finishPositions[seatIndex];
-          return (
-            <li className={styles.seat} key={`${playerId}-${seatIndex}`}>
-              <div className={styles.seatHeading}>
-                <h5>
-                  第{seatIndex + 1}号位{playerId === accountId ? " · 本人" : ""}
-                </h5>
-                <span>{hand.length} 张</span>
-              </div>
+    <div
+      className={`${tableStyles.roomTable} ${tableStyles.roomActive} ${styles.replayTable}`}
+    >
+      <header className={tableStyles.roomHeader}>
+        <TableHeading
+          title={`回放 · 第${handNumber}局`}
+          trumpRank={trumpRank}
+          dealerTeam={step.dealerTeam}
+          teamLevels={step.teamLevels}
+        />
+        <label className={styles.perspective}>
+          查看座位
+          <select
+            value={seatIndex}
+            onChange={(event) => onSeatChange(Number(event.target.value))}
+          >
+            {playerIds.map((player, index) => (
+              <option key={player} value={index}>
+                {positionLabel(index)}
+                {player === accountId ? " · 本人" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </header>
+      {step.setupStage !== "play" && (
+        <p className={styles.status}>{SETUP_STAGE_LABELS[step.setupStage]}</p>
+      )}
+      <TableSurface
+        perspectiveSeat={seatIndex}
+        currentActorSeat={step.currentActorSeat}
+        handSizes={step.hands.map((cards) => cards.length)}
+        finishPositions={step.finishPositions}
+        latestPlays={step.latestPlays}
+        unbeatenSeat={step.unbeatenPlay?.seatIndex}
+        passedSeatIndices={step.passedSeatIndices}
+        trumpRank={trumpRank}
+        result={
+          step.result !== undefined && (
+            <p className={tableStyles.result}>
+              本局结果：{resultLabel(step.result)}
+            </p>
+          )
+        }
+      >
+        <section
+          className={tableStyles.handPanel}
+          aria-label="当前视角手牌"
+          data-own-turn={
+            step.result === undefined &&
+            step.setupStage === "play" &&
+            step.currentActorSeat === seatIndex
+          }
+        >
+          <div className={tableStyles.handCount}>
+            {positionLabel(seatIndex)} · {hand.length} 张
+            {step.finishPositions[seatIndex] != null &&
+              ` · 第${step.finishPositions[seatIndex]}名`}
+          </div>
+          <HandCards
+            cards={hand}
+            trumpRank={trumpRank}
+            label={`${positionLabel(seatIndex)}手牌`}
+            testId="replay-card"
+          />
+        </section>
+        <details className={styles.allHands} data-testid="replay-all-hands">
+          <summary>查看所有手牌</summary>
+          {playerIds.map((playerId, index) => (
+            <section
+              key={playerId}
+              aria-label={`${positionLabel(index)}全部手牌`}
+            >
+              <h4>
+                {positionLabel(index)}
+                {playerId === accountId ? " · 本人" : ""} ·{" "}
+                {step.hands[index]!.length} 张
+              </h4>
               <p>
-                {finishPosition === null || finishPosition === undefined
-                  ? step.result?.caughtPlayerIds.includes(playerId)
+                {step.finishPositions[index] != null
+                  ? `第${step.finishPositions[index]}名`
+                  : step.result?.caughtPlayerIds.includes(playerId)
                     ? "被捉"
-                    : "未完牌"
-                  : `第${finishPosition}名`}
+                    : "未完牌"}
               </p>
-              <CardList
-                cards={hand}
-                label={`第${seatIndex + 1}号位手牌`}
-                testId="replay-card"
+              <HandCards
+                cards={step.hands[index]!}
+                trumpRank={trumpRank}
+                label={`${positionLabel(index)}手牌`}
+                testId="replay-all-card"
               />
-            </li>
-          );
-        })}
-      </ol>
-    </section>
+            </section>
+          ))}
+        </details>
+      </TableSurface>
+    </div>
   );
 }
-
 export function ReplayViewer({
   accountId,
   onFailure,
@@ -265,6 +244,7 @@ export function ReplayViewer({
   );
   const [replay, setReplay] = useState<HandReplay | undefined>();
   const [stepIndex, setStepIndex] = useState(0);
+  const [seatIndex, setSeatIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(
     invalidLink ? "回放链接不正确，请重新输入同牌挑战码。" : "",
@@ -338,6 +318,9 @@ export function ReplayViewer({
         "code" in source ? { code: source.code } : undefined,
       );
       if (generation === request.current) {
+        setSeatIndex(
+          Math.max(0, response.data.summary.playerIds.indexOf(accountId)),
+        );
         setReplay(response.data);
         onSourceChange(source);
       }
@@ -502,19 +485,17 @@ export function ReplayViewer({
             </label>
           </div>
 
-          <ActionList step={step} />
-          <TableState step={step} trumpRank={replay.summary.trumpRank} />
-          <HandsState
+          <ReplayTable
             replay={replay}
             step={step}
             accountId={accountId}
-            useOriginalDeal={stepIndex === 0}
+            seatIndex={seatIndex}
+            onSeatChange={(seat) => {
+              setPlaying(false);
+              setSeatIndex(seat);
+            }}
           />
-          {step.result !== undefined && (
-            <h4 className={styles.result}>
-              本局结果：{resultLabel(step.result)}
-            </h4>
-          )}
+          <ActionList step={step} trumpRank={replay.summary.trumpRank} />
         </section>
       )}
     </section>

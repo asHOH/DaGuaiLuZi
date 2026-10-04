@@ -95,6 +95,8 @@ it("keeps Replay frames explicit and rejects raw or private event fields", () =>
     sequence: 12,
     actions: [{ text: "原始发牌（进贡前）" }],
     hands: [["AS#1"], [], [], []],
+    dealerTeam: 0,
+    latestPlays: [],
     passedSeatIndices: [],
     finishPositions: [null, null, null, null],
     setupStage: "play",

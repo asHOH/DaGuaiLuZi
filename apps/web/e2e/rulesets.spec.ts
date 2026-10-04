@@ -1301,10 +1301,51 @@ async function runHappyPath(
       await expect(page.getByTestId("replay-position")).toHaveText(
         /^第 1 \/ \d+ 步$/,
       );
-      await expect(page.getByTestId("replay-card")).toHaveCount(
+      await expect(page.getByTestId("replay-card")).toHaveCount(27);
+      await expect(page.getByRole("img", { name: /当前级牌/ })).toBeVisible();
+      const replayRegion = page.getByRole("region", {
+        name: "牌局回放",
+        exact: true,
+      });
+      await expect(replayRegion.getByTestId("player-avatar")).toHaveCount(
+        playerCount - 1,
+      );
+      await expect(
+        replayRegion.getByRole("button", {
+          name: /^(出牌|不出|终止比赛|确认进贡|确认还牌)$/,
+        }),
+      ).toHaveCount(0);
+      const perspective = page.getByRole("combobox", {
+        name: "查看座位",
+        exact: true,
+      });
+      const originalSeat = await perspective.inputValue();
+      const otherSeat = (Number(originalSeat) + 1) % playerCount;
+      const allHands = page.getByTestId("replay-all-hands");
+      await expect(
+        allHands.getByTestId("replay-all-card").first(),
+      ).not.toBeVisible();
+      await allHands.locator("summary").click();
+      await expect(allHands.getByTestId("replay-all-card")).toHaveCount(
         playerCount * 27,
       );
-      await expect(page.getByText(/^本局级牌：/)).toBeVisible();
+      await perspective.selectOption(String(otherSeat));
+      await expect(replayRegion.locator('[data-self="true"]')).toHaveAttribute(
+        "data-seat",
+        String(otherSeat),
+      );
+      expect(await page.getByTestId("replay-card").allTextContents()).toEqual(
+        await allHands
+          .locator(":scope > section")
+          .nth(otherSeat)
+          .getByTestId("replay-all-card")
+          .allTextContents(),
+      );
+      await expect(page.getByTestId("replay-position")).toHaveText(
+        /^第 1 \/ \d+ 步$/,
+      );
+      await perspective.selectOption(originalSeat);
+      await allHands.locator("summary").click();
       await expect(
         page.getByRole("button", { name: "上一步", exact: true }),
       ).toBeDisabled();
@@ -1323,13 +1364,26 @@ async function runHappyPath(
     await expect(joinerPage.getByTestId("replay-position")).toHaveText(
       /^第 1 \/ \d+ 步$/,
     );
-    await expect(joinerPage.getByTestId("replay-card")).toHaveCount(
-      playerCount * 27,
-    );
+    await expect(joinerPage.getByTestId("replay-card")).toHaveCount(27);
     expect(joinerPage.url()).toBe(manualReplayUrl);
     const originalCards = await ownerPage
       .getByTestId("replay-card")
       .allTextContents();
+    const ownerPerspective = ownerPage.getByRole("combobox", {
+      name: "查看座位",
+      exact: true,
+    });
+    const ownerSeat = await ownerPerspective.inputValue();
+    const joinerSeat = await joinerPage
+      .getByRole("combobox", { name: "查看座位", exact: true })
+      .inputValue();
+    await ownerPerspective.selectOption(
+      String((Number(ownerSeat) + 1) % playerCount),
+    );
+    await expect(
+      joinerPage.getByRole("combobox", { name: "查看座位", exact: true }),
+    ).toHaveValue(joinerSeat);
+    await ownerPerspective.selectOption(ownerSeat);
     const privateReplayUrl = ownerPage.url();
     await expect(
       ownerPage.getByRole("button", { name: "复制回放链接" }),
@@ -1416,10 +1470,20 @@ async function runHappyPath(
     expect(
       await ownerPage.getByTestId("replay-card").allTextContents(),
     ).toEqual(originalCards);
-    for (const width of [390, 1280]) {
+    for (const width of [320, 390, 1280]) {
       await ownerPage.setViewportSize({ width, height: 900 });
       await assertNoHorizontalOverflow(ownerPage);
       await captureScreenshot(ownerPage, `${rulesetId}-replay-${width}.png`);
+      if (width === 320) {
+        const allHands = ownerPage.getByTestId("replay-all-hands");
+        await allHands.locator("summary").click();
+        await assertNoHorizontalOverflow(ownerPage);
+        await captureScreenshot(
+          ownerPage,
+          `${rulesetId}-replay-all-${width}.png`,
+        );
+        await allHands.locator("summary").click();
+      }
     }
     // A recipient can follow the shared link through login without joining the source Room.
     await joinerPage
@@ -1433,9 +1497,7 @@ async function runHappyPath(
       joinerPage.getByText("还没有完成的牌局。", { exact: true }),
     ).toBeVisible();
     await joinerPage.reload();
-    await expect(joinerPage.getByTestId("replay-card")).toHaveCount(
-      playerCount * 27,
-    );
+    await expect(joinerPage.getByTestId("replay-card")).toHaveCount(27);
     expect(joinerPage.url()).toBe(sharedReplayUrl);
     await joinerPage.goto(privateReplayUrl);
     await expect(joinerPage.getByRole("alert")).toContainText(

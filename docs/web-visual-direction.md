@@ -18,7 +18,7 @@ Color roles (shared CSS variables):
 - Team one is red with a circle; team two is dark green with a diamond. Use the same identity in lobby and play, with dark badge fills and brighter text/borders on the green table. Keep team labels or symbols alongside color.
 - Azure means valid selection or affirmative action, including setup confirmation and readiness. Orange means pass, unable to beat, or failed/unavailable status.
 - Yellow means awaiting action or resolution: turn/current-play markers, unfinished selections, pending commands, synchronization, and uncertainty. Connected/synchronized is muted neutral; offline/failed icons are orange with visible Chinese explanations.
-- Keep card-suit colors independent of UI status colors. Replay presentation is unchanged by this palette revision.
+- Keep card-suit colors independent of UI status colors.
 
 Existing account/lobby baseline:
 
@@ -29,3 +29,5 @@ Share font roles across pages: UI, decorative headings/avatars, cards, and codes
 Account settings reuse these controls in one narrow, centered form; keep password-change consequences beside the fields.
 
 Information density: keep current decisions visible; collapse previous-Hand details, optional Challenge entry, and Replay sharing by default. Open Challenge entry for a prefilled Challenge link. Remove repeated headings, decorative login copy, and idle-table prompts; retain results, errors, privacy warnings, and recovery actions.
+
+Replay shares the live table renderer, card faces, grouped hands, team colors, turn markers, and latest plays. Use a blue-gray table background and visible `回放` label. Default to the participant's seat (seat one for other viewers); allow seat switching and collapsed all-hands inspection. Replay has playback controls and recorded setup actions, never gameplay commands. Seat switching pauses playback; each viewer's seat and position remain independent.
