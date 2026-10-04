@@ -63,6 +63,8 @@ export const errorMessage = (code: string, reason?: string): string =>
   {
     unauthorized: "登录已失效，请重新登录。",
     "invalid-credentials": "用户名或密码不正确。",
+    "account-already-exists":
+      "用户名已被使用，请换一个；若是你的账号，请登录。",
     "reload-required": "版本已更新，请刷新页面。",
     "room-not-found": "找不到这个房间，请检查房间码。",
     "not-found": "找不到可用的同牌挑战，请检查挑战码或本局是否已完成。",

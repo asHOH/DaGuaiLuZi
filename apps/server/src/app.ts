@@ -21,6 +21,7 @@ import {
   LogoutResponseDataSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
+  RegisterCommandSchema,
   RoomCommandAckSchema,
   RoomCommandEnvelopeSchema,
   RoomIdSchema,
@@ -37,11 +38,13 @@ import {
 } from "@dglz/protocol";
 
 import {
+  AccountAlreadyExistsError,
   assertSession,
   authenticate,
   changePassword,
   createDummyPasswordHash,
   normalizeUsername,
+  registerAccount,
   resolveSession,
   revokeSession,
   SESSION_COOKIE_NAME,
@@ -87,6 +90,7 @@ function errorStatus(code: Parameters<typeof errorEnvelope>[0]): number {
     case "domain-rejected":
     case "stale-revision":
     case "command-id-reused":
+    case "account-already-exists":
       return 409;
     case "malformed-input":
       return 400;
@@ -587,8 +591,60 @@ export async function createApp(
   });
 
   app.post(
+    "/api/register",
+    {
+      bodyLimit: 16_384,
+      config: {
+        rateLimit: {
+          hook: "onRequest",
+          max: 30,
+          timeWindow: "1 hour",
+          // A shared budget also works behind cloudflared without trusting client headers.
+          keyGenerator: () => "registration",
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsed = RegisterCommandSchema.safeParse(request.body);
+      if (!parsed.success) return sendError(reply, "malformed-input");
+      try {
+        const session = await registerAccount(database, parsed.data);
+        reply.setCookie(
+          SESSION_COOKIE_NAME,
+          session.token,
+          cookieOptions(secureCookies),
+        );
+        return reply
+          .code(201)
+          .send(
+            successEnvelope(LoginResponseDataSchema.parse(session.account)),
+          );
+      } catch (error) {
+        if (error instanceof AccountAlreadyExistsError)
+          return sendError(reply, "account-already-exists");
+        if (error instanceof Error && error.message === "invalid-account-input")
+          return sendError(reply, "malformed-input");
+        throw error;
+      }
+    },
+  );
+
+  const checkLoginBudget = app.createRateLimit({
+    max: 60,
+    timeWindow: "1 minute",
+    keyGenerator: () => "login",
+  });
+  app.post(
     "/api/login",
     {
+      bodyLimit: 16_384,
+      onRequest: async (request, reply) => {
+        const limit = await checkLoginBudget(request);
+        if (!limit.isAllowed && limit.isExceeded) {
+          reply.header("Retry-After", limit.ttlInSeconds);
+          return sendError(reply, "rate-limited");
+        }
+      },
       config: {
         rateLimit: {
           max: 5,

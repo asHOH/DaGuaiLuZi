@@ -123,8 +123,15 @@ describe("protocol schemas", () => {
       newPassword: " new ",
     };
     expect(ChangePasswordCommandSchema.parse(change)).toEqual(change);
+    expect(
+      ChangePasswordCommandSchema.safeParse({
+        ...change,
+        currentPassword: "",
+        newPassword: "",
+      }).success,
+    ).toBe(true);
     for (const invalid of [
-      { ...change, newPassword: "" },
+      { ...change, newPassword: undefined },
       { ...change, newPassword: "x".repeat(1025) },
       { ...change, currentPassword: 123 },
       { ...change, accountId: "" },

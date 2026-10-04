@@ -56,6 +56,7 @@ try {
     case "audit": {
       const labels = {
         provision: "创建账户",
+        register: "自主注册",
         "reset-password": "重置密码",
         "change-password": "修改密码",
         "revoke-sessions": "撤销全部会话",
@@ -68,7 +69,11 @@ try {
             时间: new Date(entry.recordedAt).toISOString(),
             操作: labels[entry.action],
             操作者: entry.actor,
-            来源: entry.source === "cli" ? "管理命令" : "登录会话",
+            来源: {
+              cli: "管理命令",
+              session: "登录会话",
+              registration: "自主注册",
+            }[entry.source],
             账户: entry.accountId,
           }) + "\n",
         );

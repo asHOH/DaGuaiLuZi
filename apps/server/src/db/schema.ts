@@ -22,6 +22,7 @@ export const accountAudit = sqliteTable("account_audit", {
   action: text("action", {
     enum: [
       "provision",
+      "register",
       "reset-password",
       "revoke-sessions",
       "logout",
@@ -29,7 +30,9 @@ export const accountAudit = sqliteTable("account_audit", {
     ],
   }).notNull(),
   actor: text("actor").notNull(),
-  source: text("source", { enum: ["cli", "session"] }).notNull(),
+  source: text("source", {
+    enum: ["cli", "session", "registration"],
+  }).notNull(),
   accountId: text("account_id")
     .notNull()
     .references(() => accounts.id),

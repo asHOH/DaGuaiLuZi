@@ -8,7 +8,7 @@ User requirements only. Be extremely concise. Do not infer.
 - Between Match Hands, wait until every seated player is connected before starting the next Hand; reconnecting resumes automatically.
 - In the lobby, members may vacate their own seat to swap seats even when full; vacating cancels their readiness and preserves membership and ownership.
 - post-MVP: Rooms can have spectators; membership is limited to the selected Ruleset's player count.
-- Persistent username/password accounts; optional email; VPS-administrator-assisted password reset.
+- Public self-registration with username, password, and matching confirmation; passwords may be empty. Sign in immediately and preserve pending Room/Replay/Challenge links. Persistent accounts; VPS-administrator-assisted password reset.
 - Shareable completed-Hand history with read-only Hand Replay.
 - Completed Hands provide reusable `同牌挑战码` for same-Ruleset Challenge Hands with the same starting setup and independent actions.
 - Skip responses after `[BIG]`, `[BIG, BIG]`, any Joker-only Triple except `[SMALL, SMALL, SMALL]`, or any five-joker play.

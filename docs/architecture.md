@@ -155,7 +155,7 @@ Every player view includes its Room revision; command acknowledgements include t
 
 ### Credentials module
 
-The account interface is intentionally small: administrator-provision account, authenticate, resolve/revoke session, change password, and administrator-reset password. The implementation hides username normalization, Argon2id, session-token hashing, throttling, and persistence. Account-access policy is defined [below](#account-access).
+The account interface is intentionally small: self-register, administrator-provision account, authenticate, resolve/revoke session, change password, and administrator-reset password. The implementation hides username normalization, Argon2id, session-token hashing, throttling, and persistence. Account-access policy is defined [below](#account-access).
 
 This local module is preferred over Better Auth because Better Auth requires an email for every user, including users signing up through its username plugin, which conflicts with the product requirement.
 
@@ -171,7 +171,9 @@ These are implementation defaults for ordinary app behavior, not additional prod
 
 ### Account access
 
-Accounts require a unique username and password. Email is nullable. The VPS/application administrator provisions accounts and resets passwords through administrative commands; a reset records an audit action and revokes all sessions. These commands may initially be CLI-only. If email later becomes meaningful, an email-reset adapter may be added. The MVP has no public registration endpoint.
+Anyone may register with a unique, normalized, case-insensitive username and matching password confirmation; passwords may be empty in all account flows. Registration collects no email and atomically creates the account, audit record, and session. The browser signs in immediately and preserves pending Room/Replay/Challenge links. The VPS administrator may still provision accounts and reset passwords; resets audit the action and revoke all sessions. Empty-password accounts intentionally allow access by username alone.
+
+For this small friends-only app, registration has an app-wide budget of 30 attempts/hour and login 60 attempts/minute, plus the existing five login attempts/minute/normalized username. Budgets run before password hashing; registration/login bodies are limited to 16 KiB. App-wide limits avoid trusting forwarded IP headers behind the tunnel; they reset on process restart and may temporarily block friends during abuse. Reuse origin checks, secure cookies, and Argon2id; no invitation or email service.
 
 ### Room lifecycle
 

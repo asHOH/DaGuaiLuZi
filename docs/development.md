@@ -41,6 +41,8 @@ pnpm --filter @dglz/server start
 
 `provision-account` requires `DGLZ_PASSWORD`; `DGLZ_USERNAME`, `DGLZ_EMAIL`, and `DGLZ_DB_PATH` are optional. Clear the password variable afterwards.
 
+Players may register through the login screen. `POST /api/register { username, password, confirmPassword }` returns the login account shape and sets a session cookie; account, audit, and session commit together. Passwords may be empty across all account flows (the field must still be present); registration collects no email. CLI `DGLZ_PASSWORD` may be explicitly empty but must be defined. Registration is limited to 30 attempts/hour/app; login to 60 attempts/minute/app and five/minute/normalized username. In-memory budgets reset on restart and can temporarily block friends during abuse. Registration/login bodies are capped at 16 KiB. No forwarded IP headers are trusted for these budgets.
+
 Account administration (build first; all commands use `DGLZ_DB_PATH` and accept `DGLZ_USERNAME`, otherwise prompt):
 
 | Command | Behavior |
@@ -49,7 +51,7 @@ Account administration (build first; all commands use `DGLZ_DB_PATH` and accept 
 | `pnpm --filter @dglz/server revoke-sessions` | Revoke every session without changing the password; subsequent logins remain available. |
 | `pnpm --filter @dglz/server account-audit` | Print the account's latest 100 audit records, newest first, as Chinese-labeled JSON lines. |
 
-Supply passwords through a non-echoing shell prompt into `DGLZ_PASSWORD`, never command arguments or saved shell commands; clear the variable in the invoking shell afterwards. Administrative authority is VPS access, not an app role. Audit actors are the OS username for CLI actions and the Player Account ID for password changes/logout. Migration `0004_account_administration` preserves existing accounts/sessions and starts audit recording without inventing historical records. Provisioning, password changes/reset, account-wide revocation, and logout commit atomically with append-only audit records; secrets are excluded.
+Supply passwords through a non-echoing shell prompt into `DGLZ_PASSWORD`, never command arguments or saved shell commands; clear the variable in the invoking shell afterwards. Administrative authority is VPS access, not an app role. Audit actors are the OS username for CLI actions and the Player Account ID for registration/password changes/logout. Migration `0004_account_administration` preserves existing accounts/sessions and starts audit recording without inventing historical records. Registration, provisioning, password changes/reset, account-wide revocation, and logout commit atomically with append-only audit records; secrets are excluded.
 
 Revocation takes effect on subsequent authorization checks, including queued work and private-view delivery; idle sockets are not polled. Room membership, seats, and history remain intact. Resets/revocations also reject logins whose password verification began before the operation committed. Ordinary logout revokes only its session.
 

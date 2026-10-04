@@ -191,17 +191,28 @@ function App() {
       setBusy(false);
     }
   }
-  async function login(event: FormEvent<HTMLFormElement>) {
+  async function login(
+    event: FormEvent<HTMLFormElement>,
+    registering: boolean,
+  ) {
     event.preventDefault();
+    if (busy) return;
     const data = new FormData(event.currentTarget);
     const generation = ++operation.current;
     setBusy(true);
     setError("");
     try {
-      const response = await api("/login", LoginResponseEnvelopeSchema, {
-        username: data.get("username"),
-        password: data.get("password"),
-      });
+      const response = await api(
+        registering ? "/register" : "/login",
+        LoginResponseEnvelopeSchema,
+        {
+          username: data.get("username"),
+          password: data.get("password"),
+          ...(registering
+            ? { confirmPassword: data.get("confirmPassword") }
+            : {}),
+        },
+      );
       if (generation === operation.current) {
         setAccount(response.data);
         setNotice("");
@@ -395,6 +406,10 @@ function App() {
             canRetry={error !== ""}
             onSubmit={login}
             onRestore={restore}
+            onModeChange={() => {
+              setError("");
+              setNotice("");
+            }}
           />
         ) : route.path === "/account" ? (
           <PasswordPage

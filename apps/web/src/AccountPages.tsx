@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import controls from "./controls.module.css";
 import styles from "./shell.module.css";
 
@@ -7,22 +7,43 @@ export function LoginPage({
   canRetry,
   onSubmit,
   onRestore,
+  onModeChange,
 }: {
   busy: boolean;
   canRetry: boolean;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onSubmit: (
+    event: FormEvent<HTMLFormElement>,
+    registering: boolean,
+  ) => Promise<void>;
   onRestore: () => Promise<void>;
+  onModeChange: () => void;
 }) {
+  const [registering, setRegistering] = useState(false);
   return (
     <section className={styles.welcome}>
       <form
+        key={String(registering)}
         className={styles.panel}
         onSubmit={(event) => {
-          void onSubmit(event);
+          event.preventDefault();
+          if (registering) {
+            const data = new FormData(event.currentTarget);
+            if (data.get("password") !== data.get("confirmPassword")) {
+              const confirmation = event.currentTarget.elements.namedItem(
+                "confirmPassword",
+              ) as HTMLInputElement;
+              confirmation.setCustomValidity("两次输入的密码不一致。");
+              confirmation.reportValidity();
+              return;
+            }
+          }
+          void onSubmit(event, registering);
         }}
       >
-        <h2>登录入座</h2>
-        <p>使用管理员为你开通的账号。</p>
+        <h2>{registering ? "注册账号" : "登录入座"}</h2>
+        {registering && (
+          <p>密码可留空；留空后，知道用户名的人都能登录此账号。</p>
+        )}
         <label>
           用户名
           <input
@@ -30,6 +51,7 @@ export function LoginPage({
             autoComplete="username"
             required
             maxLength={64}
+            disabled={busy}
           />
         </label>
         <label>
@@ -37,14 +59,50 @@ export function LoginPage({
           <input
             name="password"
             type="password"
-            autoComplete="current-password"
-            required
+            autoComplete={registering ? "new-password" : "current-password"}
             maxLength={1024}
+            disabled={busy}
+            onInput={(event) => {
+              const confirmation = event.currentTarget.form?.elements.namedItem(
+                "confirmPassword",
+              ) as HTMLInputElement | null;
+              confirmation?.setCustomValidity("");
+            }}
           />
         </label>
+        {registering && (
+          <label>
+            确认密码
+            <input
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              maxLength={1024}
+              disabled={busy}
+              onInput={(event) => event.currentTarget.setCustomValidity("")}
+            />
+          </label>
+        )}
         <button className={controls.primary} disabled={busy}>
-          登录
+          {busy
+            ? registering
+              ? "正在注册…"
+              : "正在登录…"
+            : registering
+              ? "注册并入座"
+              : "登录"}
         </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setRegistering(!registering);
+            onModeChange();
+          }}
+        >
+          {registering ? "已有账号，去登录" : "没有账号，去注册"}
+        </button>
+        <p>忘记密码请联系管理员。</p>
         {canRetry && (
           <button
             type="button"
@@ -83,6 +141,7 @@ export function PasswordPage({
         }}
       >
         <p>修改后，所有设备都需要重新登录。</p>
+        <p>密码可留空；留空后，知道用户名的人都能登录此账号。</p>
         <input
           type="hidden"
           name="username"
@@ -95,7 +154,6 @@ export function PasswordPage({
             name="currentPassword"
             type="password"
             autoComplete="current-password"
-            required
             maxLength={1024}
             disabled={busy}
             autoFocus
@@ -107,7 +165,6 @@ export function PasswordPage({
             name="newPassword"
             type="password"
             autoComplete="new-password"
-            required
             maxLength={1024}
             disabled={busy}
             onInput={(event) => {
@@ -124,7 +181,6 @@ export function PasswordPage({
             name="confirmPassword"
             type="password"
             autoComplete="new-password"
-            required
             maxLength={1024}
             disabled={busy}
             onInput={(event) => event.currentTarget.setCustomValidity("")}

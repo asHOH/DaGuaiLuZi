@@ -221,9 +221,6 @@ it("validates reset/revocation targets without changing credentials or audit his
   await expect(
     resetPassword(database, "missing", "new-secret"),
   ).rejects.toThrow("account-not-found");
-  await expect(resetPassword(database, "alice", "")).rejects.toThrow(
-    "invalid-account-input",
-  );
   await expect(
     resetPassword(database, "alice", "x".repeat(1025)),
   ).rejects.toThrow("invalid-account-input");
@@ -267,7 +264,8 @@ it("runs the administrative CLI against a live database without printing secrets
   expect(provisioned.stdout).toContain("已创建账户");
   expect(run("reset-password").stderr).toContain("请通过 DGLZ_PASSWORD");
   expect(run("reset-password", "new-secret", "missing").status).toBe(1);
-  expect(run("reset-password", "").status).toBe(1);
+  expect(run("reset-password", "").status).toBe(0);
+  await login("");
   const reset = run("reset-password", "cli-secret");
   expect(reset.status).toBe(0);
   expect(reset.stdout).toContain("密码已重置");
@@ -484,7 +482,9 @@ it("changes passwords through HTTP with account binding, atomic audit, and revoc
       await request(payload, { cookie: `dglz_session=${bobSession.token}` })
     ).json(),
   ).toMatchObject({ error: { code: "unauthorized" } });
-  expect((await request({ ...payload, newPassword: "" })).statusCode).toBe(400);
+  expect(
+    (await request({ ...payload, newPassword: "x".repeat(1025) })).statusCode,
+  ).toBe(400);
   expect(readAccountAudit(database, "alice")).toHaveLength(1);
   expect(resolveSession(database, first.token)).toEqual(account);
 

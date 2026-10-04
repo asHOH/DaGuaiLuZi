@@ -1,11 +1,11 @@
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 9 as const;
+export const PROTOCOL_VERSION = 10 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
 
 const identifier = z.string().trim().min(1).max(128);
 export const UsernameSchema = z.string().trim().min(1).max(64);
-export const PasswordSchema = z.string().min(1).max(1024);
+export const PasswordSchema = z.string().max(1024);
 
 export const RulesetIdSchema = z.enum(["dglz-6p-3d-v1", "dglz-4p-2d-v1"]);
 export const SeatingPolicySchema = z.enum(["fixed", "randomized"]);
@@ -313,6 +313,13 @@ export const LoginCommandSchema = z
   .strict();
 export type LoginCommand = z.infer<typeof LoginCommandSchema>;
 
+export const RegisterCommandSchema = LoginCommandSchema.extend({
+  confirmPassword: PasswordSchema,
+}).refine((input) => input.password === input.confirmPassword, {
+  path: ["confirmPassword"],
+  message: "两次输入的密码不一致。",
+});
+
 export const ChangePasswordCommandSchema = z
   .object({
     accountId: identifier,
@@ -334,6 +341,7 @@ export const ProtocolErrorCodeSchema = z.enum([
   "reload-required",
   "malformed-input",
   "invalid-credentials",
+  "account-already-exists",
   "unauthorized",
   "forbidden",
   "origin-forbidden",

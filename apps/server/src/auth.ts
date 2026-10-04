@@ -73,6 +73,23 @@ export async function provisionAccount(
   database: AppDatabase,
   input: ProvisionAccountInput,
 ): Promise<AuthenticatedAccount> {
+  return createAccount(database, input);
+}
+
+export async function registerAccount(
+  database: AppDatabase,
+  input: { username: string; password: string },
+): Promise<LoginSession> {
+  const token = randomBytes(32).toString("base64url");
+  const account = await createAccount(database, input, token);
+  return { account, token };
+}
+
+async function createAccount(
+  database: AppDatabase,
+  input: ProvisionAccountInput,
+  registrationToken?: string,
+): Promise<AuthenticatedAccount> {
   const parsedCredentials = LoginCommandSchema.safeParse({
     username: input.username,
     password: input.password,
@@ -87,6 +104,15 @@ export async function provisionAccount(
     throw new Error("invalid-account-input");
   }
   const normalizedUsername = normalizedUsernameResult.data;
+
+  if (
+    database.db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.username, normalizedUsername))
+      .get() !== undefined
+  )
+    throw new AccountAlreadyExistsError();
 
   const passwordHash = await argon2.hash(
     parsedCredentials.data.password,
@@ -106,13 +132,26 @@ export async function provisionAccount(
         tx.insert(accounts).values(account).run();
         tx.insert(accountAudit)
           .values({
-            action: "provision",
-            actor: userInfo().username,
-            source: "cli",
+            action: registrationToken === undefined ? "provision" : "register",
+            actor:
+              registrationToken === undefined
+                ? userInfo().username
+                : account.id,
+            source: registrationToken === undefined ? "cli" : "registration",
             accountId: account.id,
             recordedAt: account.createdAt,
           })
           .run();
+        if (registrationToken !== undefined) {
+          tx.insert(sessions)
+            .values({
+              tokenHash: hashSessionToken(registrationToken),
+              accountId: account.id,
+              createdAt: account.createdAt,
+              expiresAt: account.createdAt + SESSION_TTL_MS,
+            })
+            .run();
+        }
       },
       { behavior: "immediate" },
     );
