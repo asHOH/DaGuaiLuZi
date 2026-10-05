@@ -56,6 +56,12 @@ Real-device session: arrange a reachable site and 4–6 players; record site/bui
 3. Background/restore a phone, briefly disconnect/reconnect it, and restart the server; verify resynchronization and retained private cards/history without duplicate actions.
 4. Change a password and perform an administrator reset; old sessions cannot act or receive new private views. Verify another account's private state never appears.
 
+## Headless reference
+
+`@dglz/headless` exports `runFirstHand({ rulesConfiguration, handSeed, seatingPolicy?, actionLimit?, createPolicy? })` for one initial Match Hand. It returns the result, Finish Positions, action count, and private engine events. Defaults: fixed seats, passive policies, 1,500 actions. `createPolicy(playerId)` creates per-player decision functions receiving only that player's engine view and identity. Keep returned events/seeds outside policies. Subsequent-Hand starts and file replay remain planned.
+
+`pnpm --filter @dglz/headless... build` builds its dependencies; `pnpm --filter @dglz/headless test` runs focused checks. Workspace checks include it. Browser tests and the playground reuse its passive policy through their existing helper; production app code does not import it.
+
 ## Server
 
 Build before using either command:

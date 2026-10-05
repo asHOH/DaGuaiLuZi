@@ -103,6 +103,9 @@ importers:
         specifier: 4.8.3
         version: 4.8.3
     devDependencies:
+      '@dglz/headless':
+        specifier: workspace:*
+        version: link:../../packages/headless
       '@dglz/server':
         specifier: workspace:*
         version: link:../server
@@ -126,6 +129,18 @@ importers:
         version: link:../game-rules
 
   packages/game-rules: {}
+
+  packages/headless:
+    dependencies:
+      '@dglz/game-core':
+        specifier: workspace:*
+        version: link:../game-core
+      '@dglz/game-rules':
+        specifier: workspace:*
+        version: link:../game-rules
+      '@dglz/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/protocol:
     dependencies:

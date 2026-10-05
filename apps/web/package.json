@@ -21,6 +21,7 @@
     "socket.io-client": "4.8.3"
   },
   "devDependencies": {
+    "@dglz/headless": "workspace:*",
     "@dglz/server": "workspace:*",
     "@playwright/test": "1.63.0",
     "@types/react": "19.2.18",

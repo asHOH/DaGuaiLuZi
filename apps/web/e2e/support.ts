@@ -5,12 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { io, type Socket } from "socket.io-client";
-import { decodeCardInstance } from "@dglz/game-rules";
+import { passivePolicy } from "@dglz/headless";
 import {
   LoginResponseEnvelopeSchema,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_HEADER,
   RoomCommandAckSchema,
+  RoomCommandPayloadSchema,
   RoomResponseEnvelopeSchema,
   RoomViewSyncEnvelopeSchema,
   SOCKET_ROOM_COMMAND_EVENT,
@@ -339,67 +340,12 @@ export class ProtocolClient {
   }
 }
 
-// ponytail: passive test players only; add scripted responses when a UI scenario needs them.
 export function automaticCommand(
   own: RoomViewData["view"],
   accountId: string,
 ): RoomCommandPayload | undefined {
-  if (own.lifecycle !== "ACTIVE") return;
-  if (own.setupStage === "play") {
-    if (own.currentActor !== accountId) return;
-    if (own.unbeatenPlay !== undefined) return { type: "Pass" };
-    const card = own.hand[0];
-    assert(card !== undefined, "missing-lead-card");
-    return { type: "Play", cards: [card] };
-  }
-  if (!own.pendingPlayerIds.includes(accountId)) return;
-  if (own.tieKind !== undefined && own.tieRound !== undefined) {
-    return {
-      type: "SubmitTieChoiceBallot",
-      tieKind: own.tieKind,
-      round: own.tieRound,
-      candidateId: null,
-    };
-  }
-  if (own.setupStage === "tribute-selection") {
-    const card = own.eligibleTributeCards[0];
-    assert(card !== undefined, "missing-eligible-tribute");
-    return { type: "SelectTributeCard", card };
-  }
-  const offer = own.returnCandidates.find(
-    (entry) => entry.giverId === accountId,
-  );
-  if (offer !== undefined) {
-    const card = offer.candidateCards[0];
-    assert(card !== undefined, "missing-return-candidate");
-    return { type: "SelectReturnCard", card };
-  }
-  const transfer = own.tributeTransfers.find(
-    (entry) => entry.recipientId === accountId,
-  );
-  const tribute =
-    transfer === undefined ? undefined : decodeCardInstance(transfer.card);
-  if (
-    own.rulesConfiguration.rulesetId === "dglz-6p-3d-v1" &&
-    own.rulesConfiguration.returnCardSelection ===
-      "giver-choice-from-candidates" &&
-    tribute?.ok &&
-    tribute.card.face.kind === "joker"
-  ) {
-    const count = tribute.card.face.rank === "SMALL" ? 2 : 3;
-    const ranks = new Set<string>();
-    const candidateCards = own.hand
-      .filter((code) => {
-        const decoded = decodeCardInstance(code);
-        if (!decoded.ok || ranks.has(decoded.card.face.rank)) return false;
-        ranks.add(decoded.card.face.rank);
-        return true;
-      })
-      .slice(0, count);
-    assert.equal(candidateCards.length, count);
-    return { type: "OfferReturnCandidates", candidateCards };
-  }
-  const card = own.hand[0];
-  assert(card !== undefined, "missing-return-card");
-  return { type: "SelectReturnCard", card };
+  const action = passivePolicy(own, accountId);
+  return action === undefined
+    ? undefined
+    : RoomCommandPayloadSchema.parse(action);
 }

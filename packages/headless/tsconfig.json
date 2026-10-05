@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "types": ["node"]
+  },
+  "references": [
+    { "path": "../game-core" },
+    { "path": "../game-rules" },
+    { "path": "../protocol" }
+  ],
+  "include": ["src/**/*.ts"]
+}

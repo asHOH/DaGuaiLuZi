@@ -1,6 +1,6 @@
 # Open-source Research Roadmap
 
-Status: Step 1 complete (2026-10-06); steps 2–4 planned, outside MVP scope and may take priority over MVP completion.
+Status: Step 1 complete; Step 2 in progress (2026-10-06); steps 3–4 planned. Research work is outside MVP scope and may take priority over MVP completion.
 
 ## Goal and scope
 
@@ -19,7 +19,7 @@ Keep gameplay and UI iteration working throughout. MVP completion is not a prere
 
 Step 1: `game-rules` owns allowed values; domain types, core validation, and protocol enums consume them. Existing validation boundaries and serialized shapes are preserved. [Verification record](archive/mvp-acceptance-record.md): 354 unit/server tests and 12 Chromium browser cases passed; Astra review found no actionable issues.
 
-Step 2: [Investigation and implementation plan](headless-reference-plan.md) proposes three small phases; moderate difficulty, with policy privacy and reproducible setup as the main work. Implementation has not started.
+Step 2: [Phase 1 complete](headless-reference-plan.md): headless first-Hand runner and shared passive policy, verified by 366 unit/server tests and 13 Chromium cases; Astra review found no actionable issues. Subsequent-Hand setup and recorded-action replay remain planned.
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 

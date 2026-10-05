@@ -1,12 +1,14 @@
 # Headless Reference Plan
 
-Status: Proposed [research Step 2](open-source-roadmap.md); implementation not started.
+Status: [Research Step 2](open-source-roadmap.md), Phase 1 complete (2026-10-06); Phases 2–3 remain planned.
 
 ## Goal and difficulty
 
 Prepare the real engine for other researchers, primarily for RL training. Step 2 provides reliable, reproducible Hands; Step 3 adds the researcher-facing interface and training example.
 
 Moderate difficulty. The engine already runs independently, and existing helpers play Hands and handle setup. The main work is separating setup, player decisions, and evaluation while preserving hidden information and reproducibility. Investigation: all 81 existing core tests passed.
+
+Phase 1 verification: `pnpm check` passed (366 tests, including 10 headless tests); all 13 Chromium cases and standalone Node runs for both Rulesets passed. Astra review found no actionable issues.
 
 ## Plan
 
