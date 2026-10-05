@@ -189,9 +189,21 @@ function Gallery() {
             固定示例，可选牌、切换视角和播放回放。提交操作保持场景不变；完整对局请打开试玩牌桌。
           </p>
           {selection.screen === "challenge" && (
-            <p className={styles.help}>
-              示例挑战码：<code>abcdef123456</code>
-            </p>
+            <>
+              <p className={styles.help}>
+                示例挑战码：<code>abcdef123456</code>
+              </p>
+              {selection.state === "error" && (
+                <p className={styles.help}>
+                  展开“用挑战码开局”，输入示例挑战码，再点击“查看牌局”以显示请求失败提示。
+                </p>
+              )}
+              {selection.state === "copy-error" && (
+                <p className={styles.help}>
+                  点击“复制同牌挑战码”或“复制回放链接”以显示复制失败提示。
+                </p>
+              )}
+            </>
           )}
           <p role="status" className={styles.message}>
             {message}

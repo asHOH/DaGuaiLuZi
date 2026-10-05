@@ -144,7 +144,28 @@ test("预览库可切换场景、调整视口、重置并打开真实试玩", as
       "data-seat",
       "2",
     );
+    await scenario("challenge", "error");
+    await expect(
+      controls.getByText(
+        "展开“用挑战码开局”，输入示例挑战码，再点击“查看牌局”以显示请求失败提示。",
+      ),
+    ).toBeVisible();
+    await preview.getByText("用挑战码开局", { exact: true }).click();
+    await preview
+      .getByLabel("同牌挑战码", { exact: true })
+      .fill("abcdef123456");
+    await preview
+      .getByRole("button", { name: "查看牌局", exact: true })
+      .click();
+    await expect(preview.getByRole("alert")).toHaveText(
+      "连接暂时失败，请重试。",
+    );
     await scenario("challenge", "copy-error");
+    await expect(
+      controls.getByText(
+        "点击“复制同牌挑战码”或“复制回放链接”以显示复制失败提示。",
+      ),
+    ).toBeVisible();
     await preview
       .getByRole("button", { name: "复制回放链接", exact: true })
       .click();
@@ -183,9 +204,31 @@ test("预览库可切换场景、调整视口、重置并打开真实试玩", as
         .flatMap((context) => context.pages())
         .filter((candidate) => candidate.url().includes("/rooms/")),
     ).toHaveLength(1);
+    const previousRoom = new URL(playable.url()).pathname;
+    const previousContext = playable.context();
+    await playable.close();
+    expect(playable.isClosed()).toBe(true);
+    await page
+      .getByRole("button", { name: "打开试玩牌桌", exact: true })
+      .click();
+    await expect(controls.getByRole("status")).toContainText("试玩牌桌已打开");
+    const reopenedTables = browser
+      .contexts()
+      .flatMap((context) => context.pages())
+      .filter((candidate) => candidate.url().includes("/rooms/"));
+    expect(reopenedTables).toHaveLength(1);
+    const reopened = reopenedTables[0]!;
+    expect(reopened).not.toBe(playable);
+    expect(browser.contexts()).not.toContain(previousContext);
+    expect(new URL(reopened.url()).pathname).not.toBe(previousRoom);
+    await expect(reopened.getByTestId("hand-card")).toHaveCount(27);
+    await reopened
+      .getByRole("button", { name: "返回预览库", exact: true })
+      .click();
+    expect(page.url()).toBe(retainedUrl);
     expect(errors).toEqual([]);
     await gallery.close();
-    expect(playable.isClosed()).toBe(true);
+    expect(reopened.isClosed()).toBe(true);
   } finally {
     await gallery.close();
   }
