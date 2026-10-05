@@ -315,15 +315,40 @@ describe("game-core tie-choice protocol", () => {
       "phase-5-singleton-tie-initial-36",
     );
     let state = startNextHand(first.state, "phase-5-singleton-tie-2");
+    expect(view(state).tieVoterIds).toEqual(["p2", "p6"]);
+    expect(view(state).tieCandidateIds).toEqual(["p5", "p1"]);
+    expect(view(state).tributeTransfers).toMatchObject([
+      { giverId: "p4", recipientId: "p3" },
+    ]);
     for (let round = 1; round <= 3; round += 1) {
       const current = view(state);
-      for (const voter of current.pendingPlayerIds ?? []) {
+      expect(current.tieRound).toBe(round);
+      expect(current.pendingPlayerIds).toEqual(["p2", "p6"]);
+      for (const voter of ["p2", "p6"]) {
         state = apply(state, tieBallot(state, voter, null)).state;
       }
     }
-    expect(view(state).setupStage).not.toBe("recipient-pairing-tie");
-    expect(view(state).tieResolvedRounds?.at(-1)?.fallback).toBe(true);
-    expect(view(state).tributeTransfers?.length).toBeGreaterThan(1);
+    expect(view(state).setupStage).toBe("return-card-selection");
+    // Each giver takes its preceding seat, not the first available candidate.
+    expect(view(state).tieResolvedRounds?.at(-1)).toMatchObject({
+      fallback: true,
+      committedPairs: [
+        { giverId: "p2", giverSeat: 1, recipientId: "p1", recipientSeat: 0 },
+        { giverId: "p6", giverSeat: 5, recipientId: "p5", recipientSeat: 4 },
+      ],
+    });
+    expect(
+      view(state)
+        .tributeTransfers?.map(({ giverId, recipientId }) => [
+          giverId,
+          recipientId,
+        ])
+        .sort(),
+    ).toEqual([
+      ["p2", "p1"],
+      ["p4", "p3"],
+      ["p6", "p5"],
+    ]);
     expect(view(finishReturns(state)).setupStage).toBe("play");
   });
 

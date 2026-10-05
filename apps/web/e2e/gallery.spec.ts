@@ -1,6 +1,63 @@
 import { expect, test } from "@playwright/test";
 import { openGallery } from "../dev/gallery-launcher";
 
+test("固定牌面验证回合内外的三种选牌颜色", async ({ browser }) => {
+  const gallery = await openGallery(browser);
+  const page = gallery.page;
+  try {
+    const controls = page.getByRole("complementary", { name: "预览控制" });
+    const preview = page.frameLocator('iframe[title="界面预览"]');
+    await controls
+      .getByRole("combobox", { name: "页面", exact: true })
+      .selectOption("table");
+    await controls
+      .getByRole("combobox", { name: "人数", exact: true })
+      .selectOption("4");
+    for (const state of ["respond", "waiting"]) {
+      await controls
+        .getByRole("combobox", { name: "场景", exact: true })
+        .selectOption(state);
+      await expect(
+        preview.locator(`[data-preview="table/${state}/4"]`),
+      ).toBeVisible();
+      await expect(
+        preview.getByTestId("played-hand").locator('[data-card="9S#1"]'),
+      ).toBeVisible();
+      await expect(
+        preview.getByRole("button", { name: "出牌", exact: true }),
+      ).toHaveCount(state === "respond" ? 1 : 0);
+      // Against the fixed single 9: Ace wins, 3 loses, and four cards are illegal.
+      for (const [codes, color] of [
+        [["AS#1"], "rgb(223, 243, 255)"],
+        [["3D#1"], "rgb(255, 234, 219)"],
+        [["AS#1", "KH#1", "3D#1", "4S#1"], "rgb(255, 246, 205)"],
+      ] as const) {
+        const cards = codes.map((code) =>
+          preview.locator(`[data-testid="hand-card"][data-card="${code}"]`),
+        );
+        for (const card of cards) await card.press("Space");
+        for (const card of cards) {
+          await expect(card).toHaveAttribute("aria-pressed", "true");
+          await expect(card.locator(":scope > span")).toHaveCSS(
+            "background-color",
+            color,
+          );
+        }
+        await preview.getByRole("button", { name: "清空选择" }).click();
+        for (const card of cards) {
+          await expect(card).toHaveAttribute("aria-pressed", "false");
+          await expect(card.locator(":scope > span")).toHaveCSS(
+            "background-color",
+            "rgb(255, 254, 251)",
+          );
+        }
+      }
+    }
+  } finally {
+    await gallery.close();
+  }
+});
+
 test("预览库可切换场景、调整视口、重置并打开真实试玩", async ({ browser }) => {
   test.setTimeout(120_000);
   const gallery = await openGallery(browser);

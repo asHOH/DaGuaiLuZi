@@ -3,7 +3,6 @@ import { decodeCardInstance } from "@dglz/game-rules";
 import { RoomResponseEnvelopeSchema } from "@dglz/protocol";
 import { openPlayground } from "../dev/playground";
 import { protocolHeaders } from "./support";
-import { selectionFeedback } from "../src/play-feedback";
 
 async function room(page: Page) {
   const response = await page.request.get(
@@ -139,51 +138,6 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await selectedCard.press("Enter");
     await expect(selectedCard).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByRole("button", { name: "清空选择" })).toHaveCount(0);
-    for (const [playable, color] of [
-      [true, "rgb(223, 243, 255)"],
-      [false, "rgb(255, 234, 219)"],
-    ] as const) {
-      const card = current.view.hand.find((code) => {
-        const feedback = selectionFeedback(current.view, [code]);
-        return playable
-          ? feedback.ok
-          : !feedback.ok && feedback.reason === "response-not-stronger";
-      });
-      if (card === undefined) continue;
-      const button = page.locator(
-        `[data-testid="hand-card"][data-card="${card}"]`,
-      );
-      await button.click({ position: { x: 12, y: 32 } });
-      await expect(button.locator(":scope > span")).toHaveCSS(
-        "background-color",
-        color,
-      );
-      await page.screenshot({
-        path: test
-          .info()
-          .outputPath(
-            playable ? "selection-playable.png" : "selection-beaten.png",
-          ),
-        fullPage: true,
-      });
-      await clearButton.click();
-      await expect(button.locator(":scope > span")).toHaveCSS(
-        "background-color",
-        "rgb(255, 254, 251)",
-      );
-    }
-    for (let index = 0; index < 4; index += 1) {
-      await page
-        .getByTestId("hand-card")
-        .nth(index)
-        .click({ position: { x: 12, y: 32 } });
-    }
-    for (const card of await page
-      .locator('[data-testid="hand-card"][aria-pressed="true"] > span')
-      .all()) {
-      await expect(card).toHaveCSS("background-color", "rgb(255, 246, 205)");
-    }
-    await clearButton.click();
     // The driver runs in Node, so browser clock mocking cannot verify the pause.
     await page.waitForTimeout(1500);
     expect((await room(page)).revision).toBe(pausedRevision);

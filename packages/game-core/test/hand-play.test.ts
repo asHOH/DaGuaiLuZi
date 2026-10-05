@@ -447,7 +447,81 @@ describe("game-core active Hand play", () => {
     });
   });
 
-  it("conserves cards and turn ownership for generated legal-single flows", () => {
+  it.each([
+    {
+      configuration: FOUR_PLAYER_CONFIGURATION,
+      leader: "p4",
+      responders: ["p1", "p2", "p3"],
+      leadCard: "3C#2",
+    },
+    {
+      configuration: SIX_PLAYER_CONFIGURATION,
+      leader: "p6",
+      responders: ["p1", "p2", "p3", "p4", "p5"],
+      leadCard: "3H#3",
+    },
+  ] as const)(
+    "keeps counter-clockwise turns and skips a finished leader for $configuration.rulesetId",
+    ({ configuration, leader, responders, leadCard }) => {
+      let state = start(configuration, "turn-order-0").state;
+      expect(playerView(state, "p1").currentActor).toBe(leader);
+      const hand = playerView(state, leader).hand!;
+      const lastCard = hand.find((card) => !/^(SMALL|BIG)#/.test(card))!;
+      // Reach the last card with legal commands, retaining an ordinary response circuit.
+      for (const card of hand.filter((card) => card !== lastCard)) {
+        state = apply(state, {
+          type: "Play",
+          playerId: leader,
+          cards: [card],
+        }).state;
+        state = passUntilOpenLead(state);
+      }
+      const finished = apply(state, {
+        type: "Play",
+        playerId: leader,
+        cards: [lastCard],
+      });
+      state = finished.state;
+      expect(finished.events).toContainEqual({
+        type: "PlayerFinished",
+        playerId: leader,
+        seatIndex: responders.length,
+        finishPosition: 1,
+      });
+      expect(playerView(state, leader).hand).toEqual([]);
+
+      const passInOrder = (players: readonly string[]) => {
+        for (const playerId of players) {
+          expect(playerView(state, "p1").currentActor).toBe(playerId);
+          state = apply(state, { type: "Pass", playerId }).state;
+        }
+      };
+      passInOrder(responders);
+      expect(playerView(state, "p1").currentActor).toBe("p1");
+      expect(playerView(state, "p1").unbeatenPlay).toBeUndefined();
+
+      state = apply(state, {
+        type: "Play",
+        playerId: "p1",
+        cards: [leadCard],
+      }).state;
+      passInOrder(responders.slice(1, -1));
+      const lastResponder = responders.at(-1)!;
+      expect(playerView(state, "p1").currentActor).toBe(lastResponder);
+      // Ace beats the fixed 3; advancing must skip the now-empty final seat.
+      state = apply(state, {
+        type: "Play",
+        playerId: lastResponder,
+        cards: ["AD#1"],
+      }).state;
+      passInOrder(responders.slice(0, -1));
+      expect(playerView(state, "p1").currentActor).toBe(lastResponder);
+      expect(playerView(state, "p1").unbeatenPlay).toBeUndefined();
+      expect(playerView(state, "p1").handResult).toBeUndefined();
+    },
+  );
+
+  it("conserves cards for generated legal-single flows", () => {
     fc.assert(
       fc.property(
         fc.constantFrom(FOUR_PLAYER_CONFIGURATION, SIX_PLAYER_CONFIGURATION),

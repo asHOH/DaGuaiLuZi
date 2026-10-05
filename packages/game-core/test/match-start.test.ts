@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   SIX_PLAYER_CONFIGURATION,
   FOUR_PLAYER_CONFIGURATION,
@@ -142,17 +143,17 @@ describe("game-core deterministic Match start", () => {
       "4p2d",
       FOUR_PLAYER_CONFIGURATION,
       ["p4", "p3", "p1", "p2"],
-      ["4C#2", "5C#2", "6D#1", "JD#1", "AD#1"],
+      "1e0f3e1158baf7afa6dc03e437985e682248c266356eca477a0aca81a64fdd1f",
     ],
     [
       "6p3d",
       SIX_PLAYER_CONFIGURATION,
       ["p4", "p1", "p6", "p5", "p2", "p3"],
-      ["8D#1", "10C#2", "KC#2", "KS#2", "BIG#1"],
+      "56addc91a3ba4f26ed5559f157df7fe63e550c249b9ece82a74e6ab46ad65030",
     ],
   ] as const)(
     "pins the v1 seating, dealer, shuffle, and deal fixture for %s",
-    (_name, configuration, playerIds, hand) => {
+    (_name, configuration, playerIds, dealHash) => {
       const started = start(
         readyLobby(configuration, "randomized"),
         "phase-2-fixture",
@@ -160,9 +161,17 @@ describe("game-core deterministic Match start", () => {
 
       expect(started.event.playerIds).toEqual(playerIds);
       expect(started.event.dealerSeat).toBe(2);
-      expect(derivePlayerView(started.state, "p1").hand?.slice(0, 5)).toEqual(
-        hand,
+      expect(started.event).toMatchObject({
+        randomnessVersion: "dglz-random-v1",
+        shuffleVersion: "dglz-shuffle-v1",
+      });
+      // Pin every seat's complete ordered deal, not just a prefix of one hand.
+      const deal = playerIds.map(
+        (playerId) => derivePlayerView(started.state, playerId).hand,
       );
+      expect(
+        createHash("sha256").update(JSON.stringify(deal)).digest("hex"),
+      ).toBe(dealHash);
     },
   );
 

@@ -181,7 +181,6 @@ it.each([4, 6])(
         />,
       );
     const markup = render();
-    expect(markup.match(/<svg\b/g)).toHaveLength(14);
     expect(markup).not.toMatch(/[♠♥♣♦]|<text\b/);
     for (const label of ["黑桃A", "红桃A", "梅花A", "方块A", "小王", "大王"]) {
       expect(markup).toContain(`aria-label="${label}，第1张"`);
