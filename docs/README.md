@@ -9,7 +9,7 @@ Start with the task below; read the linked references only as needed. Roadmaps o
 | Reuse the engine / research | [Research roadmap](open-source-roadmap.md) | [Engine boundaries](architecture.md#deep-modules-and-seams); [verification workflow](development.md#phase-verification) |
 | Continue the app / UI | [MVP roadmap](mvp-roadmap.md) | [Product requirements](product-spec.md); [visual and interaction direction](web-visual-direction.md) |
 | Run, debug, or test locally | [Development](development.md) | [Architecture](architecture.md) for implementation boundaries and policies |
-| Check readiness to release | [MVP acceptance](mvp-acceptance.md) | [Remaining release work](mvp-roadmap.md) |
+| Check readiness to release | [Remaining release work](mvp-roadmap.md) | [Release verification](development.md#release-verification) |
 
 ## Behavior references
 
@@ -26,4 +26,4 @@ Start with the task below; read the linked references only as needed. Roadmaps o
 - [ADR 0001](decisions/0001-initial-application-stack.md): why the current stack was selected; consult when proposing a stack change.
 - [ADR 0002](decisions/0002-research-and-maintenance-candidates.md): candidate assessment, not selected dependencies or scheduled integrations.
 - [Turn timing](post-mvp-turn-timing.md): deferred policy questions; not an implementation task until scheduled.
-- [Archive](archive/): completed implementation records. Read for historical context, not current requirements or queued work.
+- [Archive](archive/): completed implementation records and [past acceptance evidence](archive/mvp-acceptance-record.md). Read for historical context, not current requirements or queued work.

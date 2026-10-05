@@ -13,7 +13,7 @@ Use the Node.js version in `.node-version` and the pnpm version in `package.json
 | `pnpm build` | Build all packages and apps. |
 | `pnpm check` | Run formatting, build, lint, typechecks, and unit/server tests. |
 | `pnpm --filter @dglz/web test:browser` | Run browser checks against the current build. |
-| `pnpm --filter @dglz/web test:acceptance` | Run the same journeys across the [acceptance browser matrix](mvp-acceptance.md). |
+| `pnpm --filter @dglz/web test:acceptance` | Run the same journeys across the [acceptance browser matrix](#release-verification). |
 
 Prettier owns code/config formatting; Markdown is excluded to keep tables compact. Oxlint owns lint rules; TypeScript remains the typecheck authority. Lefthook checks staged formatting and lint before commit, then runs `pnpm check` before push. Run `pnpm exec lefthook install` if hooks are missing. GitHub Actions runs `pnpm check`, installs Chromium with its system dependencies, then runs browser checks against that build after a frozen-lockfile install.
 
@@ -28,6 +28,33 @@ Remaining delivery order and completion gates: [MVP roadmap](mvp-roadmap.md).
 - Keep one browser journey per Ruleset. Demonstrate required UI interactions, then drive repeated moves (including Passes) through protocol clients. Use revisioned socket views; reserve HTTP reads for bootstrap and recovery checks.
 - Browser helpers must establish their authentication/Room preconditions and await authoritative state changes. Assert required interactions occurred regardless of randomized seats or dealer. Diagnose stalled steps before increasing timeouts.
 - On tooling failures such as Windows `spawn EPERM`, check execution permissions before retrying; do not change project tooling to mask an environment restriction.
+
+## Release verification
+
+Current gates and platform gaps: [MVP roadmap](mvp-roadmap.md). Past results: [acceptance record](archive/mvp-acceptance-record.md). Release acceptance requires fresh automated checks and a recorded real-device multiplayer session; emulation alone does not establish physical-device acceptance.
+
+Run `pnpm check`, then `pnpm --filter @dglz/web test:acceptance`. Install Chrome/Edge and run `pnpm --filter @dglz/web exec playwright install webkit` first. Select one profile with `--project=<profile>`:
+
+| Profile | Browser / device |
+| --- | --- |
+| `desktop-chrome` | Installed Chrome |
+| `desktop-edge` | Installed Edge |
+| `android-chrome-emulated` | Installed Chrome, Pixel 7 emulation |
+| `iphone-webkit-emulated` | Playwright WebKit, iPhone 13 emulation |
+
+Reports: `apps/web/output/playwright/report`; per-test files: `apps/web/test-results`. Reuse existing journeys, with one gameplay journey per Ruleset. Verify:
+
+- Rules/authority: both Rulesets and presets, legal play, settlement, audit, access control, persistence, and retries.
+- Full flow: Match → completed Hand/history → independent Replay → Challenge; Room controls and account changes.
+- Recovery/privacy: active-Hand server restart, offline/reconnect, unchanged private cards, stale account/revoked session cleanup, and interrupted-Room recovery.
+- Browser/UI: keyboard/touch, responsive screenshots, and reduced-motion checks across the matrix.
+
+Real-device session: arrange a reachable site and 4–6 players; record site/build, OS/browser versions, players, result, and issues. Staging may be needed before VPS release.
+
+1. Log in, share a Room link, select seats/readiness, and play both Rulesets; check Chinese text, touch/keyboard selection, scrolling, rotation, text enlargement, and visible actions without obstruction.
+2. Settle Hands and finish a Match; exercise Tribute/Return where applicable; open history/Replay independently, copy/paste its Code, and start a Challenge.
+3. Background/restore a phone, briefly disconnect/reconnect it, and restart the server; verify resynchronization and retained private cards/history without duplicate actions.
+4. Change a password and perform an administrator reset; old sessions cannot act or receive new private views. Verify another account's private state never appears.
 
 ## Server
 

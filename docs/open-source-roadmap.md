@@ -17,7 +17,7 @@ Keep gameplay and UI iteration working throughout. MVP completion is not a prere
 | 3. Research baseline | Choose one training workload, target hardware, observation/action encoding, and reward/episode definition; expose one research interface and one baseline. | Reproducible training and evaluation cover legal actions, hidden information, team roles, and setup decisions. Record rule/engine/encoding versions, seeds, configuration, and hardware. |
 | 4. Measured scale | Profile the baseline; compare one acceleration candidate with the reference before selecting a backend. | Measure legal-action generation, complete Hands/second, memory, and training wall time. Any port matches reference transitions, observations, and outcomes across supported configurations. |
 
-Step 1: `game-rules` owns allowed values; domain types, core validation, and protocol enums consume them. Existing validation boundaries and serialized shapes are preserved. [Verification](mvp-acceptance.md): 354 unit/server tests and 12 Chromium browser cases passed; Astra review found no actionable issues.
+Step 1: `game-rules` owns allowed values; domain types, core validation, and protocol enums consume them. Existing validation boundaries and serialized shapes are preserved. [Verification record](archive/mvp-acceptance-record.md): 354 unit/server tests and 12 Chromium browser cases passed; Astra review found no actionable issues.
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 

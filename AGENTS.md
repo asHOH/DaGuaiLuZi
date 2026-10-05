@@ -8,6 +8,6 @@
 - Use [docs/post-mvp-turn-timing.md](docs/post-mvp-turn-timing.md) for deferred turn-timing policy.
 - Follow [docs/architecture.md](docs/architecture.md) and [ADR 0001](docs/decisions/0001-initial-application-stack.md); do not reopen accepted stack decisions without a new requirement or measured limitation.
 - For UI work, use [docs/web-visual-direction.md](docs/web-visual-direction.md); record lasting visual and interaction decisions there.
-- Use [docs/mvp-roadmap.md](docs/mvp-roadmap.md) for current priorities, [docs/development.md](docs/development.md) for local workflows, and [docs/mvp-acceptance.md](docs/mvp-acceptance.md) for release checks and recorded evidence.
+- Use [docs/mvp-roadmap.md](docs/mvp-roadmap.md) for current priorities, and [docs/development.md](docs/development.md) for local workflows and release checks.
 - Use [docs/open-source-roadmap.md](docs/open-source-roadmap.md) for reuse and replaceability goals, priorities outside MVP, and conditional migration criteria.
 - [docs/archive/](docs/archive/) contains completed implementation records, not current requirements or queued work. Consult only for historical context.
