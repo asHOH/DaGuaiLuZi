@@ -1,3 +1,7 @@
+import {
+  SIX_PLAYER_CONFIGURATION,
+  FOUR_PLAYER_CONFIGURATION,
+} from "./configurations.js";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -7,35 +11,10 @@ import {
   type CardInstance,
   type ClassifiedPlay,
   type EvaluatePlayResult,
-  type FourPlayerRulesConfiguration,
   type RulesConfiguration,
   type SixPlayerRulesConfiguration,
   type TrumpRank,
 } from "../src/index.js";
-
-const SIX_PLAYER_CONFIGURATION: SixPlayerRulesConfiguration = {
-  rulesetId: "dglz-6p-3d-v1",
-  jokerPairComparison: "two-small-and-mixed-are-equal",
-  wildcardRank: "strongest-rank",
-  finishingWildcardInterpretation: "weakest-form-and-rank",
-  flushTieBreaking: "descending-ranks",
-  nextHandLeader: "first-finisher",
-  tributeCardSelection: "fair-random",
-  returnCardSelection: "recipient-choice",
-  tributeRecipientPairing: "adjacent-first-automatic",
-  matchEnding: "no-failure-limit-at-5",
-};
-
-const FOUR_PLAYER_CONFIGURATION: FourPlayerRulesConfiguration = {
-  rulesetId: "dglz-4p-2d-v1",
-  wildcardRank: "strongest-rank",
-  finishingWildcardInterpretation: "weakest-form-and-rank",
-  flushTieBreaking: "descending-ranks",
-  nextHandLeader: "first-finisher",
-  tributeCardSelection: "fair-random",
-  tributeRecipientPairing: "adjacent-first-automatic",
-  matchEnding: "no-failure-limit-at-5",
-};
 
 const DOCUMENTED_EXAMPLE = [
   "4C#1",

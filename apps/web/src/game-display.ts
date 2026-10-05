@@ -1,5 +1,13 @@
 import type { CompletedHandSummary } from "@dglz/protocol";
+import type {
+  RULE_VARIANT_VALUES,
+  RulesetId,
+  RuleVariantName,
+} from "@dglz/game-rules";
 
+type RuleValue = (typeof RULE_VARIANT_VALUES)[RuleVariantName][number];
+
+// Check completeness while allowing string-key lookups from Object.entries.
 export const RULE_LABELS: Record<string, string> = {
   rulesetId: "规则组",
   jokerPairComparison: "王牌对子比较",
@@ -11,7 +19,7 @@ export const RULE_LABELS: Record<string, string> = {
   returnCardSelection: "还牌选牌",
   tributeRecipientPairing: "进贡配对",
   matchEnding: "比赛结束",
-};
+} satisfies Record<"rulesetId" | RuleVariantName, string>;
 
 export const RULE_VALUES: Record<string, string> = {
   "dglz-6p-3d-v1": "六人三副牌",
@@ -34,7 +42,7 @@ export const RULE_VALUES: Record<string, string> = {
   "adjacent-first-automatic": "相邻优先自动配对",
   "no-failure-limit-at-5": "到 5 级不设失败上限",
   "three-failure-limit-at-5": "到 5 级三次失败结束",
-};
+} satisfies Record<RulesetId | RuleValue, string>;
 
 export const ACTIVITY_LABELS = {
   match: "比赛",

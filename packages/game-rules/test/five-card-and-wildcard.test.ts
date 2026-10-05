@@ -1,3 +1,4 @@
+import { SIX_PLAYER_CONFIGURATION as BASE_CONFIGURATION } from "./configurations.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,19 +11,6 @@ import {
   type SixPlayerRulesConfiguration,
   type TrumpRank,
 } from "../src/index.js";
-
-const BASE_CONFIGURATION: SixPlayerRulesConfiguration = {
-  rulesetId: "dglz-6p-3d-v1",
-  jokerPairComparison: "two-small-and-mixed-are-equal",
-  wildcardRank: "strongest-rank",
-  finishingWildcardInterpretation: "weakest-form-and-rank",
-  flushTieBreaking: "descending-ranks",
-  nextHandLeader: "first-finisher",
-  tributeCardSelection: "fair-random",
-  returnCardSelection: "recipient-choice",
-  tributeRecipientPairing: "adjacent-first-automatic",
-  matchEnding: "no-failure-limit-at-5",
-};
 
 const FORM_FIXTURES = [
   {

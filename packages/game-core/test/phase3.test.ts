@@ -1,4 +1,10 @@
-import { apply, fold, startMatch } from "./support.js";
+import {
+  apply,
+  fold,
+  startMatch,
+  SIX_PLAYER_CONFIGURATION,
+  FOUR_PLAYER_CONFIGURATION,
+} from "./support.js";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -14,30 +20,6 @@ import {
   type CardInstanceCode,
   type RulesConfiguration,
 } from "@dglz/game-rules";
-
-const SIX_PLAYER_CONFIGURATION: RulesConfiguration = {
-  rulesetId: "dglz-6p-3d-v1",
-  jokerPairComparison: "two-small-and-mixed-are-equal",
-  wildcardRank: "strongest-rank",
-  finishingWildcardInterpretation: "weakest-form-and-rank",
-  flushTieBreaking: "descending-ranks",
-  nextHandLeader: "first-finisher",
-  tributeCardSelection: "fair-random",
-  returnCardSelection: "recipient-choice",
-  tributeRecipientPairing: "adjacent-first-automatic",
-  matchEnding: "no-failure-limit-at-5",
-};
-
-const FOUR_PLAYER_CONFIGURATION: RulesConfiguration = {
-  rulesetId: "dglz-4p-2d-v1",
-  wildcardRank: "strongest-rank",
-  finishingWildcardInterpretation: "weakest-form-and-rank",
-  flushTieBreaking: "descending-ranks",
-  nextHandLeader: "first-finisher",
-  tributeCardSelection: "fair-random",
-  tributeRecipientPairing: "adjacent-first-automatic",
-  matchEnding: "no-failure-limit-at-5",
-};
 
 function start(configuration: RulesConfiguration, handSeed = "phase-3-seed") {
   return startMatch(configuration, handSeed, "phase-3-room");

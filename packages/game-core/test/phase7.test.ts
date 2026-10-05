@@ -1,3 +1,7 @@
+import {
+  SIX_PLAYER_CONFIGURATION,
+  FOUR_PLAYER_CONFIGURATION,
+} from "./support.js";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -14,30 +18,6 @@ import {
   type State,
 } from "../src/index.js";
 import { RULE_VARIANT_VALUES, type RulesConfiguration } from "@dglz/game-rules";
-
-const FOUR_PLAYER_CONFIGURATION: RulesConfiguration = {
-  rulesetId: "dglz-4p-2d-v1",
-  wildcardRank: "strongest-rank",
-  finishingWildcardInterpretation: "weakest-form-and-rank",
-  flushTieBreaking: "descending-ranks",
-  nextHandLeader: "first-finisher",
-  tributeCardSelection: "fair-random",
-  tributeRecipientPairing: "adjacent-first-automatic",
-  matchEnding: "no-failure-limit-at-5",
-};
-
-const SIX_PLAYER_CONFIGURATION: RulesConfiguration = {
-  rulesetId: "dglz-6p-3d-v1",
-  jokerPairComparison: "two-small-and-mixed-are-equal",
-  wildcardRank: "strongest-rank",
-  finishingWildcardInterpretation: "weakest-form-and-rank",
-  flushTieBreaking: "descending-ranks",
-  nextHandLeader: "first-finisher",
-  tributeCardSelection: "fair-random",
-  returnCardSelection: "recipient-choice",
-  tributeRecipientPairing: "adjacent-first-automatic",
-  matchEnding: "no-failure-limit-at-5",
-};
 
 function fold(state: State | undefined, events: readonly Event[]): State {
   let next = state;
