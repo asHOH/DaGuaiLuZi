@@ -2,6 +2,8 @@
 
 Core MVP flows are implemented; completed phase records are [archived](archive/). Automated acceptance was recorded on 2026-09-27; later changes need fresh verification. Real-device multiplayer and VPS release remain open.
 
+The [research and maintenance roadmap](open-source-roadmap.md) is outside MVP scope and may take priority through bounded changes that preserve ongoing UI work. MVP completion is not its prerequisite; the gates below remain open.
+
 | Priority | Work | Completion gate |
 | --- | --- | --- |
 | Now | Local UI polish following [visual direction](web-visual-direction.md). | Revised screens checked locally at desktop/mobile sizes, including affected interactions. |
