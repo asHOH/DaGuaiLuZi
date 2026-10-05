@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { type CardInstanceCode, type TrumpRank } from "@dglz/game-rules";
 import { type HandReplayStep } from "@dglz/protocol";
-import { cardLabel, groupCards } from "./card-display";
+import { cardLabel, groupCards, sortPlayedCards } from "./card-display";
 import { SuitIcon } from "./SuitIcon";
 import styles from "./RoomTable.module.css";
 
@@ -84,19 +84,25 @@ export function HandCards({
 export function PlayedCards({
   cards,
   trumpRank,
+  play,
 }: {
   cards: readonly CardInstanceCode[];
   trumpRank: TrumpRank;
+  play?: Pick<
+    HandReplayStep["latestPlays"][number],
+    "form" | "rank" | "representedFaces"
+  >;
 }) {
+  const ordered = play
+    ? sortPlayedCards(cards, trumpRank, play)
+    : groupCards(cards, trumpRank).flatMap((group) => group.cards);
   return (
     <ul className={styles.playCards}>
-      {groupCards(cards, trumpRank)
-        .flatMap((group) => group.cards)
-        .map((code) => (
-          <li key={code} aria-label={cardLabel(code).aria} data-card={code}>
-            <CardFace code={code} />
-          </li>
-        ))}
+      {ordered.map((code) => (
+        <li key={code} aria-label={cardLabel(code).aria} data-card={code}>
+          <CardFace code={code} />
+        </li>
+      ))}
     </ul>
   );
 }
@@ -155,7 +161,7 @@ export function TableSurface({
   finishPositions: readonly (number | null | undefined)[];
   latestPlays: readonly Pick<
     HandReplayStep["latestPlays"][number],
-    "seatIndex" | "cards"
+    "seatIndex" | "cards" | "form" | "rank" | "representedFaces"
   >[];
   unbeatenSeat: number | undefined;
   passedSeatIndices: readonly number[];
@@ -225,7 +231,11 @@ export function TableSurface({
                       aria-current={isUnbeaten ? "true" : undefined}
                       aria-label={`${positionLabel(seatIndex)}出牌`}
                     >
-                      <PlayedCards cards={play.cards} trumpRank={trumpRank} />
+                      <PlayedCards
+                        cards={play.cards}
+                        trumpRank={trumpRank}
+                        play={play}
+                      />
                     </div>
                   )}
                   {passedSeatIndices.includes(seatIndex) && (

@@ -2,7 +2,8 @@
 
 PC-first game surface: one continuous table, spatial four/six-player seating, local player at the bottom, and compact avatars. Preserve actual seat order, teams, rules, actions, synchronization, and account/privacy behavior. Use HTML/CSS, Chinese-capable fonts, and simple SVGs; no artwork dependency.
 
-- Overlap upright cards horizontally; rank above suit at the upper left. Sort by descending single-card strength, then spade, heart, club, diamond; keep copies distinct. Wrap only between complete rank groups.
+- Overlap upright cards horizontally; rank above suit at the upper left. Sort hands by descending single-card strength, then spade, heart, club, diamond; keep copies distinct. Wrap only between complete rank groups.
+- Live/replay table plays follow the recorded interpretation: full-house triples and four-plus-one groups first; straights high-to-low with natural trump positions and ace low in `5432A`; otherwise descending resolved rank strength. Place jokers after natural cards within their resolved rank, retaining joker faces and deterministic suit/copy order. Joker-only plays and Replay action-log cards keep ordinary ordering.
 - Center the hand when it fits on one row; keep wrapped hands left-aligned.
 - Show each seat's latest played cards until lead reset, including after a pass; emphasize the current play to beat. Recover these public plays on reconnect. Pass markers follow the current unbeaten play.
 - Automatically display the count declaration required by [the rules](ruleset.md#turn-flow): opponents' counts only at 10 or fewer; your own count always. Exact counts remain in transmitted views.

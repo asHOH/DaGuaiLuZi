@@ -1,7 +1,53 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { rulesConfigurationPreset, type RoomViewData } from "@dglz/protocol";
+import {
+  rulesConfigurationPreset,
+  type HandReplayStep,
+  type RoomViewData,
+} from "@dglz/protocol";
 import { RoomTable } from "../src/RoomTable.js";
+import { PlayedCards, TableSurface } from "../src/TableSurface.js";
+
+it.each([4, 6])(
+  "uses resolved ordering on the shared %i-player table while keeping joker faces",
+  (count) => {
+    const play = {
+      seatIndex: 1,
+      cards: ["SMALL#1", "3D#1", "5H#1", "BIG#1", "AC#1"],
+      form: "mixed-suit-straight",
+      rank: "5",
+      representedFaces: ["4S", "3D", "5H", "2S", "AC"],
+    } satisfies Pick<
+      HandReplayStep["latestPlays"][number],
+      "seatIndex" | "cards" | "form" | "rank" | "representedFaces"
+    >;
+    const markup = renderToStaticMarkup(
+      <TableSurface
+        perspectiveSeat={0}
+        currentActorSeat={2}
+        handSizes={Array(count).fill(10)}
+        finishPositions={Array(count).fill(null)}
+        latestPlays={[play]}
+        unbeatenSeat={1}
+        passedSeatIndices={[]}
+        trumpRank="3"
+      >
+        {null}
+      </TableSurface>,
+    );
+    expect(
+      [...markup.matchAll(/data-card="([^"]+)"/g)].map((match) => match[1]),
+    ).toEqual(["5H#1", "SMALL#1", "3D#1", "BIG#1", "AC#1"]);
+    expect(markup).toContain('aria-label="小王，第1张"');
+    expect(markup).toContain('aria-label="大王，第1张"');
+    const action = renderToStaticMarkup(
+      <PlayedCards cards={play.cards} trumpRank="3" />,
+    );
+    expect(
+      [...action.matchAll(/data-card="([^"]+)"/g)].map((match) => match[1]),
+    ).toEqual(["BIG#1", "SMALL#1", "3D#1", "AC#1", "5H#1"]);
+  },
+);
 
 it.each([4, 6])(
   "renders the supported rule choices for %i players",
