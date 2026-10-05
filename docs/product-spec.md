@@ -12,4 +12,5 @@ User requirements only. Be extremely concise. Do not infer.
 - Shareable completed-Hand history with read-only Hand Replay.
 - Completed Hands provide reusable `同牌挑战码` for same-Ruleset Challenge Hands with the same starting setup and independent actions.
 - Skip responses after `[BIG]`, `[BIG, BIG]`, any Joker-only Triple except `[SMALL, SMALL, SMALL]`, or any five-joker play.
+- Live play supports private, local hand groups, including single cards, off-turn and offline; never recorded in Replay. Beside play/pass, hide `组合` with no selection; disable it when no groups exist and every card is selected. Selections wholly within one group show `解散` and ungroup only those cards; otherwise move selected cards into a new group. Preserve unselected members; dissolve the sole group when no ungrouped cards remain. Clear selection afterward; prune played cards and empty groups; reset on reload or a new Hand.
 - post-MVP: [turn timing](post-mvp-turn-timing.md) or connection-driven pause; reconnection only resynchronizes state.

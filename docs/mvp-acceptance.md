@@ -2,6 +2,8 @@
 
 Status: automated acceptance passed, 2026-09-27. Real-device multiplayer remains pending by user decision: no shared test site/session yet.
 
+2026-10-05 local hand grouping: `pnpm check` passed 345 tests; post-review web build, formatting, lint, and typechecks passed. All 12 Chromium browser cases passed across runs (10 initially; both Ruleset journeys rerun after correcting an owner-only test assertion). Coverage includes regrouping/dissolution, whole-hand prevention, singleton groups, played-card pruning, new-Hand/reload reset, reconnect retention, Replay exclusion, and desktop/320px layout geometry. Astra review found excess trailing group spacing; a different Astra worker fixed it, and the coordinator validated the fix/screenshots. No new physical-device or cross-browser acceptance claimed.
+
 Target: iPhone Safari, Android Chrome, Windows and macOS browsers. Existing desktop automation covers Chrome/Edge; macOS browser coverage is undecided. The owner has Windows and iPhone for hands-on testing; macOS/Android device testing remains to be arranged. Reuse the five browser journeys; keep one gameplay journey per Ruleset.
 
 | Gate | Evidence / remaining work |

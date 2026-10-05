@@ -43,18 +43,44 @@ export function HandCards({
   label,
   testId,
   renderCard,
+  groups = [],
 }: {
   cards: readonly CardInstanceCode[];
   trumpRank: TrumpRank;
   label: string;
   testId?: string;
   renderCard?: (code: CardInstanceCode) => ReactNode;
+  groups?: readonly CardInstanceCode[][];
 }) {
+  const groupedCards = new Set(groups.flat());
+  const sections = [
+    ...groupCards(
+      cards.filter((card) => !groupedCards.has(card)),
+      trumpRank,
+    ).map((group) => ({
+      key: group.rank,
+      rank: group.rank,
+      cards: group.cards,
+      manual: false,
+    })),
+    ...groups.map((group, index) => ({
+      key: `group-${index}`,
+      rank: undefined,
+      cards: groupCards(group, trumpRank).flatMap((rank) => rank.cards),
+      manual: true,
+    })),
+  ];
   return (
     <div className={styles.handScroll}>
       <ul className={styles.hand} aria-label={label}>
-        {groupCards(cards, trumpRank).map((group) => (
-          <li key={group.rank} data-rank={group.rank}>
+        {sections.map((group) => (
+          <li
+            key={group.key}
+            data-rank={group.rank}
+            data-hand-group={group.manual || undefined}
+            className={group.manual ? styles.manualGroup : undefined}
+            aria-label={group.manual ? "手牌组合" : undefined}
+          >
             <ul className={styles.rankGroup}>
               {group.cards.map((code) => (
                 <li key={code}>

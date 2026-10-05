@@ -10,6 +10,11 @@ import {
 import { PLAY_FORM_LABELS, selectionFeedback } from "./play-feedback";
 import { ChallengeEntry, ChallengeShare } from "./ChallengeControls";
 import { cardLabel } from "./card-display";
+import {
+  retainHandGroups,
+  selectionIsGrouped,
+  toggleHandGroup,
+} from "./hand-groups";
 import { RULE_LABELS, RULE_VALUES, resultLabel } from "./game-display";
 import {
   CardFace,
@@ -787,21 +792,31 @@ function HandControls({
     handKey,
     cards: [] as typeof view.hand,
   });
+  const cardsKey = view.hand.join(",");
+  const [grouping, setGrouping] = useState({
+    cardsKey,
+    groups: [] as (typeof view.hand)[],
+  });
+  const groups =
+    grouping.cardsKey === cardsKey
+      ? grouping.groups
+      : retainHandGroups(grouping.groups, view.hand);
+  if (grouping.cardsKey !== cardsKey) setGrouping({ cardsKey, groups });
   // A committed hand change or settlement invalidates selection; socket updates alone do not.
   const selected =
     selection.handKey === handKey && view.handResult === undefined
       ? selection.cards
       : [];
   const canSelect =
-    !locked &&
-    !pending &&
     view.handResult === undefined &&
-    (view.setupStage === "play" || tributeSelection || returnSelection);
+    (view.setupStage === "play" ||
+      (!locked && !pending && (tributeSelection || returnSelection)));
   const isOwnTurn =
     view.handResult === undefined &&
     view.setupStage === "play" &&
     view.currentActor === accountId;
-  const canAct = canSelect && isOwnTurn;
+  const canAct = canSelect && isOwnTurn && !locked && !pending;
+  const dissolve = selectionIsGrouped(groups, selected);
   const feedback =
     selected.length === 0 || view.setupStage !== "play"
       ? undefined
@@ -862,6 +877,27 @@ function HandControls({
                 <button
                   type="button"
                   className={controls.secondaryButton}
+                  disabled={
+                    groups.length === 0 && selected.length === view.hand.length
+                  }
+                  title={
+                    groups.length === 0 && selected.length === view.hand.length
+                      ? "不能将全部手牌组合为一组"
+                      : undefined
+                  }
+                  onClick={() => {
+                    setGrouping({
+                      cardsKey,
+                      groups: [...toggleHandGroup(groups, view.hand, selected)],
+                    });
+                    setSelection({ handKey, cards: [] });
+                  }}
+                >
+                  {dissolve ? "解散" : "组合"}
+                </button>
+                <button
+                  type="button"
+                  className={controls.secondaryButton}
                   disabled={!canSelect}
                   onClick={() => setSelection({ handKey, cards: [] })}
                 >
@@ -881,6 +917,7 @@ function HandControls({
       )}
       <HandCards
         cards={view.hand}
+        groups={groups}
         trumpRank={view.trumpRank}
         label="你的手牌"
         renderCard={(code) => (

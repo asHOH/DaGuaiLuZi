@@ -211,6 +211,7 @@ async function playAndSettle(
       expect(view.handNumber).toBe(2);
       expect(view.lastHandResult?.handNumber).toBe(1);
       for (const page of [ownerPage, joinerPage]) {
+        await expect(page.locator('[data-hand-group="true"]')).toHaveCount(0);
         await expect(
           page.getByRole("region", { name: "上一局结果" }),
         ).toBeVisible();
@@ -257,8 +258,23 @@ async function playAndSettle(
         await pass.click();
         browserPassed = true;
       } else {
-        const card = cards.first();
+        const cardCode = await cards.first().getAttribute("data-card");
+        const card = browserPage.locator(
+          `[data-testid="hand-card"][data-card="${cardCode}"]`,
+        );
         const before = await cards.count();
+        const checkGroup = !browserPlayed;
+        const secondCode = await cards.nth(1).getAttribute("data-card");
+        if (checkGroup) {
+          await card.press("Space");
+          await cards.nth(1).press("Space");
+          await browserPage
+            .getByRole("button", { name: "组合", exact: true })
+            .click();
+          await expect(
+            browserPage.locator('[data-hand-group="true"] [data-card]'),
+          ).toHaveCount(2);
+        }
         await card.focus();
         if (!keyboardUsed) {
           await browserPage.emulateMedia({ reducedMotion: "reduce" });
@@ -291,6 +307,16 @@ async function playAndSettle(
         browserPlayed = true;
         browserPlayCount += 1;
         await expect(cards).toHaveCount(before - 1);
+        if (checkGroup) {
+          const remainingGroup = browserPage.locator(
+            '[data-hand-group="true"] [data-card]',
+          );
+          await expect(remainingGroup).toHaveCount(1);
+          await expect(remainingGroup).toHaveAttribute(
+            "data-card",
+            secondCode!,
+          );
+        }
       }
       await expect
         .poll(async () => (await readRoom(url, roomId, ownerCookie)).revision)
@@ -721,7 +747,12 @@ async function runHappyPath(
         await expect(page.getByRole("status")).toContainText(
           "连接已断开，正在重连…",
         );
-        await expect(page.getByTestId("hand-card").first()).toBeDisabled();
+        await expect(page.getByTestId("hand-card").first()).toBeEnabled();
+        if (page === ownerPage) {
+          await expect(
+            page.getByRole("button", { name: "终止比赛", exact: true }),
+          ).toBeDisabled();
+        }
       }
     });
     await Promise.all(clients.map((client) => client.connect()));

@@ -535,6 +535,36 @@
   margin-right: calc(var(--card-step) - var(--card-width));
 }
 
+.hand > li:has(+ [data-hand-group]),
+.hand > .manualGroup {
+  margin-right: 12px;
+}
+
+.hand > .manualGroup {
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.hand:has(> .manualGroup) {
+  padding-right: 0;
+}
+
+.hand > .manualGroup:last-child {
+  margin-right: 0;
+}
+
+.manualGroup .rankGroup {
+  flex-wrap: wrap;
+  row-gap: 20px;
+  padding-right: calc(var(--card-width) - var(--card-step));
+}
+
+.manualGroup .rankGroup > li {
+  margin-right: calc(var(--card-step) - var(--card-width));
+}
+
 .card {
   position: relative;
   display: block;
@@ -826,6 +856,8 @@ button.card:hover:not(:disabled) {
 }
 
 .clearSelection {
+  display: flex;
+  gap: 6px;
   position: absolute;
   left: calc(100% + 6px);
   white-space: nowrap;
@@ -1007,7 +1039,7 @@ button.card:hover:not(:disabled) {
   }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 600px) {
   .handToolbar {
     grid-template-columns: 1fr;
   }
@@ -1015,12 +1047,20 @@ button.card:hover:not(:disabled) {
   .handToolbar .playActions {
     grid-column: 1;
     min-height: 44px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .clearSelection {
+    position: static;
   }
 
   .handToolbar .playActions button {
     min-width: 56px;
   }
+}
 
+@media (max-width: 420px) {
   .roomHeader {
     align-items: center;
   }

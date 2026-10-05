@@ -221,6 +221,10 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       "aria-pressed",
       "false",
     );
+    await page.getByTestId("hand-card").first().press("Space");
+    await page.getByRole("button", { name: "组合", exact: true }).click();
+    const localGroups = page.locator('[data-hand-group="true"]');
+    await expect(localGroups).toHaveCount(1);
     await page.screenshot({
       path: test.info().outputPath("four-player-off-turn.png"),
       fullPage: true,
@@ -231,11 +235,13 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
       .poll(async () => (await room(page)).revision)
       .toBeGreaterThan(current.revision);
     expect((await room(page)).view.hand).toEqual(current.view.hand);
+    await expect(localGroups).toHaveCount(1);
 
     const retained = (await room(page)).view.latestPlays;
     await expectTableAlignment(page, 4);
     await expect(page.getByTestId("played-hand")).toHaveCount(retained.length);
     await page.reload();
+    await expect(localGroups).toHaveCount(0);
     await expect(
       controls.getByRole("button", { name: "继续自动操作" }),
     ).toBeEnabled();
@@ -350,8 +356,8 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
           current.view.unbeatenPlay === undefined ? playButton : passButton
         ).boundingBox();
         const panel = await handPanel.boundingBox();
-        expect(firstAction!.x).toBe(initialPlayBounds!.x);
-        if (initialPassBounds !== null) {
+        if (width > 600) expect(firstAction!.x).toBe(initialPlayBounds!.x);
+        if (width > 600 && initialPassBounds !== null) {
           expect((await passButton.boundingBox())!.x).toBe(initialPassBounds.x);
         }
         await expect(clearButton).toHaveCount(selected ? 1 : 0);
@@ -364,9 +370,13 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
             panel!.x + panel!.width,
           );
         }
+        const lastCentered =
+          width <= 600 && selected
+            ? (await clearButton.boundingBox())!
+            : lastAction!;
         expect(
           Math.abs(
-            (firstAction!.x + lastAction!.x + lastAction!.width) / 2 -
+            (firstAction!.x + lastCentered.x + lastCentered.width) / 2 -
               (panel!.x + panel!.width / 2),
           ),
         ).toBeLessThan(2);
@@ -436,6 +446,8 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     await expect(status).toHaveAttribute("data-state", "offline");
     await expect(status.getByText("连接已断开，正在重连…")).toBeVisible();
     await expect(status).toHaveCSS("color", "rgb(245, 160, 91)");
+    await page.getByRole("button", { name: "组合", exact: true }).click();
+    await expect(localGroups).toHaveCount(1);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -447,6 +459,7 @@ test("本地试玩可暂停、单步、刷新并切换六人桌", async ({ brows
     });
     await page.context().setOffline(false);
     await expect(status).toHaveAttribute("data-state", "ready");
+    await expect(localGroups).toHaveCount(1);
     await expect(page.getByTestId("hand-card")).toHaveCount(
       current.view.hand.length,
     );
