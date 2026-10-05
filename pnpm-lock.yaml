@@ -129,6 +129,9 @@ importers:
 
   packages/protocol:
     dependencies:
+      '@dglz/game-rules':
+        specifier: workspace:*
+        version: link:../game-rules
       zod:
         specifier: 4.5.4
         version: 4.5.4

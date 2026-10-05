@@ -13,6 +13,7 @@
     "dist"
   ],
   "dependencies": {
+    "@dglz/game-rules": "workspace:*",
     "zod": "4.5.4"
   },
   "scripts": {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RULE_VARIANT_VALUES } from "@dglz/game-rules";
 
 export const PROTOCOL_VERSION = 11 as const;
 export const PROTOCOL_VERSION_HEADER = "x-dglz-protocol-version" as const;
@@ -21,30 +22,23 @@ export const LookupChallengeCodeSchema = z
   .strict();
 
 const sharedRulesConfiguration = {
-  wildcardRank: z.enum(["weakest-rank", "strongest-rank"]),
-  finishingWildcardInterpretation: z.enum(["normal", "weakest-form-and-rank"]),
-  flushTieBreaking: z.enum(["highest-card-only", "descending-ranks"]),
-  nextHandLeader: z.enum(["first-finisher", "highest-tribute"]),
-  tributeCardSelection: z.enum(["fair-random", "giver-choice"]),
-  tributeRecipientPairing: z.enum([
-    "finish-position-by-tribute-rank",
-    "adjacent-first-automatic",
-  ]),
-  matchEnding: z.enum(["no-failure-limit-at-5", "three-failure-limit-at-5"]),
+  wildcardRank: z.enum(RULE_VARIANT_VALUES.wildcardRank),
+  finishingWildcardInterpretation: z.enum(
+    RULE_VARIANT_VALUES.finishingWildcardInterpretation,
+  ),
+  flushTieBreaking: z.enum(RULE_VARIANT_VALUES.flushTieBreaking),
+  nextHandLeader: z.enum(RULE_VARIANT_VALUES.nextHandLeader),
+  tributeCardSelection: z.enum(RULE_VARIANT_VALUES.tributeCardSelection),
+  tributeRecipientPairing: z.enum(RULE_VARIANT_VALUES.tributeRecipientPairing),
+  matchEnding: z.enum(RULE_VARIANT_VALUES.matchEnding),
 } as const;
 
 export const SixPlayerRulesConfigurationSchema = z
   .object({
     rulesetId: z.literal("dglz-6p-3d-v1"),
     ...sharedRulesConfiguration,
-    jokerPairComparison: z.enum([
-      "two-small-and-mixed-are-equal",
-      "two-small-jokers-win",
-    ]),
-    returnCardSelection: z.enum([
-      "recipient-choice",
-      "giver-choice-from-candidates",
-    ]),
+    jokerPairComparison: z.enum(RULE_VARIANT_VALUES.jokerPairComparison),
+    returnCardSelection: z.enum(RULE_VARIANT_VALUES.returnCardSelection),
   })
   .strict();
 

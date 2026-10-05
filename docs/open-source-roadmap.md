@@ -1,6 +1,6 @@
 # Open-source Research Roadmap
 
-Status: Planned, outside MVP scope; may take priority over MVP completion.
+Status: Step 1 complete (2026-10-06); steps 2–4 planned, outside MVP scope and may take priority over MVP completion.
 
 ## Goal and scope
 
@@ -16,6 +16,8 @@ Keep gameplay and UI iteration working throughout. MVP completion is not a prere
 | 2. Headless reference | Reuse the real engine and test/playground helpers; separate setup, policy decisions, and evaluation. | Both Rulesets complete a Hand, including setup choices, without browser, accounts, HTTP, or SQLite. Policies receive permitted observations; recorded setup/actions reproduce the result. |
 | 3. Research baseline | Choose one training workload, target hardware, observation/action encoding, and reward/episode definition; expose one research interface and one baseline. | Reproducible training and evaluation cover legal actions, hidden information, team roles, and setup decisions. Record rule/engine/encoding versions, seeds, configuration, and hardware. |
 | 4. Measured scale | Profile the baseline; compare one acceleration candidate with the reference before selecting a backend. | Measure legal-action generation, complete Hands/second, memory, and training wall time. Any port matches reference transitions, observations, and outcomes across supported configurations. |
+
+Step 1: `game-rules` owns allowed values; domain types, core validation, and protocol enums consume them. Existing validation boundaries and serialized shapes are preserved. [Verification](mvp-acceptance.md): 354 unit/server tests and 12 Chromium browser cases passed; Astra review found no actionable issues.
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 

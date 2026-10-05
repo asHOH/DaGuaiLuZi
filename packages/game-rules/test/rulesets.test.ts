@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RULESET_DEFINITIONS } from "../src/index.js";
+import { RULESET_DEFINITIONS, RULE_VARIANT_VALUES } from "../src/index.js";
 
 describe("Ruleset definitions", () => {
   it("defines the six-player, three-deck Ruleset", () => {
@@ -42,6 +42,10 @@ describe("Ruleset definitions", () => {
   });
 
   it("is immutable at every exposed level", () => {
+    expect(Object.isFrozen(RULE_VARIANT_VALUES)).toBe(true);
+    for (const values of Object.values(RULE_VARIANT_VALUES)) {
+      expect(Object.isFrozen(values)).toBe(true);
+    }
     expect(Object.isFrozen(RULESET_DEFINITIONS)).toBe(true);
 
     for (const definition of Object.values(RULESET_DEFINITIONS)) {

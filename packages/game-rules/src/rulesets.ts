@@ -1,15 +1,6 @@
-import type { RulesetId } from "./configuration.js";
+import type { RulesetId, RuleVariantName } from "./configuration.js";
 
-export type RuleVariantName =
-  | "jokerPairComparison"
-  | "wildcardRank"
-  | "finishingWildcardInterpretation"
-  | "flushTieBreaking"
-  | "nextHandLeader"
-  | "tributeCardSelection"
-  | "returnCardSelection"
-  | "tributeRecipientPairing"
-  | "matchEnding";
+export type { RuleVariantName } from "./configuration.js";
 
 export type RulesetDefinition = Readonly<{
   rulesetId: RulesetId;

@@ -215,6 +215,8 @@ type JokerPairComparison =
 
 Each configured difference is a named variant with example hands that are also executable tests.
 
+`game-rules` owns the immutable allowed Rule Variant values in `configuration.ts`; domain types, core Challenge Template validation, and protocol Zod enums derive from them. Protocol depends on `game-rules`; serialized shapes and existing validation boundaries remain separate from trusted domain calls.
+
 ### Match continuation
 
 After a non-terminal Hand settles, the executor starts the next Hand only when every seated player has an authenticated Room connection. If all are connected, setup commits with the finishing command; otherwise settlement commits alone, and reconnect/read recovery rechecks presence before starting exactly once. The executor supplies a fresh cryptographic seed to internal `StartNextHand`. No client start command, timer, or additional readiness applies between Hands.

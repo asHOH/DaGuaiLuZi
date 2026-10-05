@@ -14,11 +14,12 @@ export {
   type TrumpRank,
 } from "./cards.js";
 
-export type {
-  FourPlayerRulesConfiguration,
-  RulesConfiguration,
-  RulesetId,
-  SixPlayerRulesConfiguration,
+export {
+  RULE_VARIANT_VALUES,
+  type FourPlayerRulesConfiguration,
+  type RulesConfiguration,
+  type RulesetId,
+  type SixPlayerRulesConfiguration,
 } from "./configuration.js";
 
 export {

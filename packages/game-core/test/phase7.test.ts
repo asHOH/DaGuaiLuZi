@@ -6,13 +6,14 @@ import {
   derivePlayerView,
   deriveStartRequirements,
   evolve,
+  isChallengeTemplate,
   RANDOMNESS_VERSION,
   SHUFFLE_VERSION,
   type ChallengeTemplate,
   type Event,
   type State,
 } from "../src/index.js";
-import type { RulesConfiguration } from "@dglz/game-rules";
+import { RULE_VARIANT_VALUES, type RulesConfiguration } from "@dglz/game-rules";
 
 const FOUR_PLAYER_CONFIGURATION: RulesConfiguration = {
   rulesetId: "dglz-4p-2d-v1",
@@ -141,6 +142,59 @@ function playToChallengeCompletion(state: State): State {
 }
 
 describe("game-core Challenge Hands and hardening", () => {
+  describe.each([FOUR_PLAYER_CONFIGURATION, SIX_PLAYER_CONFIGURATION])(
+    "$rulesetId configuration validation",
+    (configuration) => {
+      const template = initialTemplate(configuration);
+
+      it("accepts every supported Rule Variant value", () => {
+        for (const [variant, values] of Object.entries(RULE_VARIANT_VALUES)) {
+          if (!(variant in configuration)) continue;
+          for (const value of values) {
+            expect(
+              isChallengeTemplate({
+                ...template,
+                rulesConfiguration: { ...configuration, [variant]: value },
+              }),
+              `${variant}=${value}`,
+            ).toBe(true);
+          }
+        }
+      });
+
+      it("rejects missing, malformed, extra, and unsupported settings", () => {
+        const configurations: unknown[] = [
+          null,
+          [],
+          "invalid",
+          { ...configuration, futureVariant: "unexpected" },
+        ];
+        for (const key of Object.keys(configuration)) {
+          const missing: Record<string, unknown> = { ...configuration };
+          delete missing[key];
+          configurations.push(missing);
+          for (const value of ["invalid", undefined, null, 0, true, [], {}]) {
+            configurations.push({ ...configuration, [key]: value });
+          }
+        }
+        if (configuration.rulesetId === "dglz-4p-2d-v1") {
+          configurations.push(
+            {
+              ...configuration,
+              jokerPairComparison: "two-small-and-mixed-are-equal",
+            },
+            { ...configuration, returnCardSelection: "recipient-choice" },
+          );
+        }
+        for (const candidate of configurations) {
+          expect(
+            isChallengeTemplate({ ...template, rulesConfiguration: candidate }),
+          ).toBe(false);
+        }
+      });
+    },
+  );
+
   it("rejects non-canonical or inconsistent Challenge Templates", () => {
     const state = lobby(FOUR_PLAYER_CONFIGURATION, 4);
     const template = initialTemplate(FOUR_PLAYER_CONFIGURATION);

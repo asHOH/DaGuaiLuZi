@@ -3,6 +3,7 @@ import {
   evaluatePlay,
   hasAutomaticResponseClosure,
   RULESET_DEFINITIONS,
+  RULE_VARIANT_VALUES,
   type CardInstance,
   type CardFaceCode,
   type CardInstanceCode,
@@ -919,42 +920,6 @@ function hasExactKeys(
   );
 }
 
-function validRuleVariant(name: string, value: unknown): boolean {
-  switch (name) {
-    case "jokerPairComparison":
-      return ["two-small-and-mixed-are-equal", "two-small-jokers-win"].includes(
-        value as string,
-      );
-    case "wildcardRank":
-      return ["weakest-rank", "strongest-rank"].includes(value as string);
-    case "finishingWildcardInterpretation":
-      return ["normal", "weakest-form-and-rank"].includes(value as string);
-    case "flushTieBreaking":
-      return ["highest-card-only", "descending-ranks"].includes(
-        value as string,
-      );
-    case "nextHandLeader":
-      return ["first-finisher", "highest-tribute"].includes(value as string);
-    case "tributeCardSelection":
-      return ["fair-random", "giver-choice"].includes(value as string);
-    case "returnCardSelection":
-      return ["recipient-choice", "giver-choice-from-candidates"].includes(
-        value as string,
-      );
-    case "tributeRecipientPairing":
-      return [
-        "finish-position-by-tribute-rank",
-        "adjacent-first-automatic",
-      ].includes(value as string);
-    case "matchEnding":
-      return ["no-failure-limit-at-5", "three-failure-limit-at-5"].includes(
-        value as string,
-      );
-    default:
-      return false;
-  }
-}
-
 function validRulesConfiguration(
   configuration: unknown,
 ): configuration is RulesConfiguration {
@@ -973,7 +938,10 @@ function validRulesConfiguration(
   const variants = RULESET_DEFINITIONS[rulesetId].supportedRuleVariants;
   return (
     hasExactKeys(values, ["rulesetId", ...variants]) &&
-    variants.every((variant) => validRuleVariant(variant, values[variant]))
+    variants.every((variant) => {
+      const allowed: readonly unknown[] = RULE_VARIANT_VALUES[variant];
+      return allowed.includes(values[variant]);
+    })
   );
 }
 
