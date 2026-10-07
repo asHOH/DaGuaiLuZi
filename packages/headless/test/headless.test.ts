@@ -122,7 +122,7 @@ describe("first-Hand runner", () => {
         createPolicy: () =>
           (() => ({ type: "AbortMatch" })) as unknown as Policy,
       }),
-    ).toThrow("首手策略只能出牌或不出");
+    ).toThrow("策略只能提交出牌或开局选择动作");
     expect(() =>
       runFirstHand({
         ...options,

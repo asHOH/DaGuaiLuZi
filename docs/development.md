@@ -58,7 +58,9 @@ Real-device session: arrange a reachable site and 4–6 players; record site/bui
 
 ## Headless reference
 
-`@dglz/headless` exports `runFirstHand({ rulesConfiguration, handSeed, seatingPolicy?, actionLimit?, createPolicy? })` for one initial Match Hand. It returns the result, Finish Positions, action count, and private engine events. Defaults: fixed seats, passive policies, 1,500 actions. `createPolicy(playerId)` creates per-player decision functions receiving only that player's engine view and identity. Keep returned events/seeds outside policies. Subsequent-Hand starts and file replay remain planned.
+`@dglz/headless` exports `runFirstHand({ rulesConfiguration, handSeed, ... })` and `runChallengeHand({ template, roomRulesConfiguration?, ... })`. The latter accepts validated initial/subsequent-Hand Templates, including Tribute, Return, and tie choices; Room rules default to Template rules. Both return the result, Finish Positions, action count, and private engine events, retaining results through completion cleanup.
+
+Shared options: `seatingPolicy?` (fixed), `actionLimit?` (1,500 setup/play decisions), and `createPolicy?` (passive). `createPolicy(playerId)` creates separate decision functions receiving only that player's engine view and identity; Challenge policies use `effectiveRulesConfiguration`. Pending setup players act in logical seat order. Keep returned events/seeds outside policies. File replay remains planned.
 
 `pnpm --filter @dglz/headless... build` builds its dependencies; `pnpm --filter @dglz/headless test` runs focused checks. Workspace checks include it. Browser tests and the playground reuse its passive policy through their existing helper; production app code does not import it.
 
