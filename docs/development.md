@@ -60,7 +60,20 @@ Real-device session: arrange a reachable site and 4–6 players; record site/bui
 
 `@dglz/headless` exports `runFirstHand({ rulesConfiguration, handSeed, ... })` and `runChallengeHand({ template, roomRulesConfiguration?, ... })`. The latter accepts validated initial/subsequent-Hand Templates, including Tribute, Return, and tie choices; Room rules default to Template rules. Both return the result, Finish Positions, action count, and private engine events, retaining results through completion cleanup.
 
-Shared options: `seatingPolicy?` (fixed), `actionLimit?` (1,500 setup/play decisions), and `createPolicy?` (passive). `createPolicy(playerId)` creates separate decision functions receiving only that player's engine view and identity; Challenge policies use `effectiveRulesConfiguration`. Pending setup players act in logical seat order. Keep returned events/seeds outside policies. File replay remains planned.
+Shared options: `seatingPolicy?` (fixed), `actionLimit?` (1,500 setup/play decisions), `createPolicy?` (passive), and `record?` (false). `createPolicy(playerId)` creates separate decision functions receiving only that player's engine view and identity; Challenge policies use `effectiveRulesConfiguration`. Pending setup players act in logical seat order.
+
+`record: true` adds a JSON-safe `record`; `replayHand(parsedRecord)` re-executes recorded setup/actions through the engine without policies and checks events, SHA-256 fingerprints of acting-player views, and results. Records include resolved rules, seats, private seeds/Templates, and format/source/randomness/shuffle versions. Keep records/events outside policies; these are private research artifacts, separate from browser Replay. `sourceVersion` is a manually maintained compatibility version: bump it when engine/rules/view semantics change. Unsupported versions and inconsistent records fail; no migration or authenticity guarantee is provided. JSON Templates use `null` for absent Finish Positions; `decodeChallengeTemplate` restores and validates the domain form.
+
+After building, run from the repository root:
+
+```sh
+node packages/headless/dist/cli.js run 4 example-seed hand.json
+node packages/headless/dist/cli.js run 6 example-seed six.json 自主 randomized
+node packages/headless/dist/cli.js challenge template.json challenge.json
+node packages/headless/dist/cli.js replay hand.json
+```
+
+The CLI uses the passive policy and prints outcome, winning team (index 0/1), Finish Positions, action count, and event count. `run` accepts optional preset (`省心` default) and seating (`fixed` default); `challenge` accepts optional seating. Output files must be new; failures exit nonzero. `pnpm --filter @dglz/headless cli ...` is equivalent, with paths relative to `packages/headless`.
 
 `pnpm --filter @dglz/headless... build` builds its dependencies; `pnpm --filter @dglz/headless test` runs focused checks. Workspace checks include it. Browser tests and the playground reuse its passive policy through their existing helper; production app code does not import it.
 

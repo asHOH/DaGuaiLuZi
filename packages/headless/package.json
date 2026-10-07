@@ -18,6 +18,7 @@
     "@dglz/protocol": "workspace:*"
   },
   "scripts": {
+    "cli": "node dist/cli.js",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run test",
     "typecheck": "tsc -p tsconfig.test.json"

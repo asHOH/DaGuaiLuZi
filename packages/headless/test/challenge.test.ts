@@ -13,6 +13,7 @@ import type { RulesConfiguration } from "@dglz/game-rules";
 import { rulesConfigurationPreset } from "@dglz/protocol";
 import {
   passivePolicy,
+  replayHand,
   runChallengeHand,
   type ChallengeHandOptions,
 } from "../src/index.js";
@@ -76,6 +77,7 @@ describe("Challenge runner", () => {
           );
           const stages = new Set<string | undefined>();
           const options = {
+            record: true,
             template,
             roomRulesConfiguration,
             seatingPolicy,
@@ -89,6 +91,9 @@ describe("Challenge runner", () => {
             },
           };
           const run = runChallengeHand(options);
+          expect(replayHand(JSON.parse(JSON.stringify(run.record)))).toEqual(
+            run,
+          );
           expect(stages).toEqual(
             new Set(
               preset === "自主"
@@ -132,6 +137,7 @@ describe("Challenge runner", () => {
       );
       const seen: { playerId: string; view: PlayerView }[] = [];
       const run = runChallengeHand({
+        record: true,
         template,
         seatingPolicy: "randomized",
         createPolicy: () => (view, playerId) => {
@@ -141,6 +147,7 @@ describe("Challenge runner", () => {
           return passivePolicy(view, playerId);
         },
       });
+      expect(replayHand(JSON.parse(JSON.stringify(run.record)))).toEqual(run);
       expect(
         run.events
           .filter((event) => event.type === "TieChoiceRoundResolved")
@@ -190,7 +197,11 @@ describe("Challenge runner", () => {
         ),
       );
       expect(
-        runChallengeHand({ template, seatingPolicy: "randomized" }),
+        runChallengeHand({
+          template,
+          seatingPolicy: "randomized",
+          record: true,
+        }),
       ).toEqual(run);
     });
 

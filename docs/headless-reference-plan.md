@@ -1,6 +1,6 @@
 # Headless Reference Plan
 
-Status: [Research Step 2](open-source-roadmap.md), Phases 1–2 complete (2026-10-07). Phase 3 remains planned.
+Status: [Research Step 2](open-source-roadmap.md), all three phases complete (2026-10-08).
 
 ## Goal and difficulty
 
@@ -8,7 +8,7 @@ Prepare the real engine for other researchers, primarily for RL training. Step 2
 
 Moderate difficulty. The engine already runs independently, and existing helpers play Hands and handle setup. The main work is separating setup, player decisions, and evaluation while preserving hidden information and reproducibility. Investigation: all 81 existing core tests passed.
 
-Phase 2 verification: `pnpm check` passed (382 tests, including 26 headless tests); all 13 Chromium cases passed. Astra review found no actionable issues; an independent check reproduced a missing-Template dispatch bug, fixed by a second Astra worker and verified with a regression and standalone Node checks.
+Final verification: `pnpm check` passed (386 tests, including 30 headless tests); all 13 Chromium cases passed. Phase 3 Astra review and coordinator validation found no actionable issues. Fresh-process replay covers scripted multi-card Plays and Automatic Response Closure; Challenge records cover setup, ties, and JSON round trips. [CLI and record contract](development.md#headless-reference).
 
 ## Plan
 
