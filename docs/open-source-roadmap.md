@@ -14,14 +14,16 @@ Keep gameplay and UI iteration working throughout. MVP completion is not a prere
 | --- | --- | --- |
 | 1. Shared rule definitions | One source for allowed Rule Variant values and derived types/validation across rules, core, and protocol. Keep distinct domain and serialized shapes separate. | A setting changes in one place; both [Rulesets](ruleset.md) retain behavior and reject invalid configurations. |
 | 2. Headless reference | Reuse the real engine and test/playground helpers; separate setup, policy decisions, and evaluation. | Both Rulesets complete a Hand, including setup choices, without browser, accounts, HTTP, or SQLite. Policies receive permitted observations; recorded setup/actions reproduce the result. |
-| 3. Research baseline | Choose one training workload, target hardware, observation/action encoding, and reward/episode definition; expose one research interface and one baseline. | Reproducible training and evaluation cover legal actions, hidden information, team roles, and setup decisions. Record rule/engine/encoding versions, seeds, configuration, and hardware. |
-| 4. Measured scale | Profile the baseline; compare one acceleration candidate with the reference before selecting a backend. | Measure legal-action generation, complete Hands/second, memory, and training wall time. Any port matches reference transitions, observations, and outcomes across supported configurations. |
+| 3. Python research environment | Let Python researchers run experiments without understanding TypeScript. Provide a standard interface, legal choices, permitted observations, reproducible episodes, and a runnable example; researchers own rewards, models, and training. | A clean installation runs both Rulesets, including setup choices; interface/privacy/replay checks and a small learner integration check pass. No competitive bot or substantial training run required. |
+| 4. Measured scale | Profile a representative researcher workload; compare one acceleration candidate with the reference before selecting a backend. | Measure legal-action generation, bridge overhead, complete Hands/second, memory, and training wall time where applicable. Any port matches reference transitions, observations, and outcomes across supported configurations. |
 
 Step 1: `game-rules` owns allowed values; domain types, core validation, and protocol enums consume them. Existing validation boundaries and serialized shapes are preserved. [Verification record](archive/mvp-acceptance-record.md): 354 unit/server tests and 12 Chromium browser cases passed; Astra review found no actionable issues.
 
 Step 2: [All phases complete](archive/headless-reference-plan.md): headless Match/Challenge Hands, private policy observations, shared passive policy, versioned action records, verified replay, and an evaluation CLI. Reviewed and verified by 386 unit/server tests and 13 Chromium cases.
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
+
+Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md). Target PettingZoo AEC on Linux using the existing engine; Node.js is an accepted prerequisite. Windows support is optional if inexpensive to implement and verify.
 
 ## Change and migration gates
 
