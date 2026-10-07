@@ -1,6 +1,6 @@
 # Headless Reference Plan
 
-Status: [Research Step 2](open-source-roadmap.md), all three phases complete (2026-10-08).
+Status: Archived implementation record for [Research Step 2](../open-source-roadmap.md); all three phases complete (2026-10-08).
 
 ## Goal and difficulty
 
@@ -8,7 +8,7 @@ Prepare the real engine for other researchers, primarily for RL training. Step 2
 
 Moderate difficulty. The engine already runs independently, and existing helpers play Hands and handle setup. The main work is separating setup, player decisions, and evaluation while preserving hidden information and reproducibility. Investigation: all 81 existing core tests passed.
 
-Final verification: `pnpm check` passed (386 tests, including 30 headless tests); all 13 Chromium cases passed. Phase 3 Astra review and coordinator validation found no actionable issues. Fresh-process replay covers scripted multi-card Plays and Automatic Response Closure; Challenge records cover setup, ties, and JSON round trips. [CLI and record contract](development.md#headless-reference).
+Final verification: `pnpm check` passed (386 tests, including 30 headless tests); all 13 Chromium cases passed. Phase 3 Astra review and coordinator validation found no actionable issues. Fresh-process replay covers scripted multi-card Plays and Automatic Response Closure; Challenge records cover setup, ties, and JSON round trips. [CLI and record contract](../development.md#headless-reference).
 
 ## Plan
 
@@ -24,6 +24,6 @@ Final verification: `pnpm check` passed (386 tests, including 30 headless tests)
 - Keep state, seeds, Templates, and raw events outside policies; isolate policy memory per seat. The runner binds actors, schedules setup deterministically, and fails on invalid actions or an action limit.
 - Record source/format/rules/randomness versions, resolved configuration, seeds or Template, seating, ordered setup/actions, and expected events/result. Validate file inputs; keep records separate from browser Replay.
 - Cover both Rulesets/presets, seating policies, setup branches, hidden ballots, completion cleanup, replay, and invalid actions. Include scripted multi-card Plays and Automatic Response Closure; passive opponents alone cannot cover them.
-- Follow [phase verification](development.md#phase-verification): focused checks, review, `pnpm check`, then existing browser checks. Keep research execution outside the production app.
+- Follow [phase verification](../development.md#phase-verification): focused checks, review, `pnpm check`, then existing browser checks. Keep research execution outside the production app.
 
 Defer exhaustive legal-action generation, training encodings/rewards, research-framework adapters, and training to Step 3; performance work to Step 4. A first-Hand demo script is cheaper but does not meet Step 2's privacy/setup/replay gate.

@@ -19,7 +19,7 @@ Keep gameplay and UI iteration working throughout. MVP completion is not a prere
 
 Step 1: `game-rules` owns allowed values; domain types, core validation, and protocol enums consume them. Existing validation boundaries and serialized shapes are preserved. [Verification record](archive/mvp-acceptance-record.md): 354 unit/server tests and 12 Chromium browser cases passed; Astra review found no actionable issues.
 
-Step 2: [All phases complete](headless-reference-plan.md): headless Match/Challenge Hands, private policy observations, shared passive policy, versioned action records, verified replay, and an evaluation CLI. Reviewed and verified by 386 unit/server tests and 13 Chromium cases.
+Step 2: [All phases complete](archive/headless-reference-plan.md): headless Match/Challenge Hands, private policy observations, shared passive policy, versioned action records, verified replay, and an evaluation CLI. Reviewed and verified by 386 unit/server tests and 13 Chromium cases.
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 
