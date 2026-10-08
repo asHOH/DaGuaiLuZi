@@ -180,6 +180,7 @@ it("rejects incompatible, malformed, missing, reordered, illegal, and tampered r
   }
 });
 
+// Sequential Node process startups need headroom during concurrent workspace tests.
 it("CLI writes private records, evaluates and replays them, and preserves existing files", () => {
   const directory = mkdtempSync(join(tmpdir(), "dglz-headless-"));
   const recordPath = join(directory, "record.json");
@@ -258,4 +259,4 @@ it("CLI writes private records, evaluates and replays them, and preserves existi
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
+}, 15000);

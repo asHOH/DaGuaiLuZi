@@ -1,6 +1,6 @@
 # Python Research Environment Plan
 
-Status: Phase 1 complete (2026-10-08); phases 2–4 planned for [Research Step 3](open-source-roadmap.md).
+Status: Phases 1–2 complete (2026-10-08); phases 3–4 planned for [Research Step 3](open-source-roadmap.md).
 
 ## Goal and difficulty
 
@@ -26,6 +26,8 @@ Moderate-to-high difficulty: legal-action coverage and encoding are the main unc
 | 4. Package and example | Provide an installable package, quickstart, legal-random rollout, replaceable reward example, and one tiny learner integration check. Record versions/configuration/seeds and rollout/bridge timings. | A clean Linux environment outside the checkout installs and runs both Rulesets and setup scenarios using Python and Node.js. The learner consumes trajectories and performs an update; strength is not a gate. |
 
 Phase 1: [session API](development.md#headless-reference) implemented; reset creates a fresh session, and existing runners/replay use the same state machine. `pnpm check` passed (390 tests), as did 13 Chromium cases. Pre-change first-Hand/tied-setup Challenge records match for both Rulesets and replay unchanged. Astra review found no actionable issues; coordinator checked the diff and compatibility independently.
+
+Phase 2: [Research Encoding](research-encoding.md) exposes permitted history, team identity, complete legal choices, and versioned candidate features. `pnpm check` passed (398 tests), as did 13 Chromium cases and 12 Python space/scorer snapshots. Astra review found no runtime defects; independently validated response-coverage improvements were implemented by a different worker. Use candidate-conditioned scoring and replaceable tensor encoders. Opening enumeration takes roughly 3–5 seconds; retain this correctness reference for Step 4 profiling.
 
 ## Constraints and verification
 

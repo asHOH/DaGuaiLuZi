@@ -22,6 +22,26 @@ import {
   SeatingPolicySchema,
 } from "@dglz/protocol";
 import { passivePolicy, type Policy } from "./policy.js";
+import { legalActions } from "./legal-actions.js";
+import {
+  actionFeatures,
+  MAX_LEGAL_ACTIONS,
+  publicHandEvent,
+  RESEARCH_ENCODING_VERSION,
+  type PublicHandEvent,
+  type ResearchObservation,
+} from "./research.js";
+
+export { legalActions } from "./legal-actions.js";
+export {
+  actionFeatures,
+  cardFeatureId,
+  MAX_LEGAL_ACTIONS,
+  ACTION_ENCODING_BOUNDS,
+  RESEARCH_ENCODING_VERSION,
+  type PublicHandEvent,
+  type ResearchObservation,
+} from "./research.js";
 
 export {
   passivePolicy,
@@ -61,6 +81,7 @@ export type HandSession = Readonly<{
   currentPlayerId: string | undefined;
   actionCount: number;
   observe(playerId: string): PlayerView;
+  observeResearch(playerId: string): ResearchObservation;
   step(action: unknown): void;
   /** Evaluator-only snapshot after completion; includes private history. */
   getResult(): HandRunResult | undefined;
@@ -292,6 +313,7 @@ function createSession(
     seatingPolicy,
   };
   const events: Event[] = [created];
+  const publicHistory: PublicHandEvent[] = [];
   const steps: HandRecord["steps"][number][] = [];
   const recording = options.record === true;
   let state = evolve(undefined, created);
@@ -330,6 +352,8 @@ function createSession(
     for (const event of decision.events) {
       state = evolve(state, event);
       events.push(event);
+      const publicEvent = publicHandEvent(event);
+      if (publicEvent !== undefined) publicHistory.push(publicEvent);
       // Completion returns Challenges (and terminal Matches) to the lobby.
       if (event.type === "HandResultDetermined") {
         const view = derivePlayerView(state, "p1");
@@ -367,6 +391,7 @@ function createSession(
         },
   );
   let actionCount = 0;
+  const initialSeats = derivePlayerView(state, "p1").seats;
   function currentPlayerId(): string | undefined {
     if (completed !== undefined) return;
     const current = derivePlayerView(state, "p1");
@@ -392,6 +417,31 @@ function createSession(
     observe(playerId: string) {
       assert(playerIds.includes(playerId), "玩家不在当前手牌中。");
       return derivePlayerView(state, playerId);
+    },
+    observeResearch(playerId: string): ResearchObservation {
+      const seatIndex = initialSeats.find(
+        (seat) => seat.playerId === playerId,
+      )?.seatIndex;
+      assert(seatIndex !== undefined, "玩家不在当前手牌中。");
+      const view = derivePlayerView(state, playerId);
+      const actor = currentPlayerId();
+      const actions =
+        actor === playerId ? legalActions(view, playerId) : Object.freeze([]);
+      assert(actions.length <= MAX_LEGAL_ACTIONS, "合法动作数量超出编码范围。");
+      return Object.freeze({
+        encodingVersion: RESEARCH_ENCODING_VERSION,
+        actionCount,
+        playerId,
+        seatIndex,
+        teamIndex: seatIndex % 2,
+        currentPlayerId: actor,
+        view,
+        publicHistory: Object.freeze([...publicHistory]),
+        legalActions: actions,
+        actionFeatures: Object.freeze(
+          actions.map((action) => actionFeatures(action, view)),
+        ),
+      });
     },
     /** Evaluator-only snapshot, available after completion; includes private history. */
     getResult(): HandRunResult | undefined {

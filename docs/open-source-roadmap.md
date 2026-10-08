@@ -1,6 +1,6 @@
 # Open-source Research Roadmap
 
-Status: Steps 1–2 complete (2026-10-08); steps 3–4 planned. Research work is outside MVP scope and may take priority over MVP completion.
+Status: Steps 1–2 and Step 3 phases 1–2 complete (2026-10-08); Python adapter/package and Step 4 remain. Research work is outside MVP scope and may take priority over MVP completion.
 
 ## Goal and scope
 
@@ -23,7 +23,7 @@ Step 2: [All phases complete](archive/headless-reference-plan.md): headless Matc
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 
-Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md). Target PettingZoo AEC on Linux using the existing engine; Node.js is an accepted prerequisite. Windows support is optional if inexpensive to implement and verify.
+Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md); next is phase 3, the live Python adapter. The step-driven engine and [observation/action contract](research-encoding.md) are ready. Target PettingZoo AEC on Linux using the existing engine; Node.js is an accepted prerequisite. Windows support is optional if inexpensive to implement and verify.
 
 ## Change and migration gates
 
