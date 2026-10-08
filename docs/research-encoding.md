@@ -1,12 +1,14 @@
 # Research Observation and Action Encoding
 
-Status: `dglz-research-2`; native reference plus Python space/scorer prototype. The live AEC adapter is Step 3 phase 3.
+Status: `dglz-research-3`; native reference, Python space/scorer prototype, and [live AEC adapter](development.md#python-research-adapter).
 
 ## Native contract
 
-`session.observeResearch(playerId)` returns `encodingVersion`, accepted `actionCount`, player/seat/team identity, scheduled `currentPlayerId`, a projected private `view`, `publicHistory`, `legalActions`, and matching `actionFeatures`. Team is logical seat modulo two; identities survive completion cleanup. Only the scheduled player receives choices. Completed and inactive observations have empty choice lists.
+`session.observeResearch(playerId)` returns `encodingVersion`, accepted `actionCount`, player/seat/team identity, scheduled `currentPlayerId`, a projected private `view`, `publicHistory`, `legalActions`, and matching `actionFeatures`. Team is logical seat modulo two; identities survive completion cleanup. Only the scheduled player receives choices. Completed, truncated, and inactive observations have empty choice lists.
 
 Version 2 explicitly selects gameplay fields, including nested objects, from existing private views and public events. It excludes Room identity/ownership/members, configuration locks, activity selection, redundant effective Ruleset ID, and app completion summaries; outcomes remain in public history. Ordinary `observe()` and private replay records are unchanged. Review any field additions as research contract changes; bump the encoding version when its shape or meaning changes.
+
+Version 3 clears the scheduled actor and choices on truncation. The native session's `currentPlayerId` getter still identifies the unfinished actor; use `status` to distinguish completion and truncation.
 
 Repeated reads for one player return the same immutable snapshot until an accepted step clears all players' cached snapshots. Rejected steps retain them; new sessions have independent caches. The session retains at most one snapshot per player for its current state.
 
@@ -33,6 +35,8 @@ Gymnasium row space: `MultiDiscrete([6,163,163,163,163,163,7,3,4])`. Candidate s
 
 The probe uses [AEC-compatible Gymnasium spaces](https://pettingzoo.farama.org/api/aec/), lossless UTF-8 JSON context in `Sequence(Discrete(256))`, candidate rows, and a fixed mask. Context retains the complete view, identity, and public history; researchers provide task-specific tensor encoders. The example [DMC-style](https://github.com/kwai/DouZero) PyTorch scorer selects hand/seat/hand-size features and scores each candidate independently. This demonstrates variable-size forward-pass compatibility, not training quality or compatibility with unmodified fixed-output trainers.
 
-After building headless dependencies, run `uv run --python 3.12 packages/headless/research/encoding_probe.py`. Its inline dependencies are pinned; Python 3.12 and Node.js are required. It generates real four/six-player, setup, inactive, and terminal samples; checks spaces, lossless context, card-ID mapping, masks, and scorer outputs. Full AEC API/termination checks belong to phase 3; trajectory learning and clean Linux installation to phase 4.
+After building headless dependencies, run `uv run --python 3.12 packages/headless/research/encoding_probe.py`. Its inline dependencies are pinned; Python 3.12 and Node.js are required. It generates real four/six-player, setup, inactive, and terminal samples; checks spaces, lossless context, card-ID mapping, masks, and scorer outputs. Live AEC/termination checks use the adapter test command above; trajectory learning and clean package installation remain Phase 4.
+
+Phase 3 pilot: TorchRL 0.14.0 with PyTorch 2.14.1 fails to reset through its standard PettingZoo wrapper on these variable-length observations, even after casting context bytes to integers. Do not claim unmodified TorchRL support. Retain direct PyTorch candidate scoring for the Phase 4 learner example; neither pad to an arbitrary cap nor remove legal choices for trainer compatibility.
 
 The correctness-first generator tests up to 80,730 five-card subsets on an open 27-card Hand. Sampled openings (`research-measure`, autonomous preset, randomized seats) produced 715/862 choices in roughly 3–5 seconds on the first observation; repeated reads reuse the snapshot. These are not throughput guarantees. Keep it as the reference for Step 4. No candidate pruning or fixed-size neural output is required; masks cost about 100 KB per observation and can be derived from N rather than stored in replay.

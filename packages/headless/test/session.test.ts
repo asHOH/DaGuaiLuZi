@@ -34,6 +34,8 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       actor = session.currentPlayerId
     ) {
       expect(session.getResult()).toBeUndefined();
+      expect(session.getOutcome()).toBeUndefined();
+      expect(session.status).toBe("active");
       const view = session.observe(actor);
       expect(Object.isFrozen(view.hand)).toBe(true);
       expect(JSON.stringify(view)).not.toContain(options.handSeed);
@@ -42,6 +44,11 @@ for (const rulesetId of ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const) {
       expect(session.actionCount).toBe(observed.length);
     }
     expect(session.getResult()).toEqual(expected);
+    expect(session.status).toBe("completed");
+    expect(session.getOutcome()).toEqual({
+      result: expected.result,
+      finishPositions: expected.finishPositions,
+    });
     // Verify retained views against the engine's event fold, not another session.
     let state: State | undefined;
     const expectedObserved: typeof observed = [];
@@ -120,4 +127,7 @@ it("blocks steps at the action limit without completing or changing the Hand", (
   expect(session.actionCount).toBe(1);
   expect(session.observe(next)).toEqual(view);
   expect(session.getResult()).toBeUndefined();
+  expect(session.getOutcome()).toBeUndefined();
+  expect(session.status).toBe("truncated");
+  expect(session.observeResearch(next).legalActions).toEqual([]);
 });

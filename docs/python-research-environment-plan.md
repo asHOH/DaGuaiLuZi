@@ -1,6 +1,6 @@
 # Python Research Environment Plan
 
-Status: Phases 1–2 complete (2026-10-08); phases 3–4 planned for [Research Step 3](open-source-roadmap.md).
+Status: Phases 1–3 complete (2026-10-09); Phase 4 remains for [Research Step 3](open-source-roadmap.md).
 
 ## Goal and difficulty
 
@@ -51,6 +51,8 @@ Phase 1: [session API](development.md#headless-reference) implemented; reset cre
 
 Phase 2: [Research Encoding](research-encoding.md) exposes permitted history, team identity, complete legal choices, and versioned candidate features. `pnpm check` passed (398 tests), as did 13 Chromium cases and 12 Python space/scorer snapshots. Astra review found no runtime defects; independently validated response-coverage improvements were implemented by a different worker. Use candidate-conditioned scoring and replaceable tensor encoders. Opening enumeration takes roughly 3–5 seconds; retain this correctness reference for Step 4 profiling.
 
+Phase 3: [AEC adapter](development.md#python-research-adapter) uses one persistent Node process, seeded resets, versioned requests, and isolated observations. Native status/public outcomes separate completion, truncation, and private records. Python supplies replaceable zero-sum team rewards, including early finishers and Dealer advantage on draws. Astra findings on blocked writes and encoding versioning were independently validated and fixed by another worker. Passed 401 repository tests, 13 Chromium cases, six adapter checks on Linux and Windows, and 12 encoding/scorer snapshots. CI includes the adapter checks. Direct PyTorch candidate scoring works; the standard TorchRL 0.14.0 wrapper fails on variable-length observations and is not supported.
+
 ## Constraints and verification
 
 - Keep seeds, Templates, authoritative state, and private records outside actor observations; legal choices must not reveal hidden information. Preserve setup disclosure rules and per-player policy memory.
@@ -58,6 +60,6 @@ Phase 2: [Research Encoding](research-encoding.md) exposes permitted history, te
 - Follow [phase verification](development.md#phase-verification); add focused Python/adapter checks and Linux installation verification. Keep research dependencies and execution outside the production app.
 - Resolve exact Python/dependency versions during the adapter pilot and pin them. Record selected integration decisions; publish to a registry only after independent installation/use validation.
 
-Phase 3 has no outstanding product decision. Select and test one learner integration during the pilot; do not infer trainer compatibility from valid AEC spaces. Phase 4 battle-runner choices above do not block the adapter.
+Phase 4 uses the direct PyTorch candidate scorer for its learner example; verify a trajectory update before claiming learning integration. Resolve the battle-runner choices above during that phase. Do not infer trainer compatibility from valid AEC spaces.
 
 Defer C++ and other language APIs until a concrete consumer requires them; defer acceleration/backend selection to Step 4. A language binding alone does not accelerate simulation. A random-rollout example is the cheaper first milestone, but does not establish learner compatibility.

@@ -1,6 +1,6 @@
 # Open-source Research Roadmap
 
-Status: Steps 1–2 and Step 3 phases 1–2 complete (2026-10-08); Python adapter/package and Step 4 remain. Research work is outside MVP scope and may take priority over MVP completion.
+Status: Steps 1–2 and Step 3 phases 1–3 complete (2026-10-09); Python packaging/examples and Step 4 remain. Research work is outside MVP scope and may take priority over MVP completion.
 
 ## Goal and scope
 
@@ -23,7 +23,7 @@ Step 2: [All phases complete](archive/headless-reference-plan.md): headless Matc
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 
-Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md); next is phase 3, the live Python adapter. Episodes are single Hands, never Matches. Phase 4 targets duplicate team evaluation: replay identical setups with opposing policies swapped, using rewards that recognize caught opponents and next-Hand Dealer advantage. The step-driven engine and [observation/action contract](research-encoding.md) are ready. Target PettingZoo AEC on Linux using the existing engine; Node.js is an accepted prerequisite. Windows support is optional if inexpensive to implement and verify.
+Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md); the live Python adapter is complete. Episodes are single Hands, never Matches. Next, Phase 4 packages the environment and adds a learner example and duplicate team evaluation: replay identical setups with opposing policies swapped. Rewards recognize caught opponents and next-Hand Dealer advantage. The [AEC adapter](development.md#python-research-adapter) and [encoding v3](research-encoding.md) passed Linux and Windows checks using the existing engine; Node.js remains a prerequisite. Linux package installation is the Phase 4 gate; Windows packaging is optional.
 
 ## Change and migration gates
 

@@ -1,0 +1,6 @@
+gymnasium==1.4.0
+numpy==2.5.3
+pettingzoo==1.27.0
+cloudpickle==3.1.2
+typing-extensions==4.16.0
+farama-notifications==0.0.6

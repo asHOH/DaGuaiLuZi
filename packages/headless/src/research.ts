@@ -7,7 +7,7 @@ import type {
 import { decodeCardInstance, type RulesConfiguration } from "@dglz/game-rules";
 import type { PolicyAction } from "./policy.js";
 
-export const RESEARCH_ENCODING_VERSION = "dglz-research-2" as const;
+export const RESEARCH_ENCODING_VERSION = "dglz-research-3" as const;
 
 // Includes every subset size used by play/Return offers at the maximum setup hand size (28).
 export const MAX_LEGAL_ACTIONS = 101963;

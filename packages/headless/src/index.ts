@@ -82,9 +82,12 @@ export type HandSession = Readonly<{
   playerIds: readonly string[];
   currentPlayerId: string | undefined;
   actionCount: number;
+  status: "active" | "completed" | "truncated";
   observe(playerId: string): PlayerView;
   observeResearch(playerId: string): ResearchObservation;
   step(action: unknown): void;
+  /** Public completion facts, without seeds, records, or private history. */
+  getOutcome(): Pick<HandRunResult, "result" | "finishPositions"> | undefined;
   /** Evaluator-only snapshot after completion; includes private history. */
   getResult(): HandRunResult | undefined;
 }>;
@@ -417,6 +420,13 @@ function createSession(
     get actionCount() {
       return actionCount;
     },
+    get status(): "active" | "completed" | "truncated" {
+      return completed !== undefined
+        ? "completed"
+        : actionCount >= actionLimit
+          ? "truncated"
+          : "active";
+    },
     observe(playerId: string) {
       assert(playerIds.includes(playerId), "玩家不在当前手牌中。");
       return derivePlayerView(state, playerId);
@@ -429,7 +439,7 @@ function createSession(
       )?.seatIndex;
       assert(seatIndex !== undefined, "玩家不在当前手牌中。");
       const view = derivePlayerView(state, playerId);
-      const actor = currentPlayerId();
+      const actor = actionCount >= actionLimit ? undefined : currentPlayerId();
       const actions =
         actor === playerId ? legalActions(view, playerId) : Object.freeze([]);
       assert(actions.length <= MAX_LEGAL_ACTIONS, "合法动作数量超出编码范围。");
@@ -449,6 +459,9 @@ function createSession(
       });
       researchSnapshots.set(playerId, snapshot);
       return snapshot;
+    },
+    getOutcome() {
+      return completed === undefined ? undefined : structuredClone(completed);
     },
     /** Evaluator-only snapshot, available after completion; includes private history. */
     getResult(): HandRunResult | undefined {

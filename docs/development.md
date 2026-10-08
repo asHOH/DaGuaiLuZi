@@ -62,7 +62,7 @@ Real-device session: arrange a reachable site and 4–6 players; record site/bui
 
 Shared options: `seatingPolicy?` (fixed), `actionLimit?` (1,500 setup/play decisions), `createPolicy?` (passive), and `record?` (false). `createPolicy(playerId)` creates separate decision functions receiving only that player's engine view and identity; Challenge policies use `effectiveRulesConfiguration`. Pending setup players act in logical seat order.
 
-`createHandSession({ mode: "first-hand", ... })` or `{ mode: "challenge", ... }` accepts the corresponding runner options without `createPolicy`. Reset by creating a fresh session. `playerIds`, `currentPlayerId`, `actionCount`, `observe(playerId)`, and `step(action)` allow external decisions; steps bind the current actor and validate the payload. Invalid steps do not advance; the action limit rejects further steps without producing a result. `currentPlayerId` becomes undefined on completion; `getResult()` then returns an isolated evaluator snapshot in the runner's result format. Observations remain frozen engine views, including normal completion cleanup. Keep the session outside policies and pass only each player's observation; the session can observe every seat.
+`createHandSession({ mode: "first-hand", ... })` or `{ mode: "challenge", ... }` accepts the corresponding runner options without `createPolicy`. Reset by creating a fresh session. `playerIds`, `currentPlayerId`, `actionCount`, `observe(playerId)`, and `step(action)` allow external decisions; steps bind the current actor and validate the payload. Invalid steps do not advance. `status` distinguishes `active`, `completed`, and `truncated`; completion takes precedence at the exact action limit. `getOutcome()` returns public completion facts; `getResult()` also includes private evaluator history. `currentPlayerId` becomes undefined only on completion; truncated research observations have no legal choices. Observations remain frozen engine views. Keep the session outside policies and pass only each player's observation; the session can observe every seat.
 
 `observeResearch(playerId)` adds versioned identity, public history, and complete scheduled-player choices with numeric candidate features; `legalActions(view, playerId)` is the pure generator. See the [encoding contract and Python compatibility probe](research-encoding.md). Enumeration is deliberately slow; ordinary `observe` and passive runners do not invoke it.
 
@@ -80,6 +80,23 @@ node packages/headless/dist/cli.js replay hand.json
 The CLI uses the passive policy and prints outcome, winning team (index 0/1), Finish Positions, action count, and event count. `run` accepts optional preset (`省心` default) and seating (`fixed` default); `challenge` accepts optional seating. Output files must be new; failures exit nonzero. `pnpm --filter @dglz/headless cli ...` is equivalent, with paths relative to `packages/headless`.
 
 `pnpm --filter @dglz/headless... build` builds its dependencies; `pnpm --filter @dglz/headless test` runs focused checks. Workspace checks include it. Browser tests and the playground reuse its passive policy through their existing helper; production app code does not import it.
+
+## Python research adapter
+
+Checkout workflow (Python 3.12.12; Node.js from `.node-version`):
+
+```sh
+pnpm --filter @dglz/headless... build
+uv run --python 3.12.12 --with-requirements packages/headless/python/requirements.txt python packages/headless/python/test_adapter.py
+```
+
+Add `packages/headless/python` to the Python import path; import `DaguailuziEnv` from `dglz_env`. Construct with `players=4|6`, optional `preset`, `rules_configuration` or `template`, `seating_policy`, `action_limit`, and `record`. A Template owns its deal; `reset(seed=...)` seeds fresh deals otherwise and action-space sampling in either mode. Reset options are reserved and ignored. Repeated resets reuse one Node process; `close()` or the context manager releases it.
+
+Use the AEC loop with `observe()` arrays and its action mask; `observe_raw(agent)` returns an isolated structured observation. Action IDs belong only to the current candidate list. Finished players stay until the Hand ends, then each receives its terminal team reward and requires `step(None)`. Truncation delivers zero reward with no Hand result. Replace `reward_fn(outcome, team_index)` to change scoring; the default follows the [research plan](python-research-environment-plan.md#team-evaluation-and-reward).
+
+`export_record()` and `replay_record(record)` are evaluator-only. Never pass records, Templates, seeds, or the environment itself to a policy. `BridgeError.code` distinguishes request, protocol, and engine failures; engine failures require reset. `engine_timeout` bounds engine responses, not bot decision time. The bridge validates versioned JSON-line requests and rejects stale episode/turn IDs. No bot fallback runs inside the adapter.
+
+CI runs upstream AEC/seed checks and native transcript/privacy/replay comparisons for both Rulesets. The checks also cover reward delivery, invalid steps, repeated resets, truncation, process failure, and cleanup. Python dependencies are pinned in `packages/headless/python/requirements.txt`. Packaging, duplicate evaluation, and a learning update remain Phase 4.
 
 ## Server
 

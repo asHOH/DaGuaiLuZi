@@ -6,3 +6,5 @@ lefthook-local.yml
 **/output/playwright/
 test-results/
 playwright-report/
+__pycache__/
+.venv/
