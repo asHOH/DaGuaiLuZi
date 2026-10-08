@@ -27,6 +27,7 @@ import {
   actionFeatures,
   MAX_LEGAL_ACTIONS,
   publicHandEvent,
+  researchView,
   RESEARCH_ENCODING_VERSION,
   type PublicHandEvent,
   type ResearchObservation,
@@ -41,6 +42,7 @@ export {
   RESEARCH_ENCODING_VERSION,
   type PublicHandEvent,
   type ResearchObservation,
+  type ResearchView,
 } from "./research.js";
 
 export {
@@ -391,6 +393,7 @@ function createSession(
         },
   );
   let actionCount = 0;
+  const researchSnapshots = new Map<string, ResearchObservation>();
   const initialSeats = derivePlayerView(state, "p1").seats;
   function currentPlayerId(): string | undefined {
     if (completed !== undefined) return;
@@ -419,6 +422,8 @@ function createSession(
       return derivePlayerView(state, playerId);
     },
     observeResearch(playerId: string): ResearchObservation {
+      const cached = researchSnapshots.get(playerId);
+      if (cached !== undefined) return cached;
       const seatIndex = initialSeats.find(
         (seat) => seat.playerId === playerId,
       )?.seatIndex;
@@ -428,20 +433,22 @@ function createSession(
       const actions =
         actor === playerId ? legalActions(view, playerId) : Object.freeze([]);
       assert(actions.length <= MAX_LEGAL_ACTIONS, "合法动作数量超出编码范围。");
-      return Object.freeze({
+      const snapshot: ResearchObservation = Object.freeze({
         encodingVersion: RESEARCH_ENCODING_VERSION,
         actionCount,
         playerId,
         seatIndex,
         teamIndex: seatIndex % 2,
         currentPlayerId: actor,
-        view,
+        view: researchView(view),
         publicHistory: Object.freeze([...publicHistory]),
         legalActions: actions,
         actionFeatures: Object.freeze(
           actions.map((action) => actionFeatures(action, view)),
         ),
       });
+      researchSnapshots.set(playerId, snapshot);
+      return snapshot;
     },
     /** Evaluator-only snapshot, available after completion; includes private history. */
     getResult(): HandRunResult | undefined {
@@ -490,6 +497,7 @@ function createSession(
       );
       execute({ ...payload, playerId: actor }, observationHash);
       actionCount += 1;
+      researchSnapshots.clear();
     },
   });
 }

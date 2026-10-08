@@ -25,6 +25,7 @@ import {
   type PolicyAction,
 } from "../src/index.js";
 import { subsequentTemplate } from "./support.js";
+import { publicHandEvent, researchView } from "../src/research.js";
 
 const ids = ["dglz-4p-2d-v1", "dglz-6p-3d-v1"] as const;
 const decode = (code: string) => {
@@ -33,6 +34,127 @@ const decode = (code: string) => {
   return card.card;
 };
 const key = (action: PolicyAction) => JSON.stringify(action);
+
+it("projects only supported research fields, including nested objects", () => {
+  // Simulate future app fields on real core views/events, at every object depth.
+  function extended(value: unknown): unknown {
+    if (Array.isArray(value)) return Object.freeze(value.map(extended));
+    if (value !== null && typeof value === "object")
+      return Object.freeze({
+        ...Object.fromEntries(
+          Object.entries(value).map(([name, child]) => [name, extended(child)]),
+        ),
+        futurePrivateField: "must-not-reach-research",
+      });
+    return value;
+  }
+  const json = (value: unknown) => JSON.stringify(value);
+  const excluded = new Set([
+    "roomId",
+    "ownerId",
+    "members",
+    "matchRulesConfigurationLocked",
+    "seatingPolicyLocked",
+    "selectedActivity",
+    "effectiveRulesetId",
+    "matchSummary",
+    "challengeSummary",
+  ]);
+  for (const rulesetId of ids) {
+    const run = runChallengeHand({
+      template: subsequentTemplate(
+        rulesConfigurationPreset(rulesetId, "自主"),
+        "phase-6-triple-27",
+      ),
+    });
+    let state: State | undefined;
+    const stages = new Set<string>();
+    const sampledShapes = new Set<string>();
+    for (const event of run.events) {
+      const projected = publicHandEvent(event);
+      expect(publicHandEvent(extended(event) as typeof event)).toEqual(
+        projected,
+      );
+      const expected =
+        projected === undefined
+          ? undefined
+          : Object.fromEntries(
+              Object.entries(event).filter(
+                ([name]) =>
+                  event.type !== "ReturnTransferred" || name !== "card",
+              ),
+            );
+      // Compare values independent of projection property order.
+      expect(JSON.parse(json({ projected }))).toEqual(
+        JSON.parse(json({ projected: expected })),
+      );
+      state = evolve(state, event);
+      const view = derivePlayerView(state, "p1");
+      const shapes = [
+        view.unbeatenPlay !== undefined && "play",
+        (view.latestPlays?.length ?? 0) > 0 && "latestPlays",
+        view.handResult !== undefined && "result",
+        (view.tieResolvedRounds?.length ?? 0) > 0 && "tieRound",
+      ].filter(Boolean);
+      const stage = `${view.lifecycle}:${view.setupStage}:${shapes.join()}`;
+      if (stages.has(stage)) continue;
+      stages.add(stage);
+      for (const shape of shapes) sampledShapes.add(String(shape));
+      const result = researchView(view);
+      expect(researchView(extended(view) as PlayerView)).toEqual(result);
+      expect(json(result)).not.toContain("must-not-reach-research");
+      expect(Object.keys(result).filter((name) => excluded.has(name))).toEqual(
+        [],
+      );
+      const supported = Object.fromEntries(
+        Object.entries(view).filter(([name]) => !excluded.has(name)),
+      );
+      expect(JSON.parse(json(result))).toEqual(JSON.parse(json(supported)));
+    }
+    expect([...sampledShapes].sort()).toEqual([
+      "latestPlays",
+      "play",
+      "result",
+      "tieRound",
+    ]);
+  }
+});
+
+it("reuses per-player snapshots until an accepted step, including terminal reads", () => {
+  const options = {
+    mode: "challenge" as const,
+    template: subsequentTemplate(rulesConfigurationPreset(ids[0], "省心")),
+  };
+  const session = createHandSession(options);
+  const actor = session.currentPlayerId!;
+  const other = session.playerIds.find((id) => id !== actor)!;
+  const before = session.observeResearch(actor);
+  const inactive = session.observeResearch(other);
+  const retained = JSON.stringify(before);
+  expect(session.observeResearch(actor)).toBe(before);
+  expect(session.observeResearch(other)).toBe(inactive);
+  expect(before.legalActions.length).toBeGreaterThan(0);
+  expect(inactive.legalActions).toEqual([]);
+  expect(() => session.step({ type: "Pass" })).toThrow("动作被拒绝：");
+  expect(session.observeResearch(actor)).toBe(before);
+  expect(() => session.observeResearch("unknown")).toThrow(
+    "玩家不在当前手牌中。",
+  );
+  session.step(before.legalActions[0]);
+  expect(session.observeResearch(other)).not.toBe(inactive);
+  expect(session.observeResearch(actor)).not.toBe(before);
+  expect(JSON.stringify(before)).toBe(retained);
+  expect(createHandSession(options).observeResearch(actor)).not.toBe(before);
+  while (session.currentPlayerId !== undefined) {
+    const player = session.currentPlayerId;
+    session.step(passivePolicy(session.observe(player), player));
+  }
+  const final = session.observeResearch(actor);
+  expect(session.observeResearch(actor)).toBe(final);
+  expect(final.legalActions).toEqual([]);
+  expect(Object.isFrozen(final.view.seats)).toBe(true);
+  expect(Object.isFrozen(final.view.seats[0])).toBe(true);
+});
 
 for (const rulesetId of ids) {
   it(`enumerates every small-hand subset, including finishing wildcards: ${rulesetId}`, () => {

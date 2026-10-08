@@ -12,6 +12,7 @@ Moderate-to-high difficulty: legal-action coverage and encoding are the main unc
 
 - Target [PettingZoo AEC](https://pettingzoo.farama.org/api/aec/); validate space/encoding compatibility before adoption. Reuse the TypeScript engine through a persistent local process; no HTTP service or rules port.
 - Assume PettingZoo familiarity in the quickstart; explain only project-specific setup, observations, actions, and outcomes.
+- Favor compatibility with existing training workflows; validate the concrete learner integration before claiming trainer support.
 - Support both Rulesets and their setup choices. Start with one Hand per episode, including subsequent-Hand contexts from existing Templates; full-Match episodes are deferred.
 - Keep game outcomes separate from reward calculation. Supply a replaceable terminal team win/draw/loss example; document episode boundaries and truncation so researchers can extend them explicitly.
 - Require Linux verification. Include the built engine in the Python package and launch it automatically; Node.js is an accepted prerequisite, with no TypeScript build for users. Support Windows only if implementation and verification are inexpensive; it is not a completion gate.

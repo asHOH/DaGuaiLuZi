@@ -41,7 +41,7 @@ def main():
     kinds = set()
     candidate_counts = set()
     for sample in fixture["samples"]:
-        assert sample["encodingVersion"] == "dglz-research-1"
+        assert sample["encodingVersion"] == "dglz-research-2"
         context = {k: v for k, v in sample.items() if k not in ("legalActions", "actionFeatures")}
         encoded = np.frombuffer(json.dumps(context, ensure_ascii=False).encode("utf-8"), dtype=np.uint8)
         rows = np.asarray(sample["actionFeatures"], dtype=np.int64).reshape((-1, 9))
