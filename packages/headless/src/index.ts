@@ -11,6 +11,7 @@ import {
   type Command,
   type ChallengeTemplate,
   type Event,
+  type PlayerView,
   type PlayerViewHandResult,
   type SeatingPolicy,
 } from "@dglz/game-core";
@@ -50,6 +51,25 @@ export type ChallengeHandOptions = PolicyOptions &
     /** Defaults to the Template's rules; the Challenge uses its own configuration. */
     roomRulesConfiguration?: RulesConfiguration;
   }>;
+
+export type HandSessionOptions =
+  | (Omit<FirstHandOptions, "createPolicy"> & { mode: "first-hand" })
+  | (Omit<ChallengeHandOptions, "createPolicy"> & { mode: "challenge" });
+
+export type HandSession = Readonly<{
+  playerIds: readonly string[];
+  currentPlayerId: string | undefined;
+  actionCount: number;
+  observe(playerId: string): PlayerView;
+  step(action: unknown): void;
+  /** Evaluator-only snapshot after completion; includes private history. */
+  getResult(): HandRunResult | undefined;
+}>;
+
+/** Creates a fresh Hand; reset by creating another session. Keep it outside policies. */
+export function createHandSession(options: HandSessionOptions): HandSession {
+  return createSession(options);
+}
 
 export type HandRunResult = Readonly<{
   result: PlayerViewHandResult;
@@ -180,10 +200,61 @@ function runHand(
     | (ChallengeHandOptions & { mode: "challenge" }),
   replay?: HandRecord,
 ): HandRunResult {
+  const { createPolicy = () => passivePolicy, ...setup } = options;
+  const session = createSession(setup, replay);
+  const policies = new Map(
+    replay === undefined
+      ? session.playerIds.map((id) => [id, createPolicy(id)] as const)
+      : [],
+  );
+  const actions = replay?.steps.filter(
+    (step) => step.observationHash !== undefined,
+  );
+  for (
+    let actor = session.currentPlayerId;
+    actor !== undefined;
+    actor = session.currentPlayerId
+  ) {
+    assert(
+      session.actionCount < (setup.actionLimit ?? 1500),
+      "已达到动作上限，当前手牌尚未完成。",
+    );
+    let action: unknown;
+    if (replay === undefined) {
+      const policy = policies.get(actor);
+      assert(policy !== undefined, "缺少玩家策略。");
+      action = policy(session.observe(actor), actor);
+    } else {
+      const command = actions?.[session.actionCount]?.command;
+      assert(object(command), `复现动作 ${session.actionCount + 1} 缺失。`);
+      const { playerId, ...payload } = command;
+      assert.equal(
+        playerId,
+        actor,
+        `复现动作 ${session.actionCount + 1} 的玩家不一致。`,
+      );
+      action = payload;
+    }
+    session.step(action);
+  }
+  const result = session.getResult();
+  assert(result !== undefined, "缺少手牌结算结果。");
+  return result;
+}
+
+function createSession(
+  options: HandSessionOptions,
+  replay?: HandRecord,
+): HandSession {
+  options = structuredClone(options);
+  assert(
+    options.mode === "first-hand" || options.mode === "challenge",
+    "手牌模式无效。",
+  );
   let template: ChallengeTemplate | undefined;
   if (options.mode === "challenge") {
     assert(isChallengeTemplate(options.template), "挑战模板无效。");
-    template = structuredClone(options.template);
+    template = options.template;
   } else {
     assert(
       typeof options.handSeed === "string" && options.handSeed.length > 0,
@@ -203,13 +274,15 @@ function runHand(
     Number.isSafeInteger(actionLimit) && actionLimit > 0,
     "动作上限必须为正整数。",
   );
-  const playerIds = Array.from(
-    {
-      length:
-        RULESET_DEFINITIONS[template?.rulesetId ?? configuration.rulesetId]
-          .playerCount,
-    },
-    (_, index) => `p${index + 1}`,
+  const playerIds = Object.freeze(
+    Array.from(
+      {
+        length:
+          RULESET_DEFINITIONS[template?.rulesetId ?? configuration.rulesetId]
+            .playerCount,
+      },
+      (_, index) => `p${index + 1}`,
+    ),
   );
   const created: Event = {
     type: "RoomCreated",
@@ -293,17 +366,39 @@ function runHand(
           shuffleVersion: SHUFFLE_VERSION,
         },
   );
-  const createPolicy = options.createPolicy ?? (() => passivePolicy);
-  const policies = new Map(
-    replay === undefined
-      ? playerIds.map((id) => [id, createPolicy(id)] as const)
-      : [],
-  );
-  for (let actionCount = 0; ; actionCount += 1) {
-    if (completed !== undefined) {
+  let actionCount = 0;
+  function currentPlayerId(): string | undefined {
+    if (completed !== undefined) return;
+    const current = derivePlayerView(state, "p1");
+    const actor =
+      current.setupStage === "play"
+        ? current.currentActor
+        : current.seats.find(
+            (seat) =>
+              seat.playerId !== undefined &&
+              current.pendingPlayerIds?.includes(seat.playerId),
+          )?.playerId;
+    assert(actor !== undefined, "缺少当前行动玩家。");
+    return actor;
+  }
+  return Object.freeze({
+    playerIds,
+    get currentPlayerId() {
+      return currentPlayerId();
+    },
+    get actionCount() {
+      return actionCount;
+    },
+    observe(playerId: string) {
+      assert(playerIds.includes(playerId), "玩家不在当前手牌中。");
+      return derivePlayerView(state, playerId);
+    },
+    /** Evaluator-only snapshot, available after completion; includes private history. */
+    getResult(): HandRunResult | undefined {
+      if (completed === undefined) return;
       const result = { ...completed, actionCount, events };
-      if (!recording) return result;
-      return {
+      if (!recording) return structuredClone(result);
+      return structuredClone({
         ...result,
         record: {
           formatVersion: 1,
@@ -322,50 +417,29 @@ function runHand(
           steps,
           expected: json({ ...completed, actionCount }),
         },
-      };
-    }
-    const current = derivePlayerView(state, "p1");
-    assert(actionCount < actionLimit, "已达到动作上限，当前手牌尚未完成。");
-    const actor =
-      current.setupStage === "play"
-        ? current.currentActor
-        : current.seats.find(
-            (seat) =>
-              seat.playerId !== undefined &&
-              current.pendingPlayerIds?.includes(seat.playerId),
-          )?.playerId;
-    assert(actor !== undefined, "缺少当前行动玩家。");
-    const view = derivePlayerView(state, actor);
-    const observationHash = recording
-      ? createHash("sha256").update(JSON.stringify(view)).digest("hex")
-      : undefined;
-    let action: unknown;
-    if (replay === undefined) {
-      const policy = policies.get(actor);
-      assert(policy !== undefined, "缺少玩家策略。");
-      action = policy(view, actor);
-    } else {
-      const command = replay.steps[steps.length]?.command;
-      assert(object(command), `复现动作 ${steps.length + 1} 缺失。`);
-      const { playerId, ...payload } = command;
-      assert.equal(
-        playerId,
-        actor,
-        `复现动作 ${steps.length + 1} 的玩家不一致。`,
+      });
+    },
+    step(action: unknown): void {
+      const actor = currentPlayerId();
+      assert(actor !== undefined, "手牌已结束。");
+      assert(actionCount < actionLimit, "已达到动作上限，当前手牌尚未完成。");
+      const view = derivePlayerView(state, actor);
+      const observationHash = recording
+        ? createHash("sha256").update(JSON.stringify(view)).digest("hex")
+        : undefined;
+      assert(action !== undefined, "策略未提供动作。");
+      const payload = RoomCommandPayloadSchema.parse(action);
+      assert(
+        payload.type === "Play" ||
+          payload.type === "Pass" ||
+          payload.type === "SelectTributeCard" ||
+          payload.type === "OfferReturnCandidates" ||
+          payload.type === "SelectReturnCard" ||
+          payload.type === "SubmitTieChoiceBallot",
+        "策略只能提交出牌或开局选择动作。",
       );
-      action = payload;
-    }
-    assert(action !== undefined, "策略未提供动作。");
-    const payload = RoomCommandPayloadSchema.parse(action);
-    assert(
-      payload.type === "Play" ||
-        payload.type === "Pass" ||
-        payload.type === "SelectTributeCard" ||
-        payload.type === "OfferReturnCandidates" ||
-        payload.type === "SelectReturnCard" ||
-        payload.type === "SubmitTieChoiceBallot",
-      "策略只能提交出牌或开局选择动作。",
-    );
-    execute({ ...payload, playerId: actor }, observationHash);
-  }
+      execute({ ...payload, playerId: actor }, observationHash);
+      actionCount += 1;
+    },
+  });
 }

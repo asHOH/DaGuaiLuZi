@@ -1,6 +1,6 @@
 # Python Research Environment Plan
 
-Status: Planned implementation of [Research Step 3](open-source-roadmap.md); no phases complete.
+Status: Phase 1 complete (2026-10-08); phases 2–4 planned for [Research Step 3](open-source-roadmap.md).
 
 ## Goal and difficulty
 
@@ -11,6 +11,7 @@ Moderate-to-high difficulty: legal-action coverage and encoding are the main unc
 ## Scope
 
 - Target [PettingZoo AEC](https://pettingzoo.farama.org/api/aec/); validate space/encoding compatibility before adoption. Reuse the TypeScript engine through a persistent local process; no HTTP service or rules port.
+- Assume PettingZoo familiarity in the quickstart; explain only project-specific setup, observations, actions, and outcomes.
 - Support both Rulesets and their setup choices. Start with one Hand per episode, including subsequent-Hand contexts from existing Templates; full-Match episodes are deferred.
 - Keep game outcomes separate from reward calculation. Supply a replaceable terminal team win/draw/loss example; document episode boundaries and truncation so researchers can extend them explicitly.
 - Require Linux verification. Include the built engine in the Python package and launch it automatically; Node.js is an accepted prerequisite, with no TypeScript build for users. Support Windows only if implementation and verification are inexpensive; it is not a completion gate.
@@ -23,6 +24,8 @@ Moderate-to-high difficulty: legal-action coverage and encoding are the main unc
 | 2. Observations and legal actions | Expose permitted observations, public history, team roles, and legal setup/play choices. Prototype versioned encodings against AEC spaces and one intended learner. | Generated actions pass engine validation; small exhaustive cases check completeness. Resolve candidate sizes and learner compatibility before freezing the encoding; never silently cap legal choices. |
 | 3. Python adapter | Implement AEC over the persistent engine process, with seeded resets, validated messages, explicit errors, and process cleanup. Keep reward policy outside core rules. | Upstream API checks and cross-language privacy/replay checks pass. Termination differs from truncation; players who finish early still receive terminal team rewards. |
 | 4. Package and example | Provide an installable package, quickstart, legal-random rollout, replaceable reward example, and one tiny learner integration check. Record versions/configuration/seeds and rollout/bridge timings. | A clean Linux environment outside the checkout installs and runs both Rulesets and setup scenarios using Python and Node.js. The learner consumes trajectories and performs an update; strength is not a gate. |
+
+Phase 1: [session API](development.md#headless-reference) implemented; reset creates a fresh session, and existing runners/replay use the same state machine. `pnpm check` passed (390 tests), as did 13 Chromium cases. Pre-change first-Hand/tied-setup Challenge records match for both Rulesets and replay unchanged. Astra review found no actionable issues; coordinator checked the diff and compatibility independently.
 
 ## Constraints and verification
 

@@ -12,6 +12,7 @@ import {
 import type { RulesConfiguration } from "@dglz/game-rules";
 import { rulesConfigurationPreset } from "@dglz/protocol";
 import {
+  createHandSession,
   passivePolicy,
   replayHand,
   runChallengeHand,
@@ -240,28 +241,42 @@ describe("Challenge runner", () => {
       "phase-6-triple-27",
     );
     const laterViews: PlayerView[] = [];
-    const stop = new Error("Captured the later voter observation");
     for (const candidateIndex of [0, 1]) {
-      expect(() =>
-        runChallengeHand({
-          template,
-          createPolicy: () => (view, playerId) => {
-            if (view.tieKind === "recipient-pairing" && view.tieRound === 1) {
-              if (view.tieSubmittedPlayerIds!.length === 1) {
-                laterViews.push(view);
-                throw stop;
-              }
-              return {
-                type: "SubmitTieChoiceBallot",
-                tieKind: view.tieKind,
-                round: view.tieRound,
-                candidateId: view.tieCandidateIds![candidateIndex]!,
-              };
-            }
-            return passivePolicy(view, playerId);
-          },
-        }),
-      ).toThrow(stop);
+      const session = createHandSession({
+        mode: "challenge",
+        template,
+        record: true,
+      });
+      let captured = false;
+      while (session.currentPlayerId !== undefined) {
+        const playerId = session.currentPlayerId;
+        const view = session.observe(playerId);
+        if (
+          view.tieKind === "recipient-pairing" &&
+          view.tieRound === 1 &&
+          !captured
+        ) {
+          if (view.tieSubmittedPlayerIds!.length === 1) {
+            laterViews.push(view);
+            captured = true;
+          } else {
+            session.step({
+              type: "SubmitTieChoiceBallot",
+              tieKind: view.tieKind,
+              round: view.tieRound,
+              candidateId: view.tieCandidateIds![candidateIndex]!,
+            });
+            continue;
+          }
+        }
+        session.step(passivePolicy(view, playerId));
+      }
+      expect(captured).toBe(true);
+      expect(session.observe("p1").lifecycle).toBe("LOBBY");
+      const result = session.getResult()!;
+      expect(result.result).toBeDefined();
+      expect(result.finishPositions).toHaveLength(6);
+      expect(replayHand(result.record)).toEqual(result);
     }
     expect(laterViews).toHaveLength(2);
     expect(laterViews[0]).toEqual(laterViews[1]);
