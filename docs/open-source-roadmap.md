@@ -23,7 +23,7 @@ Step 2: [All phases complete](archive/headless-reference-plan.md): headless Matc
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 
-Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md); next is phase 3, the live Python adapter. The step-driven engine and [observation/action contract](research-encoding.md) are ready. Target PettingZoo AEC on Linux using the existing engine; Node.js is an accepted prerequisite. Windows support is optional if inexpensive to implement and verify.
+Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md); next is phase 3, the live Python adapter. Episodes are single Hands, never Matches. Phase 4 targets duplicate team evaluation: replay identical setups with opposing policies swapped, using rewards that recognize caught opponents and next-Hand Dealer advantage. The step-driven engine and [observation/action contract](research-encoding.md) are ready. Target PettingZoo AEC on Linux using the existing engine; Node.js is an accepted prerequisite. Windows support is optional if inexpensive to implement and verify.
 
 ## Change and migration gates
 
