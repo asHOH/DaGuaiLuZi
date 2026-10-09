@@ -39,4 +39,21 @@ After building headless dependencies, run `uv run --python 3.12 packages/headles
 
 Phase 3 pilot: TorchRL 0.14.0 with PyTorch 2.14.1 fails to reset through its standard PettingZoo wrapper on these variable-length observations, even after casting context bytes to integers. Do not claim unmodified TorchRL support. The package's direct PyTorch example performs one regression update from completed-Hand candidate features and terminal rewards; it is an integration check, not a competitive policy. Neither pad to an arbitrary cap nor remove legal choices for trainer compatibility.
 
-The correctness-first generator tests up to 80,730 five-card subsets on an open 27-card Hand. Sampled openings (`research-measure`, autonomous preset, randomized seats) produced 715/862 choices in roughly 3–5 seconds on the first observation; repeated reads reuse the snapshot. These are not throughput guarantees. Keep it as the reference for Step 4. No candidate pruning or fixed-size neural output is required; masks cost about 100 KB per observation and can be derived from N rather than stored in replay.
+The generator still tests up to 80,730 five-card subsets on an open 27-card Hand. The shared classifier rejects impossible repeated-rank patterns before enumerating rank assignments; complete legal choices and their order are unchanged. Repeated reads reuse the snapshot. Masks cost about 100 KB per observation and can be derived from N rather than stored in replay.
+
+### Local performance pilot (2026-10-09)
+
+Windows, Ryzen 9 8940HX (16 cores/32 threads), 31.2 GiB usable RAM, Node.js 24.11.0, Python 3.12.12. Baseline: `ced8724`. No model training. One before/after run per case; these are local samples, not throughput guarantees.
+
+| Workload | Before | After |
+| --- | ---: | ---: |
+| Four-player opening observation, 715 choices | 3.896 s | 0.181 s |
+| Six-player opening observation, 862 choices | 3.845 s | 0.144 s |
+| Four-player Python Hand, 120 actions | 25.57 s | 12.40 s |
+| Six-player Python Hand, 235 actions | 46.79 s | 13.04 s |
+
+Opening cases use `encoding-fixtures.mjs` with the Node CPU profiler (`research-measure`, 自主, randomized seats). The baseline profile spent about 6.5 seconds in repeated-pattern generation/target checks. Full Hands use `dglz_examples.py --players 4 --seed 7` and `--players 6 --seed 7`, default 省心/fixed seats/recording, without `--learn`; totals include engine startup and observation transport. Other engine calls took 0.56/1.00 seconds before and 1.94/2.21 seconds after, illustrating runtime noise; do not infer isolated bridge overhead from these totals.
+
+All 12 fixture snapshots, including ordered legal choices, matched exactly. A separate 48,048-case comparison with the prior compiled evaluator matched complete classifications across both Rulesets, both presets, two Trump Ranks, and finishing/non-finishing plays. Complete-Hand reports matched except timings. This is a small shared-classifier optimization; representative training throughput, peak memory, and backend selection remain Step 4 work.
+
+Astra review found no issues. Passed 402 repository tests, 13 Chromium cases, seven Python adapter checks, and the rebuilt wheel's Linux setup/complete-Hand checks. The equivalence-preserving optimization needs no encoding or engine semantic-version change.

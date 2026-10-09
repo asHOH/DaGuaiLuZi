@@ -80,6 +80,21 @@ describe("natural five-card plays", () => {
     ).toEqual({ ok: false, reason: "cards-do-not-form-legal-play" });
   });
 
+  it("keeps flushes and straights when three natural ranks exclude repeated patterns", () => {
+    for (const [cards, form] of [
+      [["2S#1", "3H#1", "9D#1", "SMALL#1", "BIG#1"], undefined],
+      [["2S#1", "3S#1", "9S#1", "SMALL#1", "BIG#1"], "flush"],
+      [["2S#1", "3H#1", "4D#1", "SMALL#1", "BIG#1"], "mixed-suit-straight"],
+    ] as const) {
+      const result = evaluateLead(cards, BASE_CONFIGURATION, "5");
+      expect(result).toMatchObject(
+        form === undefined
+          ? { ok: false, reason: "cards-do-not-form-legal-play" }
+          : { ok: true, play: { form } },
+      );
+    }
+  });
+
   it("orders every pair of five-card forms as documented", () => {
     for (const [incumbentIndex, incumbent] of FORM_FIXTURES.entries()) {
       for (const [challengerIndex, challenger] of FORM_FIXTURES.entries()) {

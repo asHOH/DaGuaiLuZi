@@ -241,6 +241,8 @@ function repeatedPatternCandidates(
 ): readonly PlayCandidate[] {
   const naturalCards = suitedCards(cards);
   const naturalRankCounts = countRanks(naturalCards);
+  // Wildcards cannot remove natural ranks from a one- or two-rank pattern.
+  if (naturalRankCounts.size > targetCounts.length) return [];
   const candidates: PlayCandidate[] = [];
 
   for (const primaryRank of STANDARD_RANKS_LOW_TO_HIGH) {

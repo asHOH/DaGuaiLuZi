@@ -1,6 +1,6 @@
 # Open-source Research Roadmap
 
-Status: Steps 1–3 complete (2026-10-09); Step 4 remains. Research work is outside MVP scope and may take priority over MVP completion.
+Status: Steps 1–3 complete; Step 4 has an initial local performance pilot (2026-10-09). Research work is outside MVP scope and may take priority over MVP completion.
 
 ## Goal and scope
 
@@ -23,7 +23,9 @@ Step 2: [All phases complete](archive/headless-reference-plan.md): headless Matc
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 
-Step 3: [All four phases complete](python-research-environment-plan.md). The [Python package and Chinese quickstart](../packages/headless/python/README.md) supply single-Hand AEC episodes, a tiny learner update, and duplicate team evaluation with identical setups and swapped policies. Rewards recognize caught opponents and next-Hand Dealer advantage. Clean Linux and Windows installations passed both Rulesets and setup scenarios; Node.js remains a prerequisite. Astra review, independent validation, and separate-worker fixes completed; 401 repository tests and 13 Chromium cases passed. Share the wheel for a researcher trial before choosing Step 4's workload; registry publication remains separate.
+Step 3: [All four phases complete](python-research-environment-plan.md). The [Python package and Chinese quickstart](../packages/headless/python/README.md) supply single-Hand AEC episodes, a tiny learner update, and duplicate team evaluation with identical setups and swapped policies. Rewards recognize caught opponents and next-Hand Dealer advantage. Clean Linux and Windows installations passed both Rulesets and setup scenarios; Node.js remains a prerequisite. Astra review, independent validation, and separate-worker fixes completed; 401 repository tests and 13 Chromium cases passed. Registry publication remains separate.
+
+Step 4: [Short local pilot](research-encoding.md#local-performance-pilot-2026-10-09) found repeated-pattern classification dominated opening observations. A two-line necessary-condition check preserves all outputs and reduced sampled complete Python Hands from 25.6/46.8 to 12.4/13.0 seconds. No training run or new backend. An external researcher is not a prerequisite for bounded profiling; choose further work from measured remaining costs, with hardware/scale targets deferred until a concrete workload exists.
 
 ## Change and migration gates
 

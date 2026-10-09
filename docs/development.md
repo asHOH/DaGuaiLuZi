@@ -29,6 +29,8 @@ Remaining delivery order and completion gates: [MVP roadmap](mvp-roadmap.md).
 - Browser helpers must establish their authentication/Room preconditions and await authoritative state changes. Assert required interactions occurred regardless of randomized seats or dealer. Diagnose stalled steps before increasing timeouts.
 - On tooling failures such as Windows `spawn EPERM`, check execution permissions before retrying; do not change project tooling to mask an environment restriction.
 
+Test wall time is not research throughput: server/browser checks include authentication, network/UI work, and serial journeys; Python checks repeat Hands, replay, and isolated installation. For future test-only optimization, reuse seeded opaque sessions (as in `challenges.test.ts`) in non-authentication fixtures before considering more workers; retain real authentication coverage and production password settings. Use the [research performance pilot](research-encoding.md#local-performance-pilot-2026-10-09) for simulation measurements.
+
 ## Release verification
 
 Current gates and platform gaps: [MVP roadmap](mvp-roadmap.md). Past results: [acceptance record](archive/mvp-acceptance-record.md). Release acceptance requires fresh automated checks and a recorded real-device multiplayer session; emulation alone does not establish physical-device acceptance.
