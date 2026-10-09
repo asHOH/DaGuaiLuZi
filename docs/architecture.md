@@ -235,7 +235,7 @@ The authoritative app-local procedure is [Tie-Choice Protocol](tie-choice-protoc
 
 A disconnect produces no domain event, durable mutation, ownership transfer, readiness change, automatic action, or forfeiture. The Room remains in its current gameplay state; progress naturally waits whenever the absent player must act. A Room Member is considered present and a seat occupied from durable membership, not from connected sockets.
 
-The client uses Socket.IO automatic reconnection. Every connection follows the full-view resynchronization procedure above, including after a page reload, browser sleep, network change, or application restart. The server may reconstruct a compatible in-progress room from SQLite before deriving the view; exact recovery remains best-effort, and an unrecoverable room may instead be marked interrupted.
+The client uses Socket.IO automatic reconnection. Failed HTTP session probes must not block Socket.IO reconnection after an application restart; authenticate through the socket handshake. Every connection follows the full-view resynchronization procedure above, including after a page reload, browser sleep, network change, or application restart. The server may reconstruct a compatible in-progress room from SQLite before deriving the view; exact recovery remains best-effort, and an unrecoverable room may instead be marked interrupted.
 
 Turn timing and any connection-dependent timing behavior are deferred to [Post-MVP Turn Timing](post-mvp-turn-timing.md).
 

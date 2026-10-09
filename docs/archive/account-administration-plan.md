@@ -2,7 +2,7 @@
 
 Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
 
-Status: Phase 1 verified, 2026-09-26; Phase 2 verified, 2026-09-27.
+Status: Both phases complete (2026-09-27).
 
 Reuse existing provisioning, Argon2id, cookie sessions, HTTP/socket authorization, and client reauthentication. Follow [account policy](../architecture.md#account-access).
 
@@ -24,6 +24,4 @@ Verification: focused SQLite, CLI, HTTP, and socket checks for rollback, concurr
 
 Keep administration CLI-only. Defer an admin dashboard, email recovery, roles, and a device/session inventory.
 
-Phase 1 verification: `pnpm check` passed (284 tests); all three browser journeys passed. Coverage includes audit rollback, migration/reopen, CLI secret exclusion, multiple sessions, in-flight login, queued operations, and private acknowledgements. Astra review found one valid room-creation race while waiting for SQLite's write lock; a different Astra worker fixed it, and the coordinator reviewed the result. Its regression fails without the guard and passes with it. No other actionable review findings or new dependencies.
-
-Phase 2 verification: `pnpm check` passed (291 tests); all five browser journeys passed, with mobile/desktop form inspection and keyboard submission. Coverage includes account binding, password validation/throttling, atomic audit/revocation, concurrent credential changes, multiple tabs/devices, and return to the same Hand. Astra found one valid lost-response/navigation cleanup gap; a different Astra worker fixed it, and the coordinator reviewed the result. The regression reproduces stale authentication without the fix and passes with it. No other actionable findings or new dependencies.
+Room creation must recheck authorization after waiting for SQLite's write lock. Password-change cleanup must handle a lost response or navigation so stale authentication cannot survive.

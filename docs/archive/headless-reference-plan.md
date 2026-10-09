@@ -6,9 +6,9 @@ Status: Archived implementation record for [Research Step 2](../open-source-road
 
 Prepare the real engine for other researchers, primarily for RL training. Step 2 provides reliable, reproducible Hands; Step 3 adds the researcher-facing interface and training example.
 
-Moderate difficulty. The engine already runs independently, and existing helpers play Hands and handle setup. The main work is separating setup, player decisions, and evaluation while preserving hidden information and reproducibility. Investigation: all 81 existing core tests passed.
+Moderate difficulty. The engine already runs independently, and existing helpers play Hands and handle setup. The main work is separating setup, player decisions, and evaluation while preserving hidden information and reproducibility.
 
-Final verification: `pnpm check` passed (386 tests, including 30 headless tests); all 13 Chromium cases passed. Phase 3 Astra review and coordinator validation found no actionable issues. Fresh-process replay covers scripted multi-card Plays and Automatic Response Closure; Challenge records cover setup, ties, and JSON round trips. [CLI and record contract](../development.md#headless-reference).
+[CLI and record contract](../development.md#headless-reference).
 
 ## Plan
 

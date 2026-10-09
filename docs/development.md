@@ -37,7 +37,7 @@ Challenge source fixtures reuse generated Hand events only within one test run, 
 
 ## Release verification
 
-Current gates and platform gaps: [MVP roadmap](mvp-roadmap.md). Past results: [acceptance record](archive/mvp-acceptance-record.md). Release acceptance requires fresh automated checks and a recorded real-device multiplayer session; emulation alone does not establish physical-device acceptance.
+Current gates and platform gaps: [MVP roadmap](mvp-roadmap.md). Release acceptance requires fresh automated checks and a recorded real-device multiplayer session; emulation alone does not establish physical-device acceptance.
 
 Run `pnpm check`, then `pnpm --filter @dglz/web test:acceptance`. Install Chrome/Edge and run `pnpm --filter @dglz/web exec playwright install webkit` first. Select one profile with `--project=<profile>`:
 
@@ -54,6 +54,8 @@ Reports: `apps/web/output/playwright/report`; per-test files: `apps/web/test-res
 - Full flow: Match → completed Hand/history → independent Replay → Challenge; Room controls and account changes.
 - Recovery/privacy: active-Hand server restart, offline/reconnect, unchanged private cards, stale account/revoked session cleanup, and interrupted-Room recovery.
 - Browser/UI: keyboard/touch, responsive screenshots, and reduced-motion checks across the matrix.
+
+WebKit clipboard checks assert UI success; Chromium also reads back the copied value. Stale-response checks must change input while fetching the intercepted response, then deliver it successfully within the production request deadline.
 
 Real-device session: arrange a reachable site and 4–6 players; record site/build, OS/browser versions, players, result, and issues. Staging may be needed before VPS release.
 

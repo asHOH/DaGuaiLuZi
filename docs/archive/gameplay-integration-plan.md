@@ -2,7 +2,7 @@
 
 Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
 
-Status: Phases 1–3 implemented and verified, 2026-09-11. Each phase delivers a working browser/server slice.
+Status: Phases 1–3 complete (2026-09-11). Each phase delivers a working browser/server slice.
 
 Historical record of transport, persistence, orchestration, and UI integration using the implemented `game-core`.
 

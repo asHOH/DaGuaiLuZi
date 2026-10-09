@@ -1,6 +1,6 @@
 # MVP Roadmap
 
-Core MVP flows are implemented; completed phase records are [archived](archive/). [Past automated acceptance](archive/mvp-acceptance-record.md) does not replace fresh [release verification](development.md#release-verification). Real-device multiplayer and VPS release remain open.
+Core MVP flows are implemented; completed phase records are [archived](archive/). [Release verification](development.md#release-verification), real-device multiplayer, and VPS release remain open.
 
 The [research and maintenance roadmap](open-source-roadmap.md) is outside MVP scope and may take priority through bounded changes that preserve ongoing UI work. MVP completion is not its prerequisite; the gates below remain open.
 

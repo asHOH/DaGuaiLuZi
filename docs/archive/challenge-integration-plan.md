@@ -2,6 +2,8 @@
 
 Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
 
+Status: All three phases complete.
+
 Scope: [Challenge Hand Sharing](../challenge-hand-sharing.md). Reuse the existing core; history/Replay UI follows separately.
 
 | Phase | Scope | Gate |
@@ -12,10 +14,6 @@ Scope: [Challenge Hand Sharing](../challenge-hand-sharing.md). Reuse the existin
 
 Phase 1 materializes a Template/Code on the first participant request, serialized by the source Room executor. `(Room ID, Hand start-event sequence)` identifies the source across Matches; SQLite enforces uniqueness. A Code contains 48 random bits encoded as 12 lowercase hexadecimal characters; collisions are retried. Lookup receives it in a POST body and returns only public configuration/levels; no Template, Seed, or source identities cross HTTP. Unsupported persisted versions are rejected.
 
-Per phase: focused checks, Astra review, filtered fixes by a different Astra worker, coordinator verification, then report.
+Phase 2: Code selection, connected start, one-Hand completion, abort, and recovery use the existing core. HTTP/socket lookups share one account budget; Protocol v4 exposes effective rules and completion summaries without Templates/Seeds.
 
-Phase 1 verified: `pnpm check` (240 tests) and all three browser regressions passed. Astra review found no actionable code issues; a different Astra worker added the accepted logging-privacy check, reviewed by the coordinator.
-
-Phase 2 verified: Code selection, connected start, one-Hand completion, abort, and recovery use the existing core. HTTP/socket lookups share one account budget; Protocol v4 exposes effective rules and completion summaries without Templates/Seeds. Both Rulesets pass socket reproduction, restart, reuse, rollback/retry, source-preservation, and abort-privacy checks. Astra found no production defects; a different Astra worker added accepted source-preservation/abort assertions, reviewed by the coordinator. `pnpm check` (247 tests) and all three browser regressions passed.
-
-Phase 3 verified: Chinese Code generation/copying, lobby lookup/selection, effective rules/levels, and Challenge results reuse existing controls/endpoints. Protocol v5 supplies participant-only completed-Hand references. Astra found no production defects; a different Astra worker added nonparticipant coverage and tightened browser synchronization, reviewed by the coordinator. `pnpm check` (249 tests) and all three browser journeys passed, including both Rulesets' sharing, recovery, completion, reuse, abort, and mobile/desktop layouts. History/Replay is next.
+Phase 3: Chinese Code generation/copying, lobby lookup/selection, effective rules/levels, and Challenge results reuse existing controls/endpoints. Protocol v5 supplies participant-only completed-Hand references. History/Replay followed separately.

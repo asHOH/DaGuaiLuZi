@@ -2,7 +2,7 @@
 
 Historical record; current requirements and guidance take precedence. See [AGENTS.md](../../AGENTS.md).
 
-Status: implemented and verified (2026-09-07). Scope: responsive Chinese browser UI through the initial Hand and successful reconnect. `pnpm check` and both Ruleset browser journeys pass; correctness, complexity, and test-coverage reviews completed.
+Status: Complete (2026-09-07). Scope: responsive Chinese browser UI through the initial Hand and reconnect.
 
 Historical record of this slice.
 
