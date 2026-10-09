@@ -31,6 +31,8 @@ Remaining delivery order and completion gates: [MVP roadmap](mvp-roadmap.md).
 
 Test wall time is not research throughput: server/browser checks include authentication, network/UI work, and serial journeys; Python checks repeat Hands, replay, and isolated installation. For future test-only optimization, reuse seeded opaque sessions (as in `challenges.test.ts`) in non-authentication fixtures before considering more workers; retain real authentication coverage and production password settings. Use the [research performance pilot](research-encoding.md#local-performance-pilot-2026-10-09) for simulation measurements.
 
+Challenge source fixtures reuse generated Hand events only within one test run, keyed by the complete starting state. Each fixture has its own migrated database; cloned events pass through normal persistence validation. No database files, sessions, or expected test results are cached. Keep the fixture-isolation check when changing this setup.
+
 ## Release verification
 
 Current gates and platform gaps: [MVP roadmap](mvp-roadmap.md). Past results: [acceptance record](archive/mvp-acceptance-record.md). Release acceptance requires fresh automated checks and a recorded real-device multiplayer session; emulation alone does not establish physical-device acceptance.

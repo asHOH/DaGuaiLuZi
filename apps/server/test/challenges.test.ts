@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { serialize } from "node:v8";
 import { afterEach, expect, it, vi } from "vitest";
 import { io, type Socket } from "socket.io-client";
 import {
@@ -83,6 +84,13 @@ function apply(
   };
 }
 
+// Run-local identities make identical setup states reusable across isolated databases.
+const sourceIdentities = new Map<
+  RulesetId,
+  { roomId: string; playerIds: string[] }
+>();
+const finishedHands = new Map<string, readonly Event[]>();
+
 async function source(rulesetId: RulesetId = "dglz-4p-2d-v1") {
   const directory = await mkdtemp(join(tmpdir(), "dglz-challenges-"));
   cleanups.push(() =>
@@ -91,11 +99,17 @@ async function source(rulesetId: RulesetId = "dglz-4p-2d-v1") {
   const dbPath = join(directory, "room.sqlite");
   const database = openDatabase(dbPath);
   cleanups.push(async () => database.close());
-  const playerIds = Array.from(
-    { length: rulesetId === "dglz-4p-2d-v1" ? 4 : 6 },
-    () => randomUUID(),
+  if (!sourceIdentities.has(rulesetId))
+    sourceIdentities.set(rulesetId, {
+      roomId: randomUUID(),
+      playerIds: Array.from(
+        { length: rulesetId === "dglz-4p-2d-v1" ? 4 : 6 },
+        () => randomUUID(),
+      ),
+    });
+  const { roomId, playerIds } = structuredClone(
+    sourceIdentities.get(rulesetId)!,
   );
-  const roomId = randomUUID();
   const created: Extract<Event, { type: "RoomCreated" }> = {
     type: "RoomCreated",
     roomId,
@@ -142,39 +156,113 @@ async function source(rulesetId: RulesetId = "dglz-4p-2d-v1") {
     state: () => state,
     revision: () => revision,
     finish() {
-      for (let step = 0; step < 1500; step++) {
-        const view = derivePlayerView(state, playerIds[0]!);
-        if (
-          view.handResult !== undefined ||
-          view.matchSummary?.outcome === "completed"
-        )
-          return;
-        if (view.setupStage === "return-card-selection") {
-          const playerId = view.pendingPlayerIds![0]!;
-          const own = derivePlayerView(state, playerId);
-          send({ type: "SelectReturnCard", playerId, card: own.hand![0]! });
-          continue;
+      const initialView = derivePlayerView(state, playerIds[0]!);
+      if (
+        initialView.handResult !== undefined ||
+        initialView.matchSummary?.outcome === "completed"
+      )
+        return;
+      // Include the entire starting state, not just its seed/rules. Never cache on disk.
+      const key = serialize(state).toString("base64");
+      let events = finishedHands.get(key);
+      let generatedState: State | undefined;
+      if (events === undefined) {
+        const generated: Event[] = [];
+        let nextState = state;
+        const advance = (command: Command) => {
+          const next = apply(nextState, command);
+          generated.push(...next.events);
+          nextState = next.state;
+        };
+        for (let step = 0; step < 1500; step++) {
+          const view = derivePlayerView(nextState, playerIds[0]!);
+          if (
+            view.handResult !== undefined ||
+            view.matchSummary?.outcome === "completed"
+          )
+            break;
+          if (view.setupStage === "return-card-selection") {
+            const playerId = view.pendingPlayerIds![0]!;
+            const own = derivePlayerView(nextState, playerId);
+            advance({
+              type: "SelectReturnCard",
+              playerId,
+              card: own.hand![0]!,
+            });
+            continue;
+          }
+          const playerId = view.currentActor!;
+          const own = derivePlayerView(nextState, playerId);
+          const card =
+            view.unbeatenPlay === undefined
+              ? own.hand![0]
+              : own.hand!.find(
+                  (candidate) =>
+                    decide(nextState, {
+                      type: "Play",
+                      playerId,
+                      cards: [candidate],
+                    }).ok,
+                );
+          advance(
+            card === undefined
+              ? { type: "Pass", playerId }
+              : { type: "Play", playerId, cards: [card] },
+          );
         }
-        const playerId = view.currentActor!;
-        const own = derivePlayerView(state, playerId);
-        const card =
-          view.unbeatenPlay === undefined
-            ? own.hand![0]
-            : own.hand!.find(
-                (candidate) =>
-                  decide(state, { type: "Play", playerId, cards: [candidate] })
-                    .ok,
-              );
-        send(
-          card === undefined
-            ? { type: "Pass", playerId }
-            : { type: "Play", playerId, cards: [card] },
-        );
+        const finalView = derivePlayerView(nextState, playerIds[0]!);
+        if (
+          finalView.handResult === undefined &&
+          finalView.matchSummary?.outcome !== "completed"
+        )
+          throw new Error("source-hand-did-not-finish");
+        events = generated;
+        generatedState = nextState;
+        finishedHands.set(key, structuredClone(events));
       }
-      throw new Error("source-hand-did-not-finish");
+      // Every fixture still passes through production event validation and persistence.
+      const copied = structuredClone(events);
+      appendRoomEvents(database, {
+        roomId,
+        expectedRevision: revision,
+        causationCommandId: null,
+        events: copied,
+      });
+      state = generatedState ?? copied.reduce(evolve, state);
+      revision += copied.length;
     },
   };
 }
+
+it("reuses generated Hands without sharing database changes or fixture state", async () => {
+  finishedHands.clear();
+  const first = await source();
+  const second = await source();
+  expect(first.dbPath).not.toBe(second.dbPath);
+  first.finish();
+  const expected = first.state();
+  const history = [...readRoomEvents(first.database, first.roomId)].map(
+    ({ event }) => event,
+  );
+  expect(finishedHands.size).toBe(1);
+  expect(second.revision()).toBeLessThan(first.revision());
+  first.send({ type: "AbortMatch", playerId: first.playerIds[0]! });
+  first.database.sqlite.exec("DELETE FROM room_events");
+  first.playerIds.pop();
+
+  second.finish();
+  expect(finishedHands.size).toBe(1);
+  expect(second.playerIds).toHaveLength(4);
+  expect(second.state()).toEqual(expected);
+  expect(loadRoom(second.database, second.roomId)!.state).toEqual(expected);
+  expect(
+    [...readRoomEvents(second.database, second.roomId)].map(
+      ({ event }) => event,
+    ),
+  ).toEqual(history);
+  second.finish();
+  expect(second.revision()).toBe(history.length);
+});
 
 function setupSnapshot(state: State) {
   const view = derivePlayerView(state, "public");
