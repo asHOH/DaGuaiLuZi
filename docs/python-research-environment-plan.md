@@ -1,6 +1,6 @@
 # Python Research Environment Plan
 
-Status: Phases 1–3 complete (2026-10-09); Phase 4 remains for [Research Step 3](open-source-roadmap.md).
+Status: All four phases complete (2026-10-09); [Research Step 3](open-source-roadmap.md) is ready for an external trial.
 
 ## Goal and difficulty
 
@@ -36,7 +36,9 @@ Compare paired scores from each bot's perspective across multiple Templates; rep
 
 Distinguish normal completion, action-limit truncation, and engine failure. Only completed Hands receive terminal scores; truncation has no Hand result. Prevent engine failures through validation and regression checks; report failures explicitly, never as draws or fabricated scores. The adapter rejects invalid actions without changing state; battle-runner fallback is separate.
 
-Bot timeout/error fallback belongs to the battle runner, not core rules. Intended fallback: Pass when responding; a single card matching the rightmost card in the standard display order when leading. Record interventions. Resolve exact ordering, setup-choice fallbacks, timeout budgets, and default enablement in Phase 4; exclude engine observation generation from bot decision time.
+Bot timeout/error fallback belongs to the battle runner, not core rules. Defaults: stop on bot failure; no decision deadline for trusted local policies. Optional `decision_timeout` uses one spawned process per seat; include input transport but exclude observation generation, with startup separately bounded to at least ten seconds. Terminate timed-out seats; optional fallback handles their remaining decisions. Factories must be importable/picklable in timeout mode; factory failure stops the leg.
+
+Optional fallback: Pass when available; otherwise lead the standard display's rightmost single (descending rank strength, suits SHCD, ascending copy); setup uses the first canonical legal candidate. Record every intervention. Incomplete pairs never contribute evaluation scores; completed pairs with interventions retain their failure records.
 
 ## Plan
 
@@ -53,6 +55,8 @@ Phase 2: [Research Encoding](research-encoding.md) exposes permitted history, te
 
 Phase 3: [AEC adapter](development.md#python-research-adapter) uses one persistent Node process, seeded resets, versioned requests, and isolated observations. Native status/public outcomes separate completion, truncation, and private records. Python supplies replaceable zero-sum team rewards, including early finishers and Dealer advantage on draws. Astra findings on blocked writes and encoding versioning were independently validated and fixed by another worker. Passed 401 repository tests, 13 Chromium cases, six adapter checks on Linux and Windows, and 12 encoding/scorer snapshots. CI includes the adapter checks. Direct PyTorch candidate scoring works; the standard TorchRL 0.14.0 wrapper fails on variable-length observations and is not supported.
 
+Phase 4: [Installable wheel and Chinese quickstart](../packages/headless/python/README.md), legal-random rollout, completed-trajectory PyTorch update, and duplicate team runner implemented. Clean installations outside the checkout completed both Rulesets' setup scenarios on Linux and Windows. Both platforms passed three example checks and six evaluation checks, including four swapped/replayed Hands and timeout cleanup; 401 repository tests and 13 Chromium cases passed. Astra's stale-engine selection finding was independently confirmed and fixed by a different worker; the focused regression passed. No competitive training or registry publication. Trial feedback should select the representative Step 4 workload.
+
 ## Constraints and verification
 
 - Keep seeds, Templates, authoritative state, and private records outside actor observations; legal choices must not reveal hidden information. Preserve setup disclosure rules and per-player policy memory.
@@ -60,6 +64,6 @@ Phase 3: [AEC adapter](development.md#python-research-adapter) uses one persiste
 - Follow [phase verification](development.md#phase-verification); add focused Python/adapter checks and Linux installation verification. Keep research dependencies and execution outside the production app.
 - Resolve exact Python/dependency versions during the adapter pilot and pin them. Record selected integration decisions; publish to a registry only after independent installation/use validation.
 
-Phase 4 uses the direct PyTorch candidate scorer for its learner example; verify a trajectory update before claiming learning integration. Resolve the battle-runner choices above during that phase. Do not infer trainer compatibility from valid AEC spaces.
+Phase 4 uses direct PyTorch candidate features for a tiny completed-trajectory regression update; no strength claim. Do not infer trainer compatibility from valid AEC spaces.
 
 Defer C++ and other language APIs until a concrete consumer requires them; defer acceleration/backend selection to Step 4. A language binding alone does not accelerate simulation. A random-rollout example is the cheaper first milestone, but does not establish learner compatibility.

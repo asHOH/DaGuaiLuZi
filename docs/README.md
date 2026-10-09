@@ -6,7 +6,7 @@ Start with the task below; read the linked references only as needed. Roadmaps o
 
 | Task | Read first | Then, as needed |
 | --- | --- | --- |
-| Reuse the engine / research | [Research roadmap](open-source-roadmap.md) | [Engine boundaries](architecture.md#deep-modules-and-seams); [verification workflow](development.md#phase-verification) |
+| Reuse the engine / research | [Research roadmap](open-source-roadmap.md) | [Python quickstart](../packages/headless/python/README.md); [engine boundaries](architecture.md#deep-modules-and-seams); [verification workflow](development.md#phase-verification) |
 | Continue the app / UI | [MVP roadmap](mvp-roadmap.md) | [Product requirements](product-spec.md); [visual and interaction direction](web-visual-direction.md) |
 | Run, debug, or test locally | [Development](development.md) | [Architecture](architecture.md) for implementation boundaries and policies |
 | Check readiness to release | [Remaining release work](mvp-roadmap.md) | [Release verification](development.md#release-verification) |

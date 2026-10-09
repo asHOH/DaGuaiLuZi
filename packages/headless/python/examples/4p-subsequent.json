@@ -1,0 +1,31 @@
+{
+  "rulesetId": "dglz-4p-2d-v1",
+  "rulesConfiguration": {
+    "rulesetId": "dglz-4p-2d-v1",
+    "wildcardRank": "strongest-rank",
+    "finishingWildcardInterpretation": "weakest-form-and-rank",
+    "flushTieBreaking": "descending-ranks",
+    "nextHandLeader": "highest-tribute",
+    "tributeCardSelection": "giver-choice",
+    "tributeRecipientPairing": "finish-position-by-tribute-rank",
+    "matchEnding": "no-failure-limit-at-5"
+  },
+  "handSeed": "phase-6-triple-27",
+  "randomnessVersion": "dglz-random-v1",
+  "shuffleVersion": "dglz-shuffle-v1",
+  "dealerTeam": 0,
+  "teamLevels": ["2", "2"],
+  "failureCounters": [0, 0],
+  "trumpRank": "2",
+  "setup": {
+    "kind": "subsequent-hand",
+    "finishPositions": [1, null, 2, null],
+    "result": {
+      "outcome": "win",
+      "firstFinisherTeam": 0,
+      "winningTeam": 0,
+      "nextDealerTeam": 0,
+      "caughtSeatIndices": [1, 3]
+    }
+  }
+}

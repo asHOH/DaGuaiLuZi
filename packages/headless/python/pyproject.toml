@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daguailuzi-env"
+version = "0.1.0"
+description = "大怪路子单局 PettingZoo 研究环境"
+readme = "README.md"
+requires-python = "==3.12.*"
+dynamic = ["dependencies"]
+
+[tool.setuptools]
+include-package-data = false
+py-modules = ["dglz_env", "dglz_evaluate", "dglz_examples"]
+packages = ["dglz_engine"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.package-data]
+dglz_engine = ["dist/**/*"]

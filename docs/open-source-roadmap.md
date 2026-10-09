@@ -1,6 +1,6 @@
 # Open-source Research Roadmap
 
-Status: Steps 1–2 and Step 3 phases 1–3 complete (2026-10-09); Python packaging/examples and Step 4 remain. Research work is outside MVP scope and may take priority over MVP completion.
+Status: Steps 1–3 complete (2026-10-09); Step 4 remains. Research work is outside MVP scope and may take priority over MVP completion.
 
 ## Goal and scope
 
@@ -23,7 +23,7 @@ Step 2: [All phases complete](archive/headless-reference-plan.md): headless Matc
 
 Extract storage-independent Replay or presentation boundaries only when a research consumer or recurring maintenance cost requires them; reuse existing components first. No universal engine, second-game abstraction, or package publishing before independent use is demonstrated.
 
-Step 3: follow the [Python Research Environment Plan](python-research-environment-plan.md); the live Python adapter is complete. Episodes are single Hands, never Matches. Next, Phase 4 packages the environment and adds a learner example and duplicate team evaluation: replay identical setups with opposing policies swapped. Rewards recognize caught opponents and next-Hand Dealer advantage. The [AEC adapter](development.md#python-research-adapter) and [encoding v3](research-encoding.md) passed Linux and Windows checks using the existing engine; Node.js remains a prerequisite. Linux package installation is the Phase 4 gate; Windows packaging is optional.
+Step 3: [All four phases complete](python-research-environment-plan.md). The [Python package and Chinese quickstart](../packages/headless/python/README.md) supply single-Hand AEC episodes, a tiny learner update, and duplicate team evaluation with identical setups and swapped policies. Rewards recognize caught opponents and next-Hand Dealer advantage. Clean Linux and Windows installations passed both Rulesets and setup scenarios; Node.js remains a prerequisite. Astra review, independent validation, and separate-worker fixes completed; 401 repository tests and 13 Chromium cases passed. Share the wheel for a researcher trial before choosing Step 4's workload; registry publication remains separate.
 
 ## Change and migration gates
 

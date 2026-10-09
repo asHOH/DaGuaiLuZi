@@ -1,6 +1,6 @@
 # Research Observation and Action Encoding
 
-Status: `dglz-research-3`; native reference, Python space/scorer prototype, and [live AEC adapter](development.md#python-research-adapter).
+Status: `dglz-research-3`; native reference and [packaged AEC environment with a learner example](../packages/headless/python/README.md).
 
 ## Native contract
 
@@ -35,8 +35,8 @@ Gymnasium row space: `MultiDiscrete([6,163,163,163,163,163,7,3,4])`. Candidate s
 
 The probe uses [AEC-compatible Gymnasium spaces](https://pettingzoo.farama.org/api/aec/), lossless UTF-8 JSON context in `Sequence(Discrete(256))`, candidate rows, and a fixed mask. Context retains the complete view, identity, and public history; researchers provide task-specific tensor encoders. The example [DMC-style](https://github.com/kwai/DouZero) PyTorch scorer selects hand/seat/hand-size features and scores each candidate independently. This demonstrates variable-size forward-pass compatibility, not training quality or compatibility with unmodified fixed-output trainers.
 
-After building headless dependencies, run `uv run --python 3.12 packages/headless/research/encoding_probe.py`. Its inline dependencies are pinned; Python 3.12 and Node.js are required. It generates real four/six-player, setup, inactive, and terminal samples; checks spaces, lossless context, card-ID mapping, masks, and scorer outputs. Live AEC/termination checks use the adapter test command above; trajectory learning and clean package installation remain Phase 4.
+After building headless dependencies, run `uv run --python 3.12 packages/headless/research/encoding_probe.py`. Its inline dependencies are pinned; Python 3.12 and Node.js are required. It generates real four/six-player, setup, inactive, and terminal samples; checks spaces, lossless context, card-ID mapping, masks, and scorer outputs. Live AEC/termination, completed-trajectory updates, and isolated package installation use the [development checks](development.md#research-package-and-examples).
 
-Phase 3 pilot: TorchRL 0.14.0 with PyTorch 2.14.1 fails to reset through its standard PettingZoo wrapper on these variable-length observations, even after casting context bytes to integers. Do not claim unmodified TorchRL support. Retain direct PyTorch candidate scoring for the Phase 4 learner example; neither pad to an arbitrary cap nor remove legal choices for trainer compatibility.
+Phase 3 pilot: TorchRL 0.14.0 with PyTorch 2.14.1 fails to reset through its standard PettingZoo wrapper on these variable-length observations, even after casting context bytes to integers. Do not claim unmodified TorchRL support. The package's direct PyTorch example performs one regression update from completed-Hand candidate features and terminal rewards; it is an integration check, not a competitive policy. Neither pad to an arbitrary cap nor remove legal choices for trainer compatibility.
 
 The correctness-first generator tests up to 80,730 five-card subsets on an open 27-card Hand. Sampled openings (`research-measure`, autonomous preset, randomized seats) produced 715/862 choices in roughly 3–5 seconds on the first observation; repeated reads reuse the snapshot. These are not throughput guarantees. Keep it as the reference for Step 4. No candidate pruning or fixed-size neural output is required; masks cost about 100 KB per observation and can be derived from N rather than stored in replay.

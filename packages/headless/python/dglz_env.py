@@ -196,10 +196,23 @@ class DaguailuziEnv(AECEnv):
         else:
             self._setup["preset"] = preset
         self._reward_fn = reward_fn
+        checkout_bridge = Path(__file__).resolve().parents[1] / "dist" / "bridge.js"
+        bundled_bridge = (
+            Path(__file__).resolve().parent
+            / "dglz_engine"
+            / "dist"
+            / "node_modules"
+            / "@dglz"
+            / "headless"
+            / "dist"
+            / "bridge.js"
+        )
         self._bridge_path = (
             Path(bridge_path)
             if bridge_path is not None
-            else Path(__file__).resolve().parents[1] / "dist" / "bridge.js"
+            else checkout_bridge
+            if checkout_bridge.is_file()
+            else bundled_bridge
         )
         self._engine_timeout = engine_timeout
         self._bridge = None

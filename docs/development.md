@@ -96,7 +96,29 @@ Use the AEC loop with `observe()` arrays and its action mask; `observe_raw(agent
 
 `export_record()` and `replay_record(record)` are evaluator-only. Never pass records, Templates, seeds, or the environment itself to a policy. `BridgeError.code` distinguishes request, protocol, and engine failures; engine failures require reset. `engine_timeout` bounds engine responses, not bot decision time. The bridge validates versioned JSON-line requests and rejects stale episode/turn IDs. No bot fallback runs inside the adapter.
 
-CI runs upstream AEC/seed checks and native transcript/privacy/replay comparisons for both Rulesets. The checks also cover reward delivery, invalid steps, repeated resets, truncation, process failure, and cleanup. Python dependencies are pinned in `packages/headless/python/requirements.txt`. Packaging, duplicate evaluation, and a learning update remain Phase 4.
+CI runs upstream AEC/seed checks, native transcript/privacy/replay comparisons, duplicate evaluation, trajectory updates, and isolated wheel installation for both Rulesets. Python dependencies are pinned in `packages/headless/python/requirements.txt`; the optional CPU learner uses PyTorch 2.14.1. The standard TorchRL wrapper is unsupported.
+
+### Research package and examples
+
+Researcher instructions: [Chinese quickstart](../packages/headless/python/README.md). Build the wheel after the native packages:
+
+```sh
+uv run --python 3.12.12 python packages/headless/python/prepare_package.py
+uv build --wheel packages/headless/python --out-dir dist/python
+```
+
+The wheel includes compiled workspace engine packages, Zod and its license, and four/six-player subsequent-Hand Templates. Consumers need Python 3.12 and Node.js 24; no checkout or TypeScript build. Build preparation refreshes the copied engine; source execution uses the current workspace build. Registry publication remains separate.
+
+Focused checks:
+
+```sh
+uv run --python 3.12.12 --with-requirements packages/headless/python/requirements.txt --with torch==2.14.1 python packages/headless/python/test_examples.py
+uv run --python 3.12.12 --with-requirements packages/headless/python/requirements.txt python packages/headless/python/test_evaluate.py
+```
+
+For package acceptance, install the wheel into a fresh virtual environment and run its Python with `-I packages/headless/python/test_package.py`. The check imports only installed modules, changes to a temporary directory, and runs both Rulesets including supplied setup Templates. Do not use an editable install as this gate.
+
+`dglz_examples` collects legal-random trajectories; `--learn` performs one CPU regression update against actual terminal team rewards. Truncations never train. `dglz_evaluate.evaluate` accepts two per-seat policy factories, fixes Template seating, resets policy memory between legs, and reports paired team scores separately by Ruleset. Factories receive policy seeds; policies receive only their seat's raw snapshot. Reports retain private configuration and reproduction metadata outside policies. Default failures stop the leg; optional fallback and spawned-process timeouts follow the [research failure policy](python-research-environment-plan.md#failure-handling). Timings include engine work and serialization, not isolated transport overhead.
 
 ## Server
 

@@ -8,6 +8,7 @@ import tempfile
 from threading import Timer
 from time import monotonic
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from pettingzoo.test import api_test, seed_test
@@ -19,6 +20,34 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class AdapterTests(unittest.TestCase):
+    def test_bridge_path_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            module = root / "python" / "dglz_env.py"
+            checkout = root / "dist" / "bridge.js"
+            bundled = (
+                module.parent
+                / "dglz_engine"
+                / "dist"
+                / "node_modules"
+                / "@dglz"
+                / "headless"
+                / "dist"
+                / "bridge.js"
+            )
+            for bridge in (checkout, bundled):
+                bridge.parent.mkdir(parents=True)
+                bridge.touch()
+            with patch("dglz_env.__file__", str(module)):
+                with DaguailuziEnv() as env:
+                    self.assertEqual(env._bridge_path, checkout)
+                override = root / "custom.cjs"
+                with DaguailuziEnv(bridge_path=override) as env:
+                    self.assertEqual(env._bridge_path, override)
+                checkout.unlink()
+                with DaguailuziEnv() as env:
+                    self.assertEqual(env._bridge_path, bundled)
+
     def test_upstream_aec_and_seed_checks(self):
         for players in (4, 6):
             with (
