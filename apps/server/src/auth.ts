@@ -225,15 +225,8 @@ export async function authenticate(
   };
 }
 
-export function resolveSession(
-  database: AppDatabase,
-  token: string | undefined,
-  now = Date.now(),
-): AuthenticatedAccount | undefined {
-  if (token === undefined || token.length === 0) {
-    return undefined;
-  }
-  const session = database.db
+function prepareSessionLookup(database: AppDatabase) {
+  return database.db
     .select({
       accountId: accounts.id,
       username: accounts.username,
@@ -243,11 +236,33 @@ export function resolveSession(
     .innerJoin(accounts, eq(accounts.id, sessions.accountId))
     .where(
       and(
-        eq(sessions.tokenHash, hashSessionToken(token)),
+        eq(sessions.tokenHash, sql.placeholder("tokenHash")),
         isNull(sessions.revokedAt),
       ),
     )
-    .get();
+    .prepare();
+}
+
+// Cache the compiled query only. Authorization always reads current database rows.
+const sessionLookups = new WeakMap<
+  AppDatabase,
+  ReturnType<typeof prepareSessionLookup>
+>();
+
+export function resolveSession(
+  database: AppDatabase,
+  token: string | undefined,
+  now = Date.now(),
+): AuthenticatedAccount | undefined {
+  if (token === undefined || token.length === 0) {
+    return undefined;
+  }
+  let lookup = sessionLookups.get(database);
+  if (lookup === undefined) {
+    lookup = prepareSessionLookup(database);
+    sessionLookups.set(database, lookup);
+  }
+  const session = lookup.get({ tokenHash: hashSessionToken(token) });
   if (session === undefined || session.expiresAt <= now) {
     return undefined;
   }

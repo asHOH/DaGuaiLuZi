@@ -19,6 +19,8 @@ Prettier owns code/config formatting; Markdown is excluded to keep tables compac
 
 Pin exact tool versions and upgrade them deliberately.
 
+Builds run in dependency order. After building, workspace tests and typechecks run without dependency ordering, using pnpm's default concurrency limit.
+
 Remaining delivery order and completion gates: [MVP roadmap](mvp-roadmap.md).
 
 ## Phase verification
@@ -29,7 +31,7 @@ Remaining delivery order and completion gates: [MVP roadmap](mvp-roadmap.md).
 - Browser helpers must establish their authentication/Room preconditions and await authoritative state changes. Assert required interactions occurred regardless of randomized seats or dealer. Diagnose stalled steps before increasing timeouts.
 - On tooling failures such as Windows `spawn EPERM`, check execution permissions before retrying; do not change project tooling to mask an environment restriction.
 
-Test wall time is not research throughput: server/browser checks include authentication, network/UI work, and serial journeys; Python checks repeat Hands, replay, and isolated installation. For future test-only optimization, reuse seeded opaque sessions (as in `challenges.test.ts`) in non-authentication fixtures before considering more workers; retain real authentication coverage and production password settings. Use the [research performance pilot](research-encoding.md#local-performance-pilot-2026-10-09) for simulation measurements.
+Test wall time is not research throughput: server/browser checks include authentication, network/UI work, and serial journeys; Python checks repeat Hands, replay, and isolated installation. Gameplay and Challenge fixtures seed accounts and opaque sessions in fresh databases; real authorization and authentication-suite password checks remain intact. Prefer this pattern in non-authentication fixtures before adding workers; retain production password settings. Use the [research performance pilot](research-encoding.md#local-performance-pilot-2026-10-09) for simulation measurements.
 
 Challenge source fixtures reuse generated Hand events only within one test run, keyed by the complete starting state. Each fixture has its own migrated database; cloned events pass through normal persistence validation. No database files, sessions, or expected test results are cached. Keep the fixture-isolation check when changing this setup.
 

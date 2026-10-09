@@ -860,8 +860,10 @@ function sameRulesConfiguration(
   );
 }
 
+const deeplyFrozen = new WeakSet<object>();
+
 function deepFreeze<T>(value: T): T {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== "object" || value === null || deeplyFrozen.has(value)) {
     return value;
   }
 
@@ -869,11 +871,13 @@ function deepFreeze<T>(value: T): T {
     deepFreeze(child);
   }
 
-  return Object.freeze(value);
+  Object.freeze(value);
+  deeplyFrozen.add(value);
+  return value;
 }
 
 function makeState(value: InternalState): State {
-  return deepFreeze(structuredClone(value)) as unknown as State;
+  return deepFreeze(value) as unknown as State;
 }
 
 function readState(state: State): InternalState {
@@ -3322,6 +3326,8 @@ export function decide(state: State | undefined, command: Command): Decision {
 }
 
 export function evolve(state: State | undefined, event: Event): State {
+  // Own incoming data once; unchanged state branches are already deeply frozen.
+  event = structuredClone(event);
   if (event.type === "RoomCreated") {
     if (state !== undefined) {
       throw new Error("RoomCreated requires an empty state");

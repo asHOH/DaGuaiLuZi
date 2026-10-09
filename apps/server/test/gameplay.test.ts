@@ -26,8 +26,12 @@ import {
   type RulesetId,
 } from "@dglz/protocol";
 import { createApp } from "../src/app.js";
-import { provisionAccount } from "../src/auth.js";
+import { hashSessionToken, SESSION_COOKIE_NAME } from "../src/auth.js";
 import { openDatabase } from "../src/db/index.js";
+import {
+  accounts as accountRows,
+  sessions as sessionRows,
+} from "../src/db/schema.js";
 import {
   appendRoomCreated,
   appendRoomEvents,
@@ -65,13 +69,32 @@ async function table(
   const database = openDatabase(dbPath);
   cleanups.push(async () => database.close());
   const accounts = [];
+  const sessions: string[] = [];
+  // Authentication suites cover passwords; gameplay still authorizes real sessions.
   for (let i = 0; i < (rulesetId === "dglz-4p-2d-v1" ? 4 : 6); i++) {
-    accounts.push(
-      await provisionAccount(database, {
-        username: `player${i}`,
-        password: "secret",
-      }),
-    );
+    const account = { accountId: randomUUID(), username: `player${i}` };
+    const token = randomUUID();
+    const now = Date.now();
+    database.db
+      .insert(accountRows)
+      .values({
+        id: account.accountId,
+        username: account.username,
+        passwordHash: "unused",
+        createdAt: now,
+      })
+      .run();
+    database.db
+      .insert(sessionRows)
+      .values({
+        tokenHash: hashSessionToken(token),
+        accountId: account.accountId,
+        createdAt: now,
+        expiresAt: now + 600000,
+      })
+      .run();
+    accounts.push(account);
+    sessions.push(`${SESSION_COOKIE_NAME}=${token}`);
   }
   const roomId = randomUUID();
   const created: Event = {
@@ -185,21 +208,6 @@ async function table(
   let app = await createApp(options);
   cleanups.push(async () => app.close());
   await app.listen({ host: "127.0.0.1", port: 0 });
-  const sessions: string[] = [];
-  for (const account of accounts) {
-    const login = await app.inject({
-      method: "POST",
-      url: "/api/login",
-      headers: {
-        [PROTOCOL_VERSION_HEADER]: String(PROTOCOL_VERSION),
-      },
-      payload: { username: account.username, password: "secret" },
-    });
-    expect(login.statusCode).toBe(200);
-    const cookie = login.headers["set-cookie"];
-    if (typeof cookie !== "string") throw new Error("missing-cookie");
-    sessions.push(cookie.split(";", 1)[0]!);
-  }
   let sockets: Socket[] = [];
   let views: RoomViewData[] = [];
   cleanups.push(async () => {

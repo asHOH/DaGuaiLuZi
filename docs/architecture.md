@@ -116,6 +116,8 @@ This is the deepest module. Its implemented interface is `decide(state | undefin
 
 `game-core` decides and evolves one Room's complete durable domain state from `RoomCreated` onward: lobby, Match or Challenge Hand execution, natural completion, abortion, interruption, and archival. Its implementation may use internal modules, but they do not create additional external seams.
 
+States and views are immutable snapshots. Evolution copies incoming events and shares only deeply frozen prior branches; State object identity is not a change indicator.
+
 The completed implementation phases are retained in the [`game-core` implementation record](archive/game-core-implementation-record.md).
 
 It does not know about sockets, SQL, accounts, wall-clock time, or React. Randomness and time are inputs. Each Hand receives a fresh cryptographically random Hand Seed. For the first Hand of a Match, `game-core` uses the fixed lobby seats or derives a uniform seat permutation from that Hand Seed under Randomized Seating, then derives the initial dealer through a separate versioned, domain-separated selection function. Random selections required by resolved Rule Variants use the same approach and remain domain-separated from seating, dealer selection, and shuffling. `game-core` uses a versioned deterministic shuffle, so the same Hand Seed, Ruleset, resolved variants, shuffle version, and resolved seat ordering produce the same original deal. No Match-level seed derives future Hand Seeds. Hand-start events record these inputs, and later events record every card-zone change needed for state evolution and completed-hand history. Hand Seeds remain server-held.

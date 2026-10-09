@@ -15,9 +15,9 @@
     "lint": "oxlint --deny-warnings --report-unused-disable-directives",
     "lint:fix": "oxlint --fix --deny-warnings --report-unused-disable-directives",
     "test": "pnpm build && pnpm test:workspace",
-    "test:workspace": "pnpm --recursive --if-present run test",
+    "test:workspace": "pnpm --recursive --no-sort --if-present run test",
     "typecheck": "pnpm build && pnpm typecheck:workspace",
-    "typecheck:workspace": "pnpm --recursive --if-present run typecheck"
+    "typecheck:workspace": "pnpm --recursive --no-sort --if-present run typecheck"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",

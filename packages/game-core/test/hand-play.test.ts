@@ -15,6 +15,7 @@ import {
   type Event,
   type PlayerView,
   type State,
+  type TeamLevel,
 } from "../src/index.js";
 import {
   type CardInstanceCode,
@@ -63,6 +64,60 @@ function drainCurrentLeader(state: State): State {
 }
 
 describe("game-core active Hand play", () => {
+  it.each([SIX_PLAYER_CONFIGURATION, FOUR_PLAYER_CONFIGURATION])(
+    "isolates incoming events and preserves frozen earlier snapshots for %s",
+    (configuration) => {
+      const started = start(configuration, "snapshot-isolation");
+      const index = started.history.findIndex(
+        (event) => event.type === "MatchStarted",
+      );
+      const recorded = started.history[index]!;
+      if (recorded.type !== "MatchStarted") throw new Error("Missing start");
+      const teamLevels: [TeamLevel, TeamLevel] = [...recorded.teamLevels];
+      const rulesConfiguration = { ...recorded.rulesConfiguration };
+      // A frozen outer object does not make caller-owned nested data immutable.
+      const incoming = Object.freeze({
+        ...recorded,
+        teamLevels,
+        rulesConfiguration,
+      });
+      const state = evolve(
+        fold(undefined, started.history.slice(0, index)),
+        incoming,
+      );
+      const views = started.playerIds.map((id) => playerView(state, id));
+      const snapshots = structuredClone(views);
+      expect(Object.isFrozen(teamLevels)).toBe(false);
+      expect(Object.isFrozen(rulesConfiguration)).toBe(false);
+      teamLevels[0] = "5";
+      rulesConfiguration.matchEnding = "three-failure-limit-at-5";
+
+      const actor = views[0]!.currentActor!;
+      const cards = [playerView(state, actor).hand![0]!];
+      const played = apply(state, { type: "Play", playerId: actor, cards });
+      const events = structuredClone(played.events);
+      cards.length = 0;
+      expect(played.events).toEqual(events);
+      expect(started.playerIds.map((id) => playerView(state, id))).toEqual(
+        snapshots,
+      );
+      expect(views).toEqual(snapshots);
+      expect(playerView(played.state, actor).hand).toHaveLength(26);
+      expect(() => (views[0]!.hand as CardInstanceCode[]).pop()).toThrow(
+        TypeError,
+      );
+
+      function expectDeeplyFrozen(value: unknown): void {
+        if (typeof value !== "object" || value === null) return;
+        expect(Object.isFrozen(value)).toBe(true);
+        for (const child of Object.values(value)) expectDeeplyFrozen(child);
+      }
+      expectDeeplyFrozen(state);
+      expectDeeplyFrozen(played.state);
+      expectDeeplyFrozen(played.events);
+    },
+  );
+
   it.each([SIX_PLAYER_CONFIGURATION, FOUR_PLAYER_CONFIGURATION])(
     "plays a complete first Hand for %s",
     (configuration) => {

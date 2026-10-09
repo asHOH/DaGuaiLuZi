@@ -65,6 +65,33 @@ async function setup() {
   return { path, database, account, login };
 }
 
+it("reuses session lookups without caching authorization or crossing databases", async () => {
+  const { path, database, account, login } = await setup();
+  const first = await login();
+  const second = await login();
+  const other = openDatabase(path);
+  const empty = openDatabase(":memory:");
+  cleanups.push(
+    () => other.close(),
+    () => empty.close(),
+  );
+  const expiry = database.db
+    .select()
+    .from(sessions)
+    .all()
+    .find(
+      (session) => session.tokenHash === hashSessionToken(first.token),
+    )!.expiresAt;
+  expect(resolveSession(database, first.token, expiry - 1)).toEqual(account);
+  expect(resolveSession(database, first.token, expiry)).toBeUndefined();
+  expect(resolveSession(empty, first.token)).toBeUndefined();
+  expect(resolveSession(database, "unknown")).toBeUndefined();
+  expect(resolveSession(database, first.token)).toEqual(account);
+  revokeSession(other, first.token);
+  expect(resolveSession(database, first.token)).toBeUndefined();
+  expect(resolveSession(database, second.token)).toEqual(account);
+});
+
 it("resets credentials, preserves identity, audits mutations, and revokes only the intended sessions", async () => {
   const { path, database, account, login } = await setup();
   const first = await login();
